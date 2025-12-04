@@ -104,5 +104,92 @@ class TestMagiException(unittest.TestCase):
         self.assertIsInstance(exception, Exception)
 
 
+class TestErrorFactories(unittest.TestCase):
+    """エラーファクトリ関数のテスト"""
+
+    def test_create_config_error(self):
+        """create_config_errorが正しいMagiErrorを作成すること"""
+        from magi.errors import (
+            create_config_error,
+            MagiError,
+            ErrorCode
+        )
+        message = "APIキーが設定されていません"
+        details = {"key": "api_key"}
+        error = create_config_error(message, details=details)
+
+        # 返り値がMagiErrorのインスタンスであることを確認
+        self.assertIsInstance(error, MagiError)
+
+        # 属性が正しく設定されていることを確認
+        self.assertEqual(error.message, message)
+        self.assertEqual(error.code, ErrorCode.CONFIG_MISSING_API_KEY.value)
+        self.assertEqual(error.details, details)
+        self.assertFalse(error.recoverable)
+
+    def test_create_api_error(self):
+        """create_api_errorが正しいMagiErrorを作成すること"""
+        from magi.errors import (
+            create_api_error,
+            MagiError,
+            ErrorCode
+        )
+        code = ErrorCode.API_TIMEOUT
+        message = "APIタイムアウトが発生しました"
+        details = {"timeout": 60}
+        recoverable = True
+        error = create_api_error(code, message, details=details, recoverable=recoverable)
+
+        # 返り値がMagiErrorのインスタンスであることを確認
+        self.assertIsInstance(error, MagiError)
+
+        # 属性が正しく設定されていることを確認
+        self.assertEqual(error.message, message)
+        self.assertEqual(error.code, code.value)
+        self.assertEqual(error.details, details)
+        self.assertTrue(error.recoverable)
+
+    def test_create_plugin_error(self):
+        """create_plugin_errorが正しいMagiErrorを作成すること"""
+        from magi.errors import (
+            create_plugin_error,
+            MagiError,
+            ErrorCode
+        )
+        code = ErrorCode.PLUGIN_YAML_PARSE_ERROR
+        message = "YAMLの解析に失敗しました"
+        details = {"file": "plugin.yaml", "line": 10}
+        error = create_plugin_error(code, message, details=details)
+
+        # 返り値がMagiErrorのインスタンスであることを確認
+        self.assertIsInstance(error, MagiError)
+
+        # 属性が正しく設定されていることを確認
+        self.assertEqual(error.message, message)
+        self.assertEqual(error.code, code.value)
+        self.assertEqual(error.details, details)
+        self.assertFalse(error.recoverable)
+
+    def test_create_agent_error(self):
+        """create_agent_errorが正しいMagiErrorを作成すること"""
+        from magi.errors import (
+            create_agent_error,
+            MagiError,
+            ErrorCode
+        )
+        message = "エージェントの思考処理に失敗しました"
+        details = {"agent_id": "agent_001", "step": "thinking"}
+        error = create_agent_error(message, details=details)
+
+        # 返り値がMagiErrorのインスタンスであることを確認
+        self.assertIsInstance(error, MagiError)
+
+        # 属性が正しく設定されていることを確認
+        self.assertEqual(error.message, message)
+        self.assertEqual(error.code, ErrorCode.AGENT_THINKING_FAILED.value)
+        self.assertEqual(error.details, details)
+        self.assertTrue(error.recoverable)
+
+
 if __name__ == "__main__":
     unittest.main()

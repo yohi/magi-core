@@ -48,6 +48,10 @@ class VotingTally:
         deny_count: DENY票の数
         conditional_count: CONDITIONAL票の数
     """
+    # 判定閾値の定数
+    UNANIMOUS_THRESHOLD = 3
+    MAJORITY_THRESHOLD = 2
+
     approve_count: int
     deny_count: int
     conditional_count: int
@@ -60,21 +64,29 @@ class VotingTally:
 
         Returns:
             Decision: 最終判定結果
+
+        Raises:
+            ValueError: thresholdが"unanimous"または"majority"以外の場合
         """
         if threshold == "unanimous":
-            if self.approve_count == 3:
+            if self.approve_count == self.UNANIMOUS_THRESHOLD:
                 return Decision.APPROVED
             elif self.deny_count >= 1:
                 return Decision.DENIED
             else:
                 return Decision.CONDITIONAL
-        else:  # majority
-            if self.approve_count >= 2:
+        elif threshold == "majority":
+            if self.approve_count >= self.MAJORITY_THRESHOLD:
                 return Decision.APPROVED
-            elif self.deny_count >= 2:
+            elif self.deny_count >= self.MAJORITY_THRESHOLD:
                 return Decision.DENIED
             else:
                 return Decision.CONDITIONAL
+        else:
+            raise ValueError(
+                f'Invalid threshold value: "{threshold}". '
+                'Must be either "unanimous" or "majority".'
+            )
 
 
 @dataclass
