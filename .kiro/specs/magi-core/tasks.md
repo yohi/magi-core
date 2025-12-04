@@ -1,15 +1,15 @@
 # Implementation Plan
 
-- [ ] 1. プロジェクト構造とコアインターフェースのセットアップ
-  - [ ] 1.1 pyproject.tomlとuv環境の初期化
+- [x] 1. プロジェクト構造とコアインターフェースのセットアップ
+  - [x] 1.1 pyproject.tomlとuv環境の初期化
     - pyproject.tomlを作成し、依存関係（anthropic、pyyaml、hypothesis）を定義
     - uv syncで環境を構築
     - _Requirements: 1.1_
-  - [ ] 1.2 ディレクトリ構造の作成
+  - [x] 1.2 ディレクトリ構造の作成
     - magi/cli、magi/core、magi/agents、magi/plugins、magi/llm、magi/config、magi/outputディレクトリを作成
     - 各ディレクトリに__init__.pyを配置
     - _Requirements: 1.1_
-  - [ ] 1.3 共通データモデルとエラー定義の実装
+  - [x] 1.3 共通データモデルとエラー定義の実装
     - magi/models.pyにデータクラス（Vote、Decision、VotingTally等）を実装
     - magi/errors.pyにMagiError、ErrorCodeを実装
     - _Requirements: 2.3, 6.2_
