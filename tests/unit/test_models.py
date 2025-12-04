@@ -338,7 +338,6 @@ class TestConsensusResult(unittest.TestCase):
             ConsensusResult, ThinkingOutput, DebateRound,
             PersonaType, Vote, Decision
         )
-        timestamp = datetime.now()
         result = ConsensusResult(
             thinking_results={},
             debate_results=[],
@@ -355,7 +354,6 @@ class TestConsensusResult(unittest.TestCase):
             ConsensusResult, ThinkingOutput, DebateRound,
             PersonaType, Vote, Decision
         )
-        timestamp = datetime.now()
         result = ConsensusResult(
             thinking_results={},
             debate_results=[],

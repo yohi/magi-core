@@ -32,7 +32,7 @@ def main(args: List[str] | None = None) -> int:
     # TODO: コマンド実行の実装
     # 現時点では未実装のため、エラーメッセージを表示
     print("MAGIシステムは現在開発中です。", file=sys.stderr)
-    print("詳細は https://github.com/your-org/magi-core を参照してください。", file=sys.stderr)
+    print("詳細は https://github.com/yohi/magi-core を参照してください。", file=sys.stderr)
     return 1
 
 
@@ -54,7 +54,7 @@ def print_help() -> None:
     MAGIシステムは、3つの異なる人格（MELCHIOR、BALTHASAR、CASPER）による
     合議プロセスを通じて、より多角的で信頼性の高い判断を提供します。
 
-    詳細は https://github.com/your-org/magi-core を参照してください。
+    詳細は https://github.com/yohi/magi-core を参照してください。
 """
     print(help_text)
 
