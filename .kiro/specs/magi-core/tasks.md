@@ -1,0 +1,186 @@
+# Implementation Plan
+
+- [ ] 1. プロジェクト構造とコアインターフェースのセットアップ
+  - [ ] 1.1 pyproject.tomlとuv環境の初期化
+    - pyproject.tomlを作成し、依存関係（anthropic、pyyaml、hypothesis）を定義
+    - uv syncで環境を構築
+    - _Requirements: 1.1_
+  - [ ] 1.2 ディレクトリ構造の作成
+    - magi/cli、magi/core、magi/agents、magi/plugins、magi/llm、magi/config、magi/outputディレクトリを作成
+    - 各ディレクトリに__init__.pyを配置
+    - _Requirements: 1.1_
+  - [ ] 1.3 共通データモデルとエラー定義の実装
+    - magi/models.pyにデータクラス（Vote、Decision、VotingTally等）を実装
+    - magi/errors.pyにMagiError、ErrorCodeを実装
+    - _Requirements: 2.3, 6.2_
+
+- [ ] 2. 設定管理の実装
+  - [ ] 2.1 ConfigManagerの実装
+    - magi/config/manager.pyにConfigデータクラスとConfigManagerを実装
+    - 環境変数（MAGI_API_KEY等）からの読み込み
+    - 設定ファイル（magi.yaml）からの読み込み
+    - _Requirements: 12.1, 12.2, 12.3, 12.4_
+  - [ ]* 2.2 Property 16のプロパティテスト作成
+    - **Property 16: 設定読み込みと適用**
+    - **Validates: Requirements 12.1, 12.3, 12.4**
+
+- [ ] 3. Checkpoint - 全テストが通ることを確認
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 4. LLMクライアントの実装
+  - [ ] 4.1 LLMClientの実装
+    - magi/llm/client.pyにLLMRequest、LLMResponse、LLMClientを実装
+    - Anthropic APIとの通信処理
+    - 指数バックオフによる再試行ロジック
+    - _Requirements: 2.1, 2.2, 2.3, 2.4_
+  - [ ]* 4.2 Property 2のプロパティテスト作成
+    - **Property 2: エラーメッセージ生成の一貫性**
+    - **Validates: Requirements 2.3**
+
+- [ ] 5. 3賢者ペルソナ管理の実装
+  - [ ] 5.1 PersonaManagerの実装
+    - magi/agents/persona.pyにPersonaType、Persona、PersonaManagerを実装
+    - MELCHIOR、BALTHASAR、CASPERの基本プロンプト定義
+    - オーバーライド適用機能
+    - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+  - [ ]* 5.2 Property 3のプロパティテスト作成
+    - **Property 3: オーバーライド適用の保全性**
+    - **Validates: Requirements 3.5, 8.4**
+  - [ ] 5.3 Agentクラスの実装
+    - magi/agents/agent.pyにThinkingOutput、DebateOutput、VoteOutput、Agentを実装
+    - think、debate、voteメソッドの実装
+    - _Requirements: 3.2, 3.3, 3.4, 4.1_
+
+- [ ] 6. 会話履歴管理の実装
+  - [ ] 6.1 ContextManagerの実装
+    - magi/core/context.pyにConversationEntry、ContextManagerを実装
+    - 履歴追加、フェーズ別コンテキスト取得、エクスポート機能
+    - トークン制限に基づく要約/削除機能
+    - _Requirements: 7.1, 7.2, 7.3, 7.4_
+  - [ ]* 6.2 Property 11のプロパティテスト作成
+    - **Property 11: 会話履歴のラウンドトリップ**
+    - **Validates: Requirements 7.1, 7.2, 7.3**
+  - [ ]* 6.3 Property 12のプロパティテスト作成
+    - **Property 12: トークン制限の遵守**
+    - **Validates: Requirements 7.4**
+
+- [ ] 7. Checkpoint - 全テストが通ることを確認
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 8. 合議プロトコルの実装
+  - [ ] 8.1 ConsensusEngineの基本構造実装
+    - magi/core/consensus.pyにConsensusPhase、ConsensusResult、ConsensusEngineを実装
+    - フェーズ管理のステートマシン
+    - _Requirements: 4.1, 4.3, 5.3, 6.1, 6.2_
+  - [ ] 8.2 Thinking Phaseの実装
+    - _run_thinking_phaseメソッドの実装
+    - 各エージェントへの独立した思考生成要求
+    - _Requirements: 4.1, 4.2, 4.3, 4.4_
+  - [ ]* 8.3 Property 4のプロパティテスト作成
+    - **Property 4: Thinking Phaseの独立性**
+    - **Validates: Requirements 4.2**
+  - [ ]* 8.4 Property 5のプロパティテスト作成
+    - **Property 5: フェーズ遷移の正確性**
+    - **Validates: Requirements 4.3**
+  - [ ]* 8.5 Property 6のプロパティテスト作成
+    - **Property 6: エージェント失敗時の継続性**
+    - **Validates: Requirements 4.4**
+  - [ ] 8.6 Debate Phaseの実装
+    - _run_debate_phaseメソッドの実装
+    - 他エージェントの思考結果を含むコンテキスト構築
+    - ラウンド数に基づく繰り返し処理
+    - _Requirements: 5.1, 5.2, 5.3, 5.4_
+  - [ ]* 8.7 Property 7のプロパティテスト作成
+    - **Property 7: Debate Phaseのコンテキスト構築**
+    - **Validates: Requirements 5.1**
+  - [ ]* 8.8 Property 8のプロパティテスト作成
+    - **Property 8: ラウンド数に基づく状態遷移**
+    - **Validates: Requirements 5.3**
+  - [ ] 8.9 Voting Phaseの実装
+    - _run_voting_phaseメソッドの実装
+    - 投票集計とDecision決定ロジック
+    - Exit Code決定
+    - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
+  - [ ]* 8.10 Property 9のプロパティテスト作成
+    - **Property 9: 投票集計と判定の正確性**
+    - **Validates: Requirements 6.2, 6.3, 6.4**
+  - [ ]* 8.11 Property 10のプロパティテスト作成
+    - **Property 10: CONDITIONAL投票時の条件出力**
+    - **Validates: Requirements 6.5**
+
+- [ ] 9. Checkpoint - 全テストが通ることを確認
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 10. プラグインシステムの実装
+  - [ ] 10.1 PluginLoaderの実装
+    - magi/plugins/loader.pyにPluginMetadata、BridgeConfig、Plugin、PluginLoaderを実装
+    - YAMLパースとバリデーション
+    - agent_overridesの抽出
+    - _Requirements: 8.1, 8.2, 8.3, 8.4_
+  - [ ]* 10.2 Property 13のプロパティテスト作成
+    - **Property 13: YAMLパースとメタデータ抽出**
+    - **Validates: Requirements 8.1, 8.2**
+  - [ ]* 10.3 Property 14のプロパティテスト作成
+    - **Property 14: 無効なYAMLのエラーハンドリング**
+    - **Validates: Requirements 8.3**
+  - [ ] 10.4 CommandExecutorの実装
+    - magi/plugins/executor.pyにCommandResult、CommandExecutorを実装
+    - subprocess実行と出力キャプチャ
+    - タイムアウト処理
+    - _Requirements: 9.1, 9.2, 9.3, 9.4_
+
+- [ ] 11. 出力フォーマットの実装
+  - [ ] 11.1 OutputFormatterの実装
+    - magi/output/formatter.pyにOutputFormat、OutputFormatterを実装
+    - JSON形式変換
+    - Markdown形式変換
+    - _Requirements: 11.1, 11.2, 11.3, 11.4_
+  - [ ]* 11.2 Property 15のプロパティテスト作成
+    - **Property 15: 出力フォーマット変換の正確性**
+    - **Validates: Requirements 11.1, 11.2, 11.3**
+
+- [ ] 12. CLIレイヤーの実装
+  - [ ] 12.1 ArgumentParserの実装
+    - magi/cli/parser.pyにParsedCommand、ArgumentParserを実装
+    - argparseを使用したコマンド解析
+    - バリデーション機能
+    - _Requirements: 1.1, 1.2, 1.3, 1.4_
+  - [ ]* 12.2 Property 1のプロパティテスト作成
+    - **Property 1: コマンド解析の正確性**
+    - **Validates: Requirements 1.1, 1.2**
+  - [ ] 12.3 MagiCLIの実装
+    - magi/cli/main.pyにMagiCLIを実装
+    - コマンドハンドラーの統合
+    - ヘルプ・バージョン表示
+    - _Requirements: 1.1, 1.2, 1.3, 1.4_
+  - [ ] 12.4 エントリーポイントの実装
+    - magi/__main__.pyにmain関数を実装
+    - pyproject.tomlにscriptsエントリを追加
+    - _Requirements: 1.1_
+
+- [ ] 13. Checkpoint - 全テストが通ることを確認
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 14. サンプルプラグイン（magi-cc-sdd-plugin）の実装
+  - [ ] 14.1 SDDプラグイン定義の作成
+    - plugins/magi-cc-sdd-plugin/plugin.yamlを作成
+    - cc-sddコマンドのブリッジ設定
+    - 各エージェントへのオーバーライド定義
+    - _Requirements: 10.1, 10.2, 10.3, 10.4_
+  - [ ] 14.2 specコマンドの統合
+    - magi spec <request>コマンドの実装
+    - cc-sdd実行とレビューフローの統合
+    - _Requirements: 10.1, 10.2, 10.3_
+
+- [ ] 15. 統合とドキュメント
+  - [ ] 15.1 全コンポーネントの統合テスト
+    - エンドツーエンドの動作確認
+    - _Requirements: 1.1, 4.1, 5.1, 6.1_
+  - [ ] 15.2 READMEの作成
+    - インストール手順
+    - 使用方法
+    - プラグイン開発ガイド
+    - _Requirements: 1.3_
+
+- [ ] 16. Final Checkpoint - 全テストが通ることを確認
+  - Ensure all tests pass, ask the user if questions arise.
