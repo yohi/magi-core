@@ -64,15 +64,15 @@
     - **Property 12: トークン制限の遵守**
     - **Validates: Requirements 7.4**
 
-- [ ] 7. Checkpoint - 全テストが通ることを確認
+- [x] 7. Checkpoint - 全テストが通ることを確認
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 8. 合議プロトコルの実装
-  - [ ] 8.1 ConsensusEngineの基本構造実装
+  - [x] 8.1 ConsensusEngineの基本構造実装
     - magi/core/consensus.pyにConsensusPhase、ConsensusResult、ConsensusEngineを実装
     - フェーズ管理のステートマシン
     - _Requirements: 4.1, 4.3, 5.3, 6.1, 6.2_
-  - [ ] 8.2 Thinking Phaseの実装
+  - [x] 8.2 Thinking Phaseの実装
     - _run_thinking_phaseメソッドの実装
     - 各エージェントへの独立した思考生成要求
     - _Requirements: 4.1, 4.2, 4.3, 4.4_
