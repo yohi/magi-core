@@ -7,7 +7,7 @@ Requirements: 3.2, 3.3, 3.4, 4.1
 import json
 import re
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from magi.agents.persona import Persona
 from magi.llm.client import LLMClient, LLMRequest
@@ -260,8 +260,13 @@ class Agent:
 
             data = json.loads(json_str)
 
-            # 投票を取得
-            vote_str = data.get("vote", "").upper()
+            # 投票を取得（文字列に変換してからupper()を呼び出す）
+            vote_value = data.get("vote")
+            if vote_value is None:
+                vote_str = ""
+            else:
+                vote_str = str(vote_value).upper()
+
             if vote_str == "APPROVE":
                 vote = Vote.APPROVE
             elif vote_str == "DENY":
@@ -284,7 +289,7 @@ class Agent:
                 conditions=conditions
             )
 
-        except (json.JSONDecodeError, KeyError, TypeError):
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
             # パースに失敗した場合はフォールバック
             return VoteOutput(
                 persona_type=self.persona.type,
