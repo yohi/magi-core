@@ -24,16 +24,16 @@
     - **Property 16: 設定読み込みと適用**
     - **Validates: Requirements 12.1, 12.3, 12.4**
 
-- [ ] 3. Checkpoint - 全テストが通ることを確認
+- [x] 3. Checkpoint - 全テストが通ることを確認
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 4. LLMクライアントの実装
-  - [ ] 4.1 LLMClientの実装
+- [x] 4. LLMクライアントの実装
+  - [x] 4.1 LLMClientの実装
     - magi/llm/client.pyにLLMRequest、LLMResponse、LLMClientを実装
     - Anthropic APIとの通信処理
     - 指数バックオフによる再試行ロジック
     - _Requirements: 2.1, 2.2, 2.3, 2.4_
-  - [ ]* 4.2 Property 2のプロパティテスト作成
+  - [x]* 4.2 Property 2のプロパティテスト作成
     - **Property 2: エラーメッセージ生成の一貫性**
     - **Validates: Requirements 2.3**
 
