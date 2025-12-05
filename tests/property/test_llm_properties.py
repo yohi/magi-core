@@ -27,7 +27,7 @@ class TestErrorMessageConsistency(unittest.TestCase):
         Property: For any APIエラー種別に対して、対応するErrorCodeが生成される
         """
         client = LLMClient(api_key="test-key")
-        error = client._create_error_for_type(error_type)
+        error = client._create_error_for_type(error_type, Exception("test"))
 
         # エラーが生成されること
         self.assertIsInstance(error, MagiError)
@@ -51,7 +51,7 @@ class TestErrorMessageConsistency(unittest.TestCase):
         Property: For any APIエラー種別に対して、空でないメッセージが生成される
         """
         client = LLMClient(api_key="test-key")
-        error = client._create_error_for_type(error_type)
+        error = client._create_error_for_type(error_type, Exception("test"))
 
         self.assertIsInstance(error.message, str)
         self.assertTrue(len(error.message) > 0)
@@ -64,7 +64,7 @@ class TestErrorMessageConsistency(unittest.TestCase):
         Property: タイムアウト・レート制限は復旧可能、認証エラーは復旧不可
         """
         client = LLMClient(api_key="test-key")
-        error = client._create_error_for_type(error_type)
+        error = client._create_error_for_type(error_type, Exception("test"))
 
         # 認証エラーのみ復旧不可
         if error_type == APIErrorType.AUTH_ERROR:
@@ -82,8 +82,8 @@ class TestErrorMessageConsistency(unittest.TestCase):
         client = LLMClient(api_key="test-key")
 
         # 同じエラータイプで2回呼び出し
-        error1 = client._create_error_for_type(error_type)
-        error2 = client._create_error_for_type(error_type)
+        error1 = client._create_error_for_type(error_type, Exception("test"))
+        error2 = client._create_error_for_type(error_type, Exception("test"))
 
         # エラーコードは同一
         self.assertEqual(error1.code, error2.code)
@@ -110,11 +110,11 @@ class TestErrorMessageConsistency(unittest.TestCase):
         assume(model.strip())    # 空白のみのモデル名は除外
 
         client = LLMClient(api_key=api_key, model=model)
-        error = client._create_error_for_type(error_type)
+        error = client._create_error_for_type(error_type, Exception("test"))
 
         # デフォルト設定のクライアントと比較
         default_client = LLMClient(api_key="default-key")
-        default_error = default_client._create_error_for_type(error_type)
+        default_error = default_client._create_error_for_type(error_type, Exception("test"))
 
         # エラーコードは設定に関係なく同一
         self.assertEqual(error.code, default_error.code)
@@ -137,11 +137,11 @@ class TestRetryBehaviorByErrorType(unittest.TestCase):
         """
         client = LLMClient(api_key="test-key")
 
-        # リトライ対象かどうかを判定
-        should_retry = client._should_retry(error_type)
-        error = client._create_error_for_type(error_type)
+        # リトライ対象かどうかを判定（初期試行: attempt=0）
+        should_retry = client._should_retry(error_type, attempt=0, retry_count=0)
+        error = client._create_error_for_type(error_type, Exception("test"))
 
-        # recoverable == リトライ対象
+        # recoverable == should_retry for attempt 0
         self.assertEqual(error.recoverable, should_retry)
 
 

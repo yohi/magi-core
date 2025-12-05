@@ -13,7 +13,7 @@ from magi.llm.client import (
     LLMClient,
     APIErrorType,
 )
-from magi.errors import ErrorCode, MagiError
+from magi.errors import ErrorCode, MagiError, MagiException
 
 
 class TestLLMRequest(unittest.TestCase):
@@ -140,7 +140,7 @@ class TestLLMClient(unittest.TestCase):
     def test_create_error_for_timeout(self):
         """タイムアウトエラーのMagiError作成"""
         client = LLMClient(api_key="test-key")
-        error = client._create_error_for_type(APIErrorType.TIMEOUT)
+        error = client._create_error_for_type(APIErrorType.TIMEOUT, Exception("タイムアウト"))
 
         self.assertEqual(error.code, ErrorCode.API_TIMEOUT.value)
         self.assertIn("タイムアウト", error.message)
@@ -149,7 +149,7 @@ class TestLLMClient(unittest.TestCase):
     def test_create_error_for_rate_limit(self):
         """レート制限エラーのMagiError作成"""
         client = LLMClient(api_key="test-key")
-        error = client._create_error_for_type(APIErrorType.RATE_LIMIT)
+        error = client._create_error_for_type(APIErrorType.RATE_LIMIT, Exception("レート制限"))
 
         self.assertEqual(error.code, ErrorCode.API_RATE_LIMIT.value)
         self.assertIn("レート制限", error.message)
@@ -158,7 +158,7 @@ class TestLLMClient(unittest.TestCase):
     def test_create_error_for_auth_error(self):
         """認証エラーのMagiError作成"""
         client = LLMClient(api_key="test-key")
-        error = client._create_error_for_type(APIErrorType.AUTH_ERROR)
+        error = client._create_error_for_type(APIErrorType.AUTH_ERROR, Exception("認証"))
 
         self.assertEqual(error.code, ErrorCode.API_AUTH_ERROR.value)
         self.assertIn("認証", error.message)
@@ -250,10 +250,14 @@ class TestLLMClientAsync(unittest.TestCase):
             )
 
             async def run_test():
-                with self.assertRaises(Exception) as context:
+                with self.assertRaises(MagiException) as context:
                     await client.send(request)
                 # リトライ回数超過エラーを確認
-                self.assertIn("timeout", str(type(context.exception).__name__).lower())
+                # MagiExceptionが正しくラップされていることを確認
+                self.assertIsInstance(context.exception.error, MagiError)
+                self.assertEqual(context.exception.error.code, ErrorCode.API_TIMEOUT.value)
+                # 例外メッセージに"timeout"が含まれることを確認
+                self.assertIn("timeout", str(context.exception).lower())
 
             asyncio.run(run_test())
 
@@ -268,7 +272,14 @@ class TestLLMClientAsync(unittest.TestCase):
             call_count += 1
             # 認証エラーをシミュレート
             from anthropic import AuthenticationError
-            raise AuthenticationError("Invalid API key")
+            import httpx
+            # AuthenticationErrorはhttpx.Responseを必要とするため、モックを作成
+            mock_response = MagicMock(spec=httpx.Response)
+            mock_response.request = MagicMock()
+            mock_response.status_code = 401  # Unauthorized status code
+            mock_response.headers = MagicMock()
+            mock_response.headers.get = MagicMock(return_value=None)
+            raise AuthenticationError("Invalid API key", response=mock_response, body=None)
 
         with patch.object(
             client._client.messages, "create",
@@ -280,10 +291,14 @@ class TestLLMClientAsync(unittest.TestCase):
             )
 
             async def run_test():
-                with self.assertRaises(Exception):
+                with self.assertRaises(MagiException) as context:
                     await client.send(request)
                 # 認証エラーはリトライしないので1回のみ
                 self.assertEqual(call_count, 1)
+                # MagiExceptionが正しくラップされていることを確認
+                self.assertIsInstance(context.exception.error, MagiError)
+                self.assertEqual(context.exception.error.code, ErrorCode.API_AUTH_ERROR.value)
+                self.assertFalse(context.exception.error.recoverable)
 
             asyncio.run(run_test())
 

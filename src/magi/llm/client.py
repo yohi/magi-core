@@ -20,7 +20,7 @@ from anthropic import (
     APIError,
 )
 
-from magi.errors import ErrorCode, MagiError, create_api_error
+from magi.errors import ErrorCode, MagiError, MagiException, create_api_error
 
 
 @dataclass
@@ -113,7 +113,7 @@ class LLMClient:
             LLMResponse: APIからのレスポンス
 
         Raises:
-            MagiError: APIエラーが発生した場合
+            MagiException: APIエラーが発生した場合
         """
         return await self._retry_with_backoff(request)
 
@@ -127,7 +127,7 @@ class LLMClient:
             LLMResponse: APIからのレスポンス
 
         Raises:
-            MagiError: リトライ回数を超えた場合、または認証エラーの場合
+            MagiException: リトライ回数を超えた場合、または認証エラーの場合
         """
         last_error: Optional[MagiError] = None
 
@@ -143,7 +143,7 @@ class LLMClient:
 
                 # 認証エラーの場合は即座にraise（リトライしない）
                 if error_type == APIErrorType.AUTH_ERROR:
-                    raise magi_error
+                    raise MagiException(magi_error) from e
 
                 # last_errorにMagiErrorを保存
                 last_error = magi_error
@@ -162,9 +162,9 @@ class LLMClient:
                     # リトライしない場合はループを抜ける
                     break
 
-        # 全てのリトライが失敗した場合、MagiErrorをraise
+        # 全てのリトライが失敗した場合、MagiExceptionをraise
         if last_error:
-            raise last_error
+            raise MagiException(last_error)
 
         # ここには到達しないはず
         raise RuntimeError("予期しないエラー")
