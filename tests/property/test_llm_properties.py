@@ -133,16 +133,23 @@ class TestRetryBehaviorByErrorType(unittest.TestCase):
     def test_should_retry_is_consistent_with_recoverable(self, error_type: APIErrorType):
         """リトライ判定はrecoverableと一貫している
 
-        Property: recoverableなエラーのみリトライ対象
+        Property: 認証エラー以外のrecoverableなエラーはリトライ対象
+        認証エラー（AUTH_ERROR）はrecoverableではなく、リトライしない
         """
         client = LLMClient(api_key="test-key")
-
-        # リトライ対象かどうかを判定（初期試行: attempt=0）
-        should_retry = client._should_retry(error_type, attempt=0, retry_count=0)
         error = client._create_error_for_type(error_type, Exception("test"))
 
-        # recoverable == should_retry for attempt 0
-        self.assertEqual(error.recoverable, should_retry)
+        # 認証エラーはrecoverable=Falseで、リトライしない
+        if error_type == APIErrorType.AUTH_ERROR:
+            self.assertFalse(error.recoverable)
+            should_retry = client._should_retry(error_type, attempt=0, retry_count=3)
+            self.assertFalse(should_retry)
+        else:
+            # その他のエラーはrecoverable=Trueで、リトライ回数内ならリトライする
+            self.assertTrue(error.recoverable)
+            # retry_count=3のとき、attempt=0（まだリトライ可能）
+            should_retry = client._should_retry(error_type, attempt=0, retry_count=3)
+            self.assertTrue(should_retry)
 
 
 if __name__ == "__main__":
