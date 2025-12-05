@@ -14,13 +14,13 @@
     - magi/errors.pyにMagiError、ErrorCodeを実装
     - _Requirements: 2.3, 6.2_
 
-- [ ] 2. 設定管理の実装
-  - [ ] 2.1 ConfigManagerの実装
+- [x] 2. 設定管理の実装
+  - [x] 2.1 ConfigManagerの実装
     - magi/config/manager.pyにConfigデータクラスとConfigManagerを実装
     - 環境変数（MAGI_API_KEY等）からの読み込み
     - 設定ファイル（magi.yaml）からの読み込み
     - _Requirements: 12.1, 12.2, 12.3, 12.4_
-  - [ ]* 2.2 Property 16のプロパティテスト作成
+  - [x]* 2.2 Property 16のプロパティテスト作成
     - **Property 16: 設定読み込みと適用**
     - **Validates: Requirements 12.1, 12.3, 12.4**
 
