@@ -51,16 +51,16 @@
     - think、debate、voteメソッドの実装
     - _Requirements: 3.2, 3.3, 3.4, 4.1_
 
-- [ ] 6. 会話履歴管理の実装
-  - [ ] 6.1 ContextManagerの実装
+- [x] 6. 会話履歴管理の実装
+  - [x] 6.1 ContextManagerの実装
     - magi/core/context.pyにConversationEntry、ContextManagerを実装
     - 履歴追加、フェーズ別コンテキスト取得、エクスポート機能
     - トークン制限に基づく要約/削除機能
     - _Requirements: 7.1, 7.2, 7.3, 7.4_
-  - [ ]* 6.2 Property 11のプロパティテスト作成
+  - [x]* 6.2 Property 11のプロパティテスト作成
     - **Property 11: 会話履歴のラウンドトリップ**
     - **Validates: Requirements 7.1, 7.2, 7.3**
-  - [ ]* 6.3 Property 12のプロパティテスト作成
+  - [x]* 6.3 Property 12のプロパティテスト作成
     - **Property 12: トークン制限の遵守**
     - **Validates: Requirements 7.4**
 
