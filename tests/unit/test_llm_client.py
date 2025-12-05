@@ -256,8 +256,8 @@ class TestLLMClientAsync(unittest.TestCase):
                 # MagiExceptionが正しくラップされていることを確認
                 self.assertIsInstance(context.exception.error, MagiError)
                 self.assertEqual(context.exception.error.code, ErrorCode.API_TIMEOUT.value)
-                # 例外メッセージに"timeout"が含まれることを確認
-                self.assertIn("timeout", str(context.exception).lower())
+                # 例外メッセージにタイムアウト関連メッセージが含まれることを確認
+                self.assertIn("タイムアウト", str(context.exception))
 
             asyncio.run(run_test())
 

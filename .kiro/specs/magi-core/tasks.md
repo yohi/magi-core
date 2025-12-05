@@ -37,16 +37,16 @@
     - **Property 2: エラーメッセージ生成の一貫性**
     - **Validates: Requirements 2.3**
 
-- [ ] 5. 3賢者ペルソナ管理の実装
-  - [ ] 5.1 PersonaManagerの実装
+- [x] 5. 3賢者ペルソナ管理の実装
+  - [x] 5.1 PersonaManagerの実装
     - magi/agents/persona.pyにPersonaType、Persona、PersonaManagerを実装
     - MELCHIOR、BALTHASAR、CASPERの基本プロンプト定義
     - オーバーライド適用機能
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
-  - [ ]* 5.2 Property 3のプロパティテスト作成
+  - [x]* 5.2 Property 3のプロパティテスト作成
     - **Property 3: オーバーライド適用の保全性**
     - **Validates: Requirements 3.5, 8.4**
-  - [ ] 5.3 Agentクラスの実装
+  - [x] 5.3 Agentクラスの実装
     - magi/agents/agent.pyにThinkingOutput、DebateOutput、VoteOutput、Agentを実装
     - think、debate、voteメソッドの実装
     - _Requirements: 3.2, 3.3, 3.4, 4.1_
