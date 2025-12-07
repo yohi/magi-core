@@ -4,6 +4,9 @@ import sys
 from typing import List
 
 from magi import __version__
+from magi.cli.parser import ArgumentParser
+from magi.cli.main import MagiCLI
+from magi.config.manager import Config, ConfigManager
 
 
 def main(args: List[str] | None = None) -> int:
@@ -19,45 +22,73 @@ def main(args: List[str] | None = None) -> int:
     if args is None:
         args = sys.argv[1:]
 
+    # 引数解析
+    parser = ArgumentParser()
+    parsed = parser.parse(args)
+
     # バージョン表示
-    if "--version" in args or "-v" in args:
+    if parsed.options.get("version"):
         print(f"magi {__version__}")
         return 0
 
     # ヘルプ表示
-    if "--help" in args or "-h" in args or len(args) == 0:
-        print_help()
+    if parsed.options.get("help") or (not parsed.command and not args):
+        _print_help()
         return 0
 
-    # TODO: コマンド実行の実装
-    # 現時点では未実装のため、エラーメッセージを表示
-    print("MAGIシステムは現在開発中です。", file=sys.stderr)
-    print("詳細は https://github.com/yohi/magi-core を参照してください。", file=sys.stderr)
-    return 1
+    # バリデーション
+    validation = parser.validate(parsed)
+    if not validation.is_valid:
+        for error in validation.errors:
+            print(error, file=sys.stderr)
+        return 1
+
+    # 設定読み込み
+    try:
+        config_manager = ConfigManager()
+        config = config_manager.load()
+    except Exception as e:
+        # API keyがなくてもヘルプ系コマンドは動作させる
+        if parsed.command in ("help", "version"):
+            config = Config(api_key="")
+        else:
+            print(f"Configuration error: {e}", file=sys.stderr)
+            return 1
+
+    # CLI実行
+    cli = MagiCLI(config, output_format=parsed.output_format, plugin=parsed.plugin)
+    return cli.run(parsed.command, parsed.args)
 
 
-def print_help() -> None:
+def _print_help() -> None:
     """ヘルプメッセージを表示"""
-    help_text = """MAGI System - 3賢者による合議プロセスを通じた多角的判断を提供するCLIツール
+    help_text = f"""MAGI System v{__version__} - 3賢者による合議プロセスを通じた多角的判断を提供するCLIツール
 
-使用方法:
-    magi <command> [args]
+Usage:
+    magi <command> [args] [options]
 
-コマンド:
-    <command>    実行するコマンド（実装予定）
+Commands:
+    ask <question>   3賢者に質問を投げかけ、合議による回答を得る
+    spec <request>   仕様書の作成とレビューを行う（プラグイン使用）
+    help             このヘルプメッセージを表示
+    version          バージョン情報を表示
 
-オプション:
-    -h, --help     このヘルプメッセージを表示
-    -v, --version  バージョン情報を表示
+Options:
+    -h, --help           ヘルプメッセージを表示
+    -v, --version        バージョン情報を表示
+    --format <format>    出力形式を指定（json, markdown）
+    --plugin <name>      使用するプラグインを指定
 
-詳細:
-    MAGIシステムは、3つの異なる人格（MELCHIOR、BALTHASAR、CASPER）による
-    合議プロセスを通じて、より多角的で信頼性の高い判断を提供します。
+Examples:
+    magi ask "このコードをレビューしてください"
+    magi spec "ログイン機能の仕様書を作成"
+    magi --format json ask "リファクタリングの提案"
 
-    詳細は https://github.com/yohi/magi-core を参照してください。
+詳細は https://github.com/yohi/magi-core を参照してください。
 """
     print(help_text)
 
 
 if __name__ == "__main__":
     sys.exit(main())
+

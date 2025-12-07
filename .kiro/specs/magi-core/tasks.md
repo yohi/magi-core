@@ -140,26 +140,27 @@
     - **Validates: Requirements 11.1, 11.2, 11.3**
 
 
-- [ ] 12. CLIレイヤーの実装
-  - [ ] 12.1 ArgumentParserの実装
+- [x] 12. CLIレイヤーの実装
+  - [x] 12.1 ArgumentParserの実装
     - magi/cli/parser.pyにParsedCommand、ArgumentParserを実装
     - argparseを使用したコマンド解析
     - バリデーション機能
     - _Requirements: 1.1, 1.2, 1.3, 1.4_
-  - [ ]* 12.2 Property 1のプロパティテスト作成
+  - [x]* 12.2 Property 1のプロパティテスト作成
     - **Property 1: コマンド解析の正確性**
     - **Validates: Requirements 1.1, 1.2**
-  - [ ] 12.3 MagiCLIの実装
+  - [x] 12.3 MagiCLIの実装
     - magi/cli/main.pyにMagiCLIを実装
     - コマンドハンドラーの統合
     - ヘルプ・バージョン表示
     - _Requirements: 1.1, 1.2, 1.3, 1.4_
-  - [ ] 12.4 エントリーポイントの実装
+  - [x] 12.4 エントリーポイントの実装
     - magi/__main__.pyにmain関数を実装
     - pyproject.tomlにscriptsエントリを追加
     - _Requirements: 1.1_
 
-- [ ] 13. Checkpoint - 全テストが通ることを確認
+
+- [x] 13. Checkpoint - 全テストが通ることを確認
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 14. サンプルプラグイン（magi-cc-sdd-plugin）の実装
