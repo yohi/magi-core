@@ -25,6 +25,7 @@ from magi.cli.parser import ArgumentParser
 from magi.config.manager import Config, ConfigManager
 from magi.core.consensus import ConsensusEngine
 from magi.core.context import ContextManager
+from magi.errors import MagiException
 from magi.llm.client import LLMClient, LLMResponse
 from magi.models import (
     ConsensusPhase,
@@ -453,7 +454,7 @@ class TestConfigManagerIntegration(unittest.TestCase):
             
             with patch.dict(os.environ, env, clear=True):
                 manager = ConfigManager()
-                with self.assertRaises(Exception):
+                with self.assertRaises(MagiException):
                     manager.load()
 
 
