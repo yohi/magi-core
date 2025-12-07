@@ -272,6 +272,184 @@ class ConsensusEngine:
 
         return debate_rounds
 
+    async def _run_voting_phase(
+        self,
+        thinking_results: Dict[PersonaType, ThinkingOutput],
+        debate_results: List[DebateRound]
+    ) -> Dict:
+        """Voting Phaseを実行
+
+        各エージェントに投票を要求し、投票結果を集計して最終判定を決定する。
+
+        Requirements:
+            - 6.1: APPROVE、DENY、CONDITIONALのいずれかの投票を要求
+            - 6.2: 全エージェントが投票を完了すると投票結果を集計し最終判定を決定
+            - 6.3: 投票結果がAPPROVEの場合はExit Code 0を返す
+            - 6.4: 投票結果がDENYの場合はExit Code 1を返す
+            - 6.5: 投票結果がCONDITIONALを含む場合は条件付き承認の詳細を出力に含める
+
+        Args:
+            thinking_results: Thinking Phaseの結果
+            debate_results: Debate Phaseの結果
+
+        Returns:
+            Dict: 投票結果を含む辞書
+                - voting_results: 各エージェントの投票結果
+                - decision: 最終判定（Decision）
+                - exit_code: 終了コード
+                - all_conditions: 全てのCONDITIONAL条件を集約したリスト
+        """
+        from magi.models import VotingTally
+
+        agents = self._create_agents()
+        voting_results: Dict[PersonaType, VoteOutput] = {}
+
+        # 議論コンテキストを構築
+        context = self._build_voting_context(thinking_results, debate_results)
+
+        async def vote_with_error_handling(
+            persona_type: PersonaType,
+            agent: Agent
+        ) -> Optional[VoteOutput]:
+            """エラーハンドリング付きの投票実行
+
+            Args:
+                persona_type: ペルソナタイプ
+                agent: エージェント
+
+            Returns:
+                VoteOutput または失敗時はNone
+            """
+            try:
+                return await agent.vote(context)
+            except Exception as e:
+                # エラーを記録
+                error_info = {
+                    "phase": ConsensusPhase.VOTING.value,
+                    "persona_type": persona_type.value,
+                    "error": str(e),
+                }
+                self._errors.append(error_info)
+                logger.error(
+                    f"エージェント {persona_type.value} の投票に失敗: {e}"
+                )
+                return None
+
+        # 全エージェントの投票を並列実行
+        tasks = [
+            vote_with_error_handling(persona_type, agent)
+            for persona_type, agent in agents.items()
+        ]
+
+        vote_outputs = await asyncio.gather(*tasks)
+
+        # 結果を辞書に格納（成功したもののみ）
+        for persona_type, output in zip(agents.keys(), vote_outputs):
+            if output is not None:
+                voting_results[persona_type] = output
+
+        # 投票を集計
+        approve_count = sum(
+            1 for v in voting_results.values() if v.vote == Vote.APPROVE
+        )
+        deny_count = sum(
+            1 for v in voting_results.values() if v.vote == Vote.DENY
+        )
+        conditional_count = sum(
+            1 for v in voting_results.values() if v.vote == Vote.CONDITIONAL
+        )
+
+        tally = VotingTally(
+            approve_count=approve_count,
+            deny_count=deny_count,
+            conditional_count=conditional_count
+        )
+
+        # 最終判定を決定
+        decision = tally.get_decision(self.config.voting_threshold)
+
+        # Exit Codeを決定
+        if decision == Decision.APPROVED:
+            exit_code = 0
+        elif decision == Decision.DENIED:
+            exit_code = 1
+        else:  # CONDITIONAL
+            exit_code = 2
+
+        # 全てのCONDITIONAL条件を集約
+        all_conditions = []
+        for vote_output in voting_results.values():
+            if vote_output.vote == Vote.CONDITIONAL and vote_output.conditions:
+                all_conditions.extend(vote_output.conditions)
+
+        # フェーズをCOMPLETEDに遷移
+        self._transition_to_phase(ConsensusPhase.COMPLETED)
+
+        logger.info(
+            f"Voting Phase完了: {decision.value} (Exit Code: {exit_code})"
+        )
+
+        return {
+            "voting_results": voting_results,
+            "decision": decision,
+            "exit_code": exit_code,
+            "all_conditions": all_conditions,
+        }
+
+    def _build_voting_context(
+        self,
+        thinking_results: Dict[PersonaType, ThinkingOutput],
+        debate_results: List[DebateRound]
+    ) -> str:
+        """投票用のコンテキストを構築
+
+        Args:
+            thinking_results: Thinking Phaseの結果
+            debate_results: Debate Phaseの結果
+
+        Returns:
+            str: 議論コンテキスト
+        """
+        context_parts = []
+
+        # Thinking結果を追加
+        context_parts.append("【Thinking Phase結果】")
+        for persona_type, output in thinking_results.items():
+            persona_name = self._get_persona_name(persona_type)
+            context_parts.append(f"\n[{persona_name}の思考]")
+            context_parts.append(output.content)
+
+        # Debate結果を追加
+        if debate_results:
+            context_parts.append("\n【Debate Phase結果】")
+            for debate_round in debate_results:
+                context_parts.append(f"\n--- ラウンド {debate_round.round_number} ---")
+                for persona_type, output in debate_round.outputs.items():
+                    persona_name = self._get_persona_name(persona_type)
+                    context_parts.append(f"\n[{persona_name}の意見]")
+                    # responsesの内容を追加
+                    for target_type, response in output.responses.items():
+                        target_name = self._get_persona_name(target_type)
+                        context_parts.append(f"  {target_name}への反論: {response[:200]}...")
+
+        return "\n".join(context_parts)
+
+    def _get_persona_name(self, persona_type: PersonaType) -> str:
+        """PersonaTypeからペルソナ名を取得
+
+        Args:
+            persona_type: ペルソナタイプ
+
+        Returns:
+            str: ペルソナ名
+        """
+        name_map = {
+            PersonaType.MELCHIOR: "MELCHIOR-1",
+            PersonaType.BALTHASAR: "BALTHASAR-2",
+            PersonaType.CASPER: "CASPER-3",
+        }
+        return name_map.get(persona_type, persona_type.value)
+
     async def execute(
         self,
         prompt: str,
@@ -298,15 +476,15 @@ class ConsensusEngine:
         # Debate Phaseを実行
         debate_results = await self._run_debate_phase(thinking_results)
 
-        # TODO: Voting Phaseを実行（Task 8.9で実装）
-        voting_results: Dict[str, Vote] = {}
+        # Voting Phaseを実行
+        voting_result = await self._run_voting_phase(thinking_results, debate_results)
 
-        # TODO: 最終判定を決定（Task 8.9で実装）
-        final_decision = Decision.CONDITIONAL
-        exit_code = 0
+        # 結果を抽出
+        voting_results = voting_result["voting_results"]
+        final_decision = voting_result["decision"]
+        exit_code = voting_result["exit_code"]
 
-        # フェーズをCOMPLETEDに遷移
-        self._transition_to_phase(ConsensusPhase.COMPLETED)
+        # 注意: _run_voting_phase 内で既にCOMPLETEDに遷移済み
 
         return ConsensusResult(
             thinking_results=thinking_results,
