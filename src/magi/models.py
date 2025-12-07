@@ -162,6 +162,7 @@ class ConsensusResult:
     """
     thinking_results: Dict[str, ThinkingOutput]
     debate_results: List[DebateRound]
-    voting_results: Dict[str, Vote]
+    voting_results: Dict[PersonaType, VoteOutput]
     final_decision: Decision
     exit_code: int
+    all_conditions: Optional[List[str]] = None

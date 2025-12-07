@@ -23,8 +23,11 @@ from typing import Dict
 from magi.models import (
     ConsensusPhase,
     DebateOutput,
+    Decision,
     PersonaType,
     ThinkingOutput,
+    Vote,
+    VoteOutput,
 )
 
 
@@ -664,6 +667,425 @@ class TestRoundBasedStateTransition(unittest.TestCase):
 
         # デフォルトでは1ラウンド
         self.assertEqual(len(results), 1)
+
+
+# 投票の戦略
+vote_strategy = st.sampled_from([Vote.APPROVE, Vote.DENY, Vote.CONDITIONAL])
+
+
+def create_mock_vote_output(
+    persona_type: PersonaType,
+    vote: Vote,
+    reason: str = "テスト理由",
+    conditions: list = None
+) -> VoteOutput:
+    """テスト用のVoteOutputを作成"""
+    return VoteOutput(
+        persona_type=persona_type,
+        vote=vote,
+        reason=reason,
+        conditions=conditions
+    )
+
+
+# **Feature: magi-core, Property 9: 投票集計と判定の正確性**
+# **Validates: Requirements 6.2, 6.3, 6.4**
+class TestVotingAccuracy(unittest.TestCase):
+    """投票集計と判定の正確性プロパティテスト
+
+    Property 9: For any 3つのエージェントの投票組み合わせ（APPROVE/DENY/CONDITIONAL）に対して、
+    設定された閾値（majority/unanimous）に基づいて正しい最終判定とExit Codeが決定される
+    """
+
+    def setUp(self):
+        """テストのセットアップ"""
+        self.config = create_test_config()
+
+    @given(
+        melchior_vote=vote_strategy,
+        balthasar_vote=vote_strategy,
+        casper_vote=vote_strategy,
+        threshold=st.sampled_from(["majority", "unanimous"])
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_voting_decision_accuracy(
+        self,
+        melchior_vote: Vote,
+        balthasar_vote: Vote,
+        casper_vote: Vote,
+        threshold: str
+    ):
+        """投票結果に基づいて正しい最終判定が決定される
+
+        3つのエージェントの投票組み合わせと閾値設定に基づいて、
+        正しいDecisionが決定されることを検証する。
+        """
+        config = Config(
+            api_key="test-api-key",
+            model="claude-3-sonnet-20240229",
+            debate_rounds=1,
+            voting_threshold=threshold,
+            output_format="markdown",
+            timeout=60,
+            retry_count=3
+        )
+        engine = ConsensusEngine(config)
+
+        # 思考結果とDebate結果をモック
+        thinking_results = {
+            PersonaType.MELCHIOR: create_mock_thinking_output(
+                PersonaType.MELCHIOR, "MELCHIORの思考"
+            ),
+            PersonaType.BALTHASAR: create_mock_thinking_output(
+                PersonaType.BALTHASAR, "BALTHASARの思考"
+            ),
+            PersonaType.CASPER: create_mock_thinking_output(
+                PersonaType.CASPER, "CASPERの思考"
+            ),
+        }
+
+        debate_results = []
+
+        # 投票をモック
+        vote_results = {
+            PersonaType.MELCHIOR: create_mock_vote_output(
+                PersonaType.MELCHIOR, melchior_vote
+            ),
+            PersonaType.BALTHASAR: create_mock_vote_output(
+                PersonaType.BALTHASAR, balthasar_vote
+            ),
+            PersonaType.CASPER: create_mock_vote_output(
+                PersonaType.CASPER, casper_vote
+            ),
+        }
+
+        async def mock_vote(agent_self, context: str) -> VoteOutput:
+            """voteメソッドのモック"""
+            return vote_results[agent_self.persona.type]
+
+        # フェーズをVOTINGに設定
+        engine._transition_to_phase(ConsensusPhase.VOTING)
+
+        with patch('magi.agents.agent.Agent.vote', mock_vote):
+            result = asyncio.run(
+                engine._run_voting_phase(thinking_results, debate_results)
+            )
+
+        # 投票集計
+        approve_count = sum(
+            1 for v in [melchior_vote, balthasar_vote, casper_vote]
+            if v == Vote.APPROVE
+        )
+        deny_count = sum(
+            1 for v in [melchior_vote, balthasar_vote, casper_vote]
+            if v == Vote.DENY
+        )
+
+        # 期待される判定を計算
+        if threshold == "unanimous":
+            if approve_count == 3:
+                expected_decision = Decision.APPROVED
+            elif deny_count >= 1:
+                expected_decision = Decision.DENIED
+            else:
+                expected_decision = Decision.CONDITIONAL
+        else:  # majority
+            if approve_count >= 2:
+                expected_decision = Decision.APPROVED
+            elif deny_count >= 2:
+                expected_decision = Decision.DENIED
+            else:
+                expected_decision = Decision.CONDITIONAL
+
+        # 判定が正しいことを確認
+        self.assertEqual(result["decision"], expected_decision)
+
+    @given(
+        melchior_vote=vote_strategy,
+        balthasar_vote=vote_strategy,
+        casper_vote=vote_strategy,
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_exit_code_accuracy(
+        self,
+        melchior_vote: Vote,
+        balthasar_vote: Vote,
+        casper_vote: Vote,
+    ):
+        """判定結果に基づいて正しいExit Codeが決定される
+
+        APPROVEDはExit Code 0、DENIEDはExit Code 1、
+        CONDITIONALはExit Code 2を返すことを検証する。
+        """
+        engine = ConsensusEngine(self.config)
+
+        thinking_results = {
+            PersonaType.MELCHIOR: create_mock_thinking_output(
+                PersonaType.MELCHIOR, "MELCHIORの思考"
+            ),
+            PersonaType.BALTHASAR: create_mock_thinking_output(
+                PersonaType.BALTHASAR, "BALTHASARの思考"
+            ),
+            PersonaType.CASPER: create_mock_thinking_output(
+                PersonaType.CASPER, "CASPERの思考"
+            ),
+        }
+
+        debate_results = []
+
+        vote_results = {
+            PersonaType.MELCHIOR: create_mock_vote_output(
+                PersonaType.MELCHIOR, melchior_vote
+            ),
+            PersonaType.BALTHASAR: create_mock_vote_output(
+                PersonaType.BALTHASAR, balthasar_vote
+            ),
+            PersonaType.CASPER: create_mock_vote_output(
+                PersonaType.CASPER, casper_vote
+            ),
+        }
+
+        async def mock_vote(agent_self, context: str) -> VoteOutput:
+            return vote_results[agent_self.persona.type]
+
+        engine._transition_to_phase(ConsensusPhase.VOTING)
+
+        with patch('magi.agents.agent.Agent.vote', mock_vote):
+            result = asyncio.run(
+                engine._run_voting_phase(thinking_results, debate_results)
+            )
+
+        decision = result["decision"]
+
+        if decision == Decision.APPROVED:
+            expected_exit_code = 0
+        elif decision == Decision.DENIED:
+            expected_exit_code = 1
+        else:
+            expected_exit_code = 2
+
+        self.assertEqual(result["exit_code"], expected_exit_code)
+
+    @given(prompt=prompt_strategy)
+    @settings(max_examples=100, deadline=None)
+    def test_all_agents_vote(self, prompt: str):
+        """全てのエージェントが投票を実行する
+
+        Voting Phase実行時に、3つのエージェント全てが
+        投票を行うことを検証する。
+        """
+        assume(len(prompt.strip()) > 0)
+
+        engine = ConsensusEngine(self.config)
+
+        thinking_results = {
+            PersonaType.MELCHIOR: create_mock_thinking_output(
+                PersonaType.MELCHIOR, "MELCHIORの思考"
+            ),
+            PersonaType.BALTHASAR: create_mock_thinking_output(
+                PersonaType.BALTHASAR, "BALTHASARの思考"
+            ),
+            PersonaType.CASPER: create_mock_thinking_output(
+                PersonaType.CASPER, "CASPERの思考"
+            ),
+        }
+
+        debate_results = []
+
+        vote_calls = []
+
+        async def mock_vote(agent_self, context: str) -> VoteOutput:
+            vote_calls.append(agent_self.persona.type)
+            return create_mock_vote_output(
+                agent_self.persona.type, Vote.APPROVE
+            )
+
+        engine._transition_to_phase(ConsensusPhase.VOTING)
+
+        with patch('magi.agents.agent.Agent.vote', mock_vote):
+            asyncio.run(
+                engine._run_voting_phase(thinking_results, debate_results)
+            )
+
+        # 3つのエージェント全てが投票したことを確認
+        self.assertEqual(len(vote_calls), 3)
+        self.assertIn(PersonaType.MELCHIOR, vote_calls)
+        self.assertIn(PersonaType.BALTHASAR, vote_calls)
+        self.assertIn(PersonaType.CASPER, vote_calls)
+
+
+# **Feature: magi-core, Property 10: CONDITIONAL投票時の条件出力**
+# **Validates: Requirements 6.5**
+class TestConditionalVoteOutput(unittest.TestCase):
+    """CONDITIONAL投票時の条件出力プロパティテスト
+
+    Property 10: For any CONDITIONALを含む投票結果に対して、
+    出力には条件付き承認の詳細が含まれる
+    """
+
+    def setUp(self):
+        """テストのセットアップ"""
+        self.config = create_test_config()
+
+    @given(
+        conditions=st.lists(
+            st.text(min_size=1, max_size=50),
+            min_size=1,
+            max_size=5
+        )
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_conditional_vote_includes_conditions(self, conditions: list):
+        """CONDITIONAL投票には条件が含まれる
+
+        CONDITIONALを投票した場合、その条件が
+        出力結果に含まれることを検証する。
+        """
+        assume(all(len(c.strip()) > 0 for c in conditions))
+
+        engine = ConsensusEngine(self.config)
+
+        thinking_results = {
+            PersonaType.MELCHIOR: create_mock_thinking_output(
+                PersonaType.MELCHIOR, "MELCHIORの思考"
+            ),
+            PersonaType.BALTHASAR: create_mock_thinking_output(
+                PersonaType.BALTHASAR, "BALTHASARの思考"
+            ),
+            PersonaType.CASPER: create_mock_thinking_output(
+                PersonaType.CASPER, "CASPERの思考"
+            ),
+        }
+
+        debate_results = []
+
+        # MELCHIORがCONDITIONAL投票（条件付き）
+        vote_results = {
+            PersonaType.MELCHIOR: create_mock_vote_output(
+                PersonaType.MELCHIOR,
+                Vote.CONDITIONAL,
+                "条件付き承認",
+                conditions
+            ),
+            PersonaType.BALTHASAR: create_mock_vote_output(
+                PersonaType.BALTHASAR, Vote.APPROVE
+            ),
+            PersonaType.CASPER: create_mock_vote_output(
+                PersonaType.CASPER, Vote.APPROVE
+            ),
+        }
+
+        async def mock_vote(agent_self, context: str) -> VoteOutput:
+            return vote_results[agent_self.persona.type]
+
+        engine._transition_to_phase(ConsensusPhase.VOTING)
+
+        with patch('magi.agents.agent.Agent.vote', mock_vote):
+            result = asyncio.run(
+                engine._run_voting_phase(thinking_results, debate_results)
+            )
+
+        # CONDITIONAL投票の条件が出力に含まれていることを確認
+        voting_results = result["voting_results"]
+        melchior_vote = voting_results[PersonaType.MELCHIOR]
+
+        self.assertEqual(melchior_vote.vote, Vote.CONDITIONAL)
+        self.assertIsNotNone(melchior_vote.conditions)
+        self.assertEqual(melchior_vote.conditions, conditions)
+
+    @given(prompt=prompt_strategy)
+    @settings(max_examples=100, deadline=None)
+    def test_conditional_decision_includes_all_conditions(self, prompt: str):
+        """CONDITIONAL判定には全ての条件が集約される
+
+        複数のエージェントがCONDITIONALを投票した場合、
+        全ての条件が出力結果に含まれることを検証する。
+        """
+        assume(len(prompt.strip()) > 0)
+
+        engine = ConsensusEngine(self.config)
+
+        thinking_results = {
+            PersonaType.MELCHIOR: create_mock_thinking_output(
+                PersonaType.MELCHIOR, "MELCHIORの思考"
+            ),
+            PersonaType.BALTHASAR: create_mock_thinking_output(
+                PersonaType.BALTHASAR, "BALTHASARの思考"
+            ),
+            PersonaType.CASPER: create_mock_thinking_output(
+                PersonaType.CASPER, "CASPERの思考"
+            ),
+        }
+
+        debate_results = []
+
+        # 2つのエージェントがCONDITIONAL投票
+        vote_results = {
+            PersonaType.MELCHIOR: create_mock_vote_output(
+                PersonaType.MELCHIOR,
+                Vote.CONDITIONAL,
+                "条件付き承認1",
+                ["条件A", "条件B"]
+            ),
+            PersonaType.BALTHASAR: create_mock_vote_output(
+                PersonaType.BALTHASAR,
+                Vote.CONDITIONAL,
+                "条件付き承認2",
+                ["条件C"]
+            ),
+            PersonaType.CASPER: create_mock_vote_output(
+                PersonaType.CASPER, Vote.APPROVE
+            ),
+        }
+
+        async def mock_vote(agent_self, context: str) -> VoteOutput:
+            return vote_results[agent_self.persona.type]
+
+        engine._transition_to_phase(ConsensusPhase.VOTING)
+
+        with patch('magi.agents.agent.Agent.vote', mock_vote):
+            result = asyncio.run(
+                engine._run_voting_phase(thinking_results, debate_results)
+            )
+
+        # 全てのCONDITIONAL条件が集約されていることを確認
+        all_conditions = result.get("all_conditions", [])
+        self.assertIn("条件A", all_conditions)
+        self.assertIn("条件B", all_conditions)
+        self.assertIn("条件C", all_conditions)
+
+    def test_phase_transitions_to_completed_after_voting(self):
+        """Voting Phase完了後、フェーズはCOMPLETEDに遷移する"""
+        engine = ConsensusEngine(self.config)
+
+        thinking_results = {
+            PersonaType.MELCHIOR: create_mock_thinking_output(
+                PersonaType.MELCHIOR, "MELCHIORの思考"
+            ),
+            PersonaType.BALTHASAR: create_mock_thinking_output(
+                PersonaType.BALTHASAR, "BALTHASARの思考"
+            ),
+            PersonaType.CASPER: create_mock_thinking_output(
+                PersonaType.CASPER, "CASPERの思考"
+            ),
+        }
+
+        debate_results = []
+
+        async def mock_vote(agent_self, context: str) -> VoteOutput:
+            return create_mock_vote_output(
+                agent_self.persona.type, Vote.APPROVE
+            )
+
+        engine._transition_to_phase(ConsensusPhase.VOTING)
+
+        with patch('magi.agents.agent.Agent.vote', mock_vote):
+            asyncio.run(
+                engine._run_voting_phase(thinking_results, debate_results)
+            )
+
+        # フェーズがCOMPLETEDに遷移していることを確認
+        self.assertEqual(engine.current_phase, ConsensusPhase.COMPLETED)
 
 
 if __name__ == '__main__':

@@ -90,13 +90,13 @@
     - 他エージェントの思考結果を含むコンテキスト構築
     - ラウンド数に基づく繰り返し処理
     - _Requirements: 5.1, 5.2, 5.3, 5.4_
-  - [ ]* 8.7 Property 7のプロパティテスト作成
+  - [x]* 8.7 Property 7のプロパティテスト作成
     - **Property 7: Debate Phaseのコンテキスト構築**
     - **Validates: Requirements 5.1**
-  - [ ]* 8.8 Property 8のプロパティテスト作成
+  - [x]* 8.8 Property 8のプロパティテスト作成
     - **Property 8: ラウンド数に基づく状態遷移**
     - **Validates: Requirements 5.3**
-  - [ ] 8.9 Voting Phaseの実装
+  - [x] 8.9 Voting Phaseの実装
     - _run_voting_phaseメソッドの実装
     - 投票集計とDecision決定ロジック
     - Exit Code決定
