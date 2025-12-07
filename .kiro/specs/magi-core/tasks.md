@@ -67,7 +67,7 @@
 - [x] 7. Checkpoint - 全テストが通ることを確認
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 8. 合議プロトコルの実装
+- [x] 8. 合議プロトコルの実装
   - [x] 8.1 ConsensusEngineの基本構造実装
     - magi/core/consensus.pyにConsensusPhase、ConsensusResult、ConsensusEngineを実装
     - フェーズ管理のステートマシン
@@ -101,14 +101,14 @@
     - 投票集計とDecision決定ロジック
     - Exit Code決定
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
-  - [ ]* 8.10 Property 9のプロパティテスト作成
+  - [x]* 8.10 Property 9のプロパティテスト作成
     - **Property 9: 投票集計と判定の正確性**
     - **Validates: Requirements 6.2, 6.3, 6.4**
-  - [ ]* 8.11 Property 10のプロパティテスト作成
+  - [x]* 8.11 Property 10のプロパティテスト作成
     - **Property 10: CONDITIONAL投票時の条件出力**
     - **Validates: Requirements 6.5**
 
-- [ ] 9. Checkpoint - 全テストが通ることを確認
+- [x] 9. Checkpoint - 全テストが通ることを確認
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 10. プラグインシステムの実装
