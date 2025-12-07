@@ -491,7 +491,8 @@ class ConsensusEngine:
             debate_results=debate_results,
             voting_results=voting_results,
             final_decision=final_decision,
-            exit_code=exit_code
+            exit_code=exit_code,
+            all_conditions=voting_result["all_conditions"]
         )
 
     @property
