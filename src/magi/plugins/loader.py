@@ -1,6 +1,6 @@
 import yaml
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List
 
 from magi.errors import create_plugin_error, ErrorCode
@@ -22,7 +22,7 @@ class BridgeConfig:
 class Plugin:
     metadata: PluginMetadata
     bridge: BridgeConfig
-    agent_overrides: Dict[PersonaType, str] = {}
+    agent_overrides: Dict[PersonaType, str] = field(default_factory=dict)
 
 class PluginLoader:
     """YAMLプラグイン定義の読み込みとバリデーション"""
@@ -42,7 +42,7 @@ class PluginLoader:
             raise create_plugin_error(
                 ErrorCode.PLUGIN_YAML_PARSE_ERROR,
                 f"Failed to parse plugin YAML from {path}: {e}"
-            )
+            ) from e
         
         validation_result = self.validate(plugin_data)
         if not validation_result.is_valid:
