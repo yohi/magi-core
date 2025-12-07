@@ -163,13 +163,13 @@
 - [x] 13. Checkpoint - 全テストが通ることを確認
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 14. サンプルプラグイン（magi-cc-sdd-plugin）の実装
-  - [ ] 14.1 SDDプラグイン定義の作成
+- [x] 14. サンプルプラグイン（magi-cc-sdd-plugin）の実装
+  - [x] 14.1 SDDプラグイン定義の作成
     - plugins/magi-cc-sdd-plugin/plugin.yamlを作成
     - cc-sddコマンドのブリッジ設定
     - 各エージェントへのオーバーライド定義
     - _Requirements: 10.1, 10.2, 10.3, 10.4_
-  - [ ] 14.2 specコマンドの統合
+  - [x] 14.2 specコマンドの統合
     - magi spec <request>コマンドの実装
     - cc-sdd実行とレビューフローの統合
     - _Requirements: 10.1, 10.2, 10.3_
