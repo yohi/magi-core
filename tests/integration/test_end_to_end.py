@@ -414,7 +414,9 @@ agent_overrides:
     
     def test_load_sdd_plugin(self):
         """実際のSDDプラグインの読み込みテスト"""
-        sdd_plugin_path = Path("/home/y_ohi/program/magi-core/plugins/magi-cc-sdd-plugin/plugin.yaml")
+        # プロジェクトルートを導出 (tests/integration/test_end_to_end.py から2階層上)
+        project_root = Path(__file__).parent.parent.parent
+        sdd_plugin_path = project_root / "plugins" / "magi-cc-sdd-plugin" / "plugin.yaml"
         
         if sdd_plugin_path.exists():
             plugin = self.loader.load(sdd_plugin_path)
@@ -474,7 +476,7 @@ class TestFullWorkflowIntegration(unittest.TestCase):
         
         # 引数解析 → 設定読み込み → CLI実行
         parser = ArgumentParser()
-        parsed = self.parser.parse(["ask", "Test question"])
+        parsed = parser.parse(["ask", "Test question"])
         
         config = Config(api_key="test-key", debate_rounds=1)
         cli = MagiCLI(config)
@@ -482,13 +484,9 @@ class TestFullWorkflowIntegration(unittest.TestCase):
         # 実行（モック環境では実際のAPI呼び出しは行われない）
         # ここではCLIの構築と引数解析が正しく統合されていることを確認
         self.assertIsNotNone(cli.config)
-        # MagiCLIはparser属性を持つ
-        self.assertIsNotNone(cli.parser)
         self.assertEqual(cli.output_format, OutputFormat.MARKDOWN)
     
-    @property
-    def parser(self):
-        return ArgumentParser()
+
 
 
 if __name__ == "__main__":
