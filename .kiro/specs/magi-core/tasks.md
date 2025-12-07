@@ -111,19 +111,19 @@
 - [x] 9. Checkpoint - 全テストが通ることを確認
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 10. プラグインシステムの実装
-  - [ ] 10.1 PluginLoaderの実装
+- [x] 10. プラグインシステムの実装
+  - [x] 10.1 PluginLoaderの実装
     - magi/plugins/loader.pyにPluginMetadata、BridgeConfig、Plugin、PluginLoaderを実装
     - YAMLパースとバリデーション
     - agent_overridesの抽出
     - _Requirements: 8.1, 8.2, 8.3, 8.4_
-  - [ ]* 10.2 Property 13のプロパティテスト作成
+  - [x]* 10.2 Property 13のプロパティテスト作成
     - **Property 13: YAMLパースとメタデータ抽出**
     - **Validates: Requirements 8.1, 8.2**
-  - [ ]* 10.3 Property 14のプロパティテスト作成
+  - [x]* 10.3 Property 14のプロパティテスト作成
     - **Property 14: 無効なYAMLのエラーハンドリング**
     - **Validates: Requirements 8.3**
-  - [ ] 10.4 CommandExecutorの実装
+  - [x] 10.4 CommandExecutorの実装
     - magi/plugins/executor.pyにCommandResult、CommandExecutorを実装
     - subprocess実行と出力キャプチャ
     - タイムアウト処理

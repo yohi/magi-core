@@ -3,7 +3,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List
 
-from magi.errors import create_plugin_error, ErrorCode
+from magi.errors import create_plugin_error, ErrorCode, MagiException
 from magi.models import PersonaType 
 
 @dataclass
@@ -30,26 +30,26 @@ class PluginLoader:
     def load(self, path: Path) -> Plugin:
         """YAMLファイルからプラグインを読み込み、パースし、検証する"""
         if not path.exists():
-            raise create_plugin_error(
+            raise MagiException(create_plugin_error(
                 ErrorCode.PLUGIN_YAML_PARSE_ERROR,
                 f"Plugin file not found: {path}"
-            )
+            ))
         
         try:
             content = path.read_text(encoding="utf-8")
             plugin_data = self._parse_yaml(content)
         except Exception as e:
-            raise create_plugin_error(
+            raise MagiException(create_plugin_error(
                 ErrorCode.PLUGIN_YAML_PARSE_ERROR,
                 f"Failed to parse plugin YAML from {path}: {e}"
-            ) from e
+            )) from e
         
         validation_result = self.validate(plugin_data)
         if not validation_result.is_valid:
-            raise create_plugin_error(
+            raise MagiException(create_plugin_error(
                 ErrorCode.PLUGIN_YAML_PARSE_ERROR,
                 f"Plugin validation failed for {path}: {', '.join(validation_result.errors)}"
-            )
+            ))
 
         metadata = PluginMetadata(
             name=plugin_data["plugin"]["name"],
