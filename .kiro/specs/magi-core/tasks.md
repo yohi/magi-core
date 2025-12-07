@@ -76,13 +76,13 @@
     - _run_thinking_phaseメソッドの実装
     - 各エージェントへの独立した思考生成要求
     - _Requirements: 4.1, 4.2, 4.3, 4.4_
-  - [ ]* 8.3 Property 4のプロパティテスト作成
+  - [x]* 8.3 Property 4のプロパティテスト作成
     - **Property 4: Thinking Phaseの独立性**
     - **Validates: Requirements 4.2**
-  - [ ]* 8.4 Property 5のプロパティテスト作成
+  - [x]* 8.4 Property 5のプロパティテスト作成
     - **Property 5: フェーズ遷移の正確性**
     - **Validates: Requirements 4.3**
-  - [ ]* 8.5 Property 6のプロパティテスト作成
+  - [x]* 8.5 Property 6のプロパティテスト作成
     - **Property 6: エージェント失敗時の継続性**
     - **Validates: Requirements 4.4**
   - [ ] 8.6 Debate Phaseの実装
