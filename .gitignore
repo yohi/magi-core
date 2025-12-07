@@ -188,3 +188,6 @@ secrets.yaml
 secrets.yml
 .secrets
 .env.secret
+
+# cc-sdd
+.agent/workflows
