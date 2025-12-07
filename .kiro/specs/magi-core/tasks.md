@@ -129,15 +129,16 @@
     - タイムアウト処理
     - _Requirements: 9.1, 9.2, 9.3, 9.4_
 
-- [ ] 11. 出力フォーマットの実装
-  - [ ] 11.1 OutputFormatterの実装
+- [x] 11. 出力フォーマットの実装
+  - [x] 11.1 OutputFormatterの実装
     - magi/output/formatter.pyにOutputFormat、OutputFormatterを実装
     - JSON形式変換
     - Markdown形式変換
     - _Requirements: 11.1, 11.2, 11.3, 11.4_
-  - [ ]* 11.2 Property 15のプロパティテスト作成
+  - [x]* 11.2 Property 15のプロパティテスト作成
     - **Property 15: 出力フォーマット変換の正確性**
     - **Validates: Requirements 11.1, 11.2, 11.3**
+
 
 - [ ] 12. CLIレイヤーの実装
   - [ ] 12.1 ArgumentParserの実装
