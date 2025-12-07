@@ -85,7 +85,7 @@
   - [x]* 8.5 Property 6のプロパティテスト作成
     - **Property 6: エージェント失敗時の継続性**
     - **Validates: Requirements 4.4**
-  - [ ] 8.6 Debate Phaseの実装
+  - [x] 8.6 Debate Phaseの実装
     - _run_debate_phaseメソッドの実装
     - 他エージェントの思考結果を含むコンテキスト構築
     - ラウンド数に基づく繰り返し処理

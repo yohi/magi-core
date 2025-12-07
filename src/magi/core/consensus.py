@@ -26,6 +26,7 @@ from magi.llm.client import LLMClient
 from magi.models import (
     ConsensusPhase,
     ConsensusResult,
+    DebateOutput,
     DebateRound,
     Decision,
     PersonaType,
@@ -165,6 +166,112 @@ class ConsensusEngine:
 
         return results
 
+    async def _run_debate_phase(
+        self,
+        thinking_results: Dict[PersonaType, ThinkingOutput]
+    ) -> List[DebateRound]:
+        """Debate Phaseを実行
+
+        Thinking Phaseの結果を受け取り、設定されたラウンド数だけ
+        議論を行う。各エージェントは他の2つのエージェントの思考結果を
+        参照して反論または補足を生成する。
+
+        Requirements:
+            - 5.1: 各エージェントに他の2つのエージェントの思考結果を提供
+            - 5.2: 他のエージェントの意見に対する反論または補足を出力
+            - 5.3: 設定されたラウンド数に達するとVoting Phaseに移行
+            - 5.4: ラウンド数が設定されていない場合はデフォルトで1ラウンド
+
+        Args:
+            thinking_results: Thinking Phaseの結果
+
+        Returns:
+            List[DebateRound]: 各ラウンドのDebate結果
+        """
+        from datetime import datetime
+
+        agents = self._create_agents()
+        debate_rounds: List[DebateRound] = []
+
+        # 設定されたラウンド数だけDebateを実行
+        for round_num in range(1, self.config.debate_rounds + 1):
+            logger.info(f"Debateラウンド {round_num} 開始")
+
+            # 各ラウンドの結果を収集
+            round_outputs: Dict[PersonaType, DebateOutput] = {}
+
+            async def debate_with_error_handling(
+                persona_type: PersonaType,
+                agent: Agent,
+                others_thoughts: Dict[PersonaType, str],
+                round_number: int
+            ) -> Optional[DebateOutput]:
+                """エラーハンドリング付きのDebate実行
+
+                Args:
+                    persona_type: ペルソナタイプ
+                    agent: エージェント
+                    others_thoughts: 他エージェントの思考内容
+                    round_number: ラウンド番号
+
+                Returns:
+                    DebateOutput または失敗時はNone
+                """
+                try:
+                    return await agent.debate(others_thoughts, round_number)
+                except Exception as e:
+                    # エラーを記録
+                    error_info = {
+                        "phase": ConsensusPhase.DEBATE.value,
+                        "persona_type": persona_type.value,
+                        "round_number": round_number,
+                        "error": str(e),
+                    }
+                    self._errors.append(error_info)
+                    logger.error(
+                        f"エージェント {persona_type.value} のDebate（ラウンド{round_number}）に失敗: {e}"
+                    )
+                    return None
+
+            # 各エージェントに他のエージェントの思考を提供してDebateを実行
+            tasks = []
+            for persona_type, agent in agents.items():
+                # 他のエージェントの思考結果を抽出（自分自身は除外）
+                others_thoughts = {
+                    pt: thinking_results[pt].content
+                    for pt in thinking_results.keys()
+                    if pt != persona_type
+                }
+
+                tasks.append(
+                    debate_with_error_handling(
+                        persona_type, agent, others_thoughts, round_num
+                    )
+                )
+
+            # 全エージェントのDebateを並列実行
+            debate_outputs = await asyncio.gather(*tasks)
+
+            # 結果を辞書に格納（成功したもののみ）
+            for persona_type, output in zip(agents.keys(), debate_outputs):
+                if output is not None:
+                    round_outputs[persona_type] = output
+
+            # ラウンド結果を追加
+            debate_round = DebateRound(
+                round_number=round_num,
+                outputs=round_outputs,
+                timestamp=datetime.now()
+            )
+            debate_rounds.append(debate_round)
+
+            logger.info(f"Debateラウンド {round_num} 完了")
+
+        # フェーズをVOTINGに遷移
+        self._transition_to_phase(ConsensusPhase.VOTING)
+
+        return debate_rounds
+
     async def execute(
         self,
         prompt: str,
@@ -188,8 +295,8 @@ class ConsensusEngine:
         # Thinking Phaseを実行
         thinking_results = await self._run_thinking_phase(prompt)
 
-        # TODO: Debate Phaseを実行（Task 8.6で実装）
-        debate_results: List[DebateRound] = []
+        # Debate Phaseを実行
+        debate_results = await self._run_debate_phase(thinking_results)
 
         # TODO: Voting Phaseを実行（Task 8.9で実装）
         voting_results: Dict[str, Vote] = {}
