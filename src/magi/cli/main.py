@@ -10,19 +10,29 @@ from typing import List, Optional
 from magi import __version__
 from magi.config.manager import Config
 from magi.cli.parser import ArgumentParser, ParsedCommand, VALID_COMMANDS
+from magi.output.formatter import OutputFormat
 
 
 class MagiCLI:
     """MAGIシステムのエントリーポイント"""
 
-    def __init__(self, config: Config):
+    def __init__(
+        self,
+        config: Config,
+        output_format: OutputFormat = OutputFormat.MARKDOWN,
+        plugin: Optional[str] = None
+    ):
         """初期化
 
         Args:
             config: 設定オブジェクト
+            output_format: 出力形式（デフォルト: MARKDOWN）
+            plugin: 使用するプラグイン名（デフォルト: None）
         """
         self.config = config
         self.parser = ArgumentParser()
+        self.output_format = output_format
+        self.plugin = plugin
 
     def run(self, command: str, args: List[str]) -> int:
         """コマンドを実行し、Exit Codeを返す
