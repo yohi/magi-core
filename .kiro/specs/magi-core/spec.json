@@ -1,0 +1,32 @@
+{
+  "feature_name": "MAGI System",
+  "description": "アニメ「エヴァンゲリオン」のMAGIシステムを実用的なAI開発プラットフォームとして再構築するプロジェクト。合議判定コアとプラグインの分離により、保守性、専門性、拡張性を担保する次世代AI開発環境を提供する。3つの異なる人格（MELCHIOR、BALTHASAR、CASPER）による合議プロセスを通じて、多角的で信頼性の高い判断を提供する。",
+  "language": "日本語",
+  "version": "1.0.0",
+  "creation_date": "2025-12-07",
+  "last_update": "2025-12-07",
+  "current_phase": "実装",
+  "overall_completion_percentage": 59.26,
+  "phase_status": {
+    "requirements_phase": {
+      "completion_percentage": 100,
+      "requirements_count": 12,
+      "acceptance_criteria_defined": "yes",
+      "requirements_coverage": "partial"
+    },
+    "design_phase": {
+      "completion_percentage": 100,
+      "architecture_documented": "yes",
+      "components_defined": "yes",
+      "diagrams_created": "yes",
+      "integration_planned": "yes"
+    },
+    "tasks_phase": {
+      "completion_percentage": 59.26,
+      "total_tasks": 54,
+      "completed_tasks": 32,
+      "remaining_tasks": 22,
+      "blocked_tasks": 0
+    }
+  }
+}
