@@ -4,13 +4,18 @@ MagiCLIメインモジュール
 MAGIシステムのエントリーポイントとコマンドハンドラーの統合
 """
 
+import asyncio
 import sys
+from pathlib import Path
 from typing import List, Optional
 
 from magi import __version__
 from magi.config.manager import Config
 from magi.cli.parser import ArgumentParser, ParsedCommand, VALID_COMMANDS
 from magi.output.formatter import OutputFormat
+from magi.plugins.loader import PluginLoader, Plugin
+from magi.plugins.executor import CommandExecutor, CommandResult
+from magi.errors import MagiException, ErrorCode
 
 
 class MagiCLI:
@@ -95,19 +100,128 @@ class MagiCLI:
     def _run_spec_command(self, args: List[str]) -> int:
         """specコマンドの実行
 
+        SDDプラグインを使用して仕様書を生成し、3賢者によるレビューを行う。
+
         Args:
-            args: コマンド引数
+            args: コマンド引数（仕様書作成のリクエスト）
 
         Returns:
             int: 終了コード
+            
+        Requirements:
+            - 10.1: cc-sddコマンドを実行しドラフト仕様書を生成
+            - 10.2: 仕様書の内容を3賢者のレビュー対象として提供
+            - 10.3: 指摘事項を反映
+            - 10.4: cc-sddが利用できない場合のエラー処理
         """
         if not args:
             print("Usage: magi spec <request>", file=sys.stderr)
             return 1
 
-        # TODO: プラグインを使用した実装
-        print("spec command is not yet implemented.", file=sys.stderr)
-        return 1
+        request = " ".join(args)
+        
+        # プラグインパスの決定
+        plugin_name = self.plugin or "magi-cc-sdd-plugin"
+        plugin_path = self._find_plugin_path(plugin_name)
+        
+        if plugin_path is None:
+            print(f"Error: Plugin '{plugin_name}' not found.", file=sys.stderr)
+            print("Please ensure the plugin exists in the plugins directory.", file=sys.stderr)
+            return 1
+        
+        # プラグインのロード
+        try:
+            loader = PluginLoader()
+            plugin = loader.load(plugin_path)
+        except MagiException as e:
+            print(f"Error loading plugin: {e.error.message}", file=sys.stderr)
+            return 1
+        except Exception as e:
+            print(f"Error loading plugin: {e}", file=sys.stderr)
+            return 1
+        
+        print(f"Loaded plugin: {plugin.metadata.name} v{plugin.metadata.version}")
+        print(f"Description: {plugin.metadata.description}")
+        print()
+        
+        # cc-sddコマンドの実行
+        try:
+            result = self._execute_cc_sdd(plugin, request)
+        except MagiException as e:
+            if e.error.code == ErrorCode.PLUGIN_COMMAND_FAILED:
+                print(f"Error: {e.error.message}", file=sys.stderr)
+                print(f"cc-sdd command is not available. Please install it first:", file=sys.stderr)
+                print(f"  pip install cc-sdd", file=sys.stderr)
+                print(f"", file=sys.stderr)
+                print(f"Alternatively, consider disabling this plugin.", file=sys.stderr)
+            elif e.error.code == ErrorCode.PLUGIN_COMMAND_TIMEOUT:
+                print(f"Error: {e.error.message}", file=sys.stderr)
+            else:
+                print(f"Error: {e.error.message}", file=sys.stderr)
+            return 1
+        except Exception as e:
+            print(f"Error executing cc-sdd: {e}", file=sys.stderr)
+            return 1
+        
+        if result.return_code != 0:
+            print(f"cc-sdd command failed with exit code {result.return_code}", file=sys.stderr)
+            if result.stderr:
+                print(f"Error output: {result.stderr}", file=sys.stderr)
+            return 1
+        
+        # 仕様書の内容を表示
+        print("=" * 60)
+        print("Generated Specification Draft")
+        print("=" * 60)
+        print(result.stdout)
+        print("=" * 60)
+        print()
+        
+        # 3賢者によるレビューの準備（TODO: ConsensusEngine統合）
+        print("Note: 3賢者によるレビュー機能は現在開発中です。")
+        print(f"Agent overrides loaded for personas: {', '.join(p.name for p in plugin.agent_overrides.keys())}")
+        
+        return 0
+    
+    def _find_plugin_path(self, plugin_name: str) -> Optional[Path]:
+        """プラグインパスを検索
+        
+        Args:
+            plugin_name: プラグイン名
+            
+        Returns:
+            プラグインファイルのパス、見つからない場合はNone
+        """
+        # 複数の場所を検索
+        search_paths = [
+            # プロジェクトのpluginsディレクトリ
+            Path(__file__).parent.parent.parent.parent / "plugins" / plugin_name / "plugin.yaml",
+            # カレントディレクトリのplugins
+            Path.cwd() / "plugins" / plugin_name / "plugin.yaml",
+            # ユーザーのホームディレクトリ
+            Path.home() / ".magi" / "plugins" / plugin_name / "plugin.yaml",
+        ]
+        
+        for path in search_paths:
+            if path.exists():
+                return path
+        
+        return None
+    
+    def _execute_cc_sdd(self, plugin: Plugin, request: str) -> CommandResult:
+        """cc-sddコマンドを実行
+        
+        Args:
+            plugin: ロードされたプラグイン
+            request: 仕様書作成のリクエスト
+            
+        Returns:
+            CommandResult: コマンド実行結果
+        """
+        executor = CommandExecutor(timeout=plugin.bridge.timeout)
+        
+        # 非同期実行
+        return asyncio.run(executor.execute(plugin.bridge.command, [request]))
 
     def show_help(self) -> None:
         """ヘルプメッセージを表示"""
