@@ -421,9 +421,9 @@ class TestPluginLoaderProperty14(unittest.TestCase):
         ])
     )
     @settings(max_examples=30)
-    def test_invalid_persona_name_in_overrides_raises_error(self, invalid_persona):
+    def test_invalid_persona_name_in_overrides_is_ignored(self, invalid_persona):
         """
-        無効なペルソナ名がエラーを発生させることを検証
+        無効なペルソナ名が無視されることを検証
         """
         plugin_data = {
             "plugin": {
@@ -441,11 +441,12 @@ class TestPluginLoaderProperty14(unittest.TestCase):
         plugin_file = self.temp_path / "invalid_persona.yaml"
         plugin_file.write_text(yaml.dump(plugin_data))
         
-        with self.assertRaises(MagiException) as cm:
-            self.loader.load(plugin_file)
+        # Should NOT raise exception, invalid keys should be ignored
+        plugin = self.loader.load(plugin_file)
         
-        self.assertEqual(cm.exception.error.code, ErrorCode.PLUGIN_YAML_PARSE_ERROR.value)
-        self.assertIn("Invalid persona name", cm.exception.error.message)
+        # Verify that the loaded plugin overrides don't contain any entries
+        # since the only provided override was invalid
+        self.assertEqual(plugin.agent_overrides, {})
 
 
 if __name__ == '__main__':

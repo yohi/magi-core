@@ -118,7 +118,8 @@ class PluginLoader:
                         # Check if the persona name is valid
                         PersonaType[persona_name.upper()]
                     except KeyError:
-                        errors.append(f"Invalid persona name in agent_overrides: {persona_name}. Must be MELCHIOR, BALTHASAR, or CASPER.")
+                        # Unknown persona types are allowed here and will be ignored in load()
+                        pass
 
 
         return ValidationResult(is_valid=len(errors) == 0, errors=errors)
