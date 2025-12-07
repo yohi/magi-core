@@ -177,11 +177,13 @@ class TestSpecCommandIntegration(unittest.TestCase):
         
         # プラグインがロードされたかエラーが出力されたかを確認
         # どちらかが真であればプラグイン処理は行われている
+        plugin_loaded = "magi-cc-sdd-plugin" in stdout_output
+        cc_sdd_error = "cc-sdd" in stderr_output
+        
         self.assertTrue(
-            "magi-cc-sdd-plugin" in stdout_output or 
-            "cc-sdd" in stderr_output or
-            result == 1,
-            f"Expected plugin loading or error output. stdout: {stdout_output}, stderr: {stderr_output}"
+            plugin_loaded or cc_sdd_error,
+            f"Expected plugin loading or cc-sdd error output. "
+            f"stdout: {stdout_output}, stderr: {stderr_output}"
         )
   
     def test_spec_command_without_plugin_uses_default(self):
@@ -246,7 +248,7 @@ class TestSpecCommandFlow(unittest.TestCase):
         result = asyncio.run(executor.execute("echo", ["test"]))
         
         self.assertEqual(result.return_code, 0)
-        self.assertIn("test", result.stdout)
+        self.assertIn("# Generated Specification", result.stdout)
 
 
 if __name__ == "__main__":
