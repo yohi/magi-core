@@ -18,8 +18,11 @@ from hypothesis import strategies as st
 
 from magi.config.manager import Config
 from magi.core.consensus import ConsensusEngine
+from typing import Dict
+
 from magi.models import (
     ConsensusPhase,
+    DebateOutput,
     PersonaType,
     ThinkingOutput,
 )
@@ -342,6 +345,325 @@ class TestAgentFailureContinuity(unittest.TestCase):
 
         # 全てのエラーが記録されている
         self.assertEqual(len(engine.errors), 3)
+
+
+# ラウンド数の戦略（1-10）
+round_count_strategy = st.integers(min_value=1, max_value=10)
+
+
+# **Feature: magi-core, Property 7: Debate Phaseのコンテキスト構築**
+# **Validates: Requirements 5.1**
+class TestDebatePhaseContextBuilding(unittest.TestCase):
+    """Debate Phaseのコンテキスト構築プロパティテスト
+
+    Property 7: For any Debate Phase開始時に、
+    各エージェントに渡されるコンテキストには他の2つのエージェントの思考結果が含まれる
+    """
+
+    def setUp(self):
+        """テストのセットアップ"""
+        self.config = create_test_config()
+
+    @given(prompt=prompt_strategy)
+    @settings(max_examples=100, deadline=None)
+    def test_each_agent_receives_others_thoughts(self, prompt: str):
+        """各エージェントには他の2つのエージェントの思考結果が渡される
+
+        Debate Phase実行時に、各エージェントのdebateメソッドに
+        渡されるコンテキストに他の2つのエージェントの思考結果が含まれることを検証する。
+        """
+        assume(len(prompt.strip()) > 0)
+
+        engine = ConsensusEngine(self.config)
+
+        # 思考結果をモック
+        thinking_results = {
+            PersonaType.MELCHIOR: create_mock_thinking_output(
+                PersonaType.MELCHIOR, "MELCHIORの思考結果"
+            ),
+            PersonaType.BALTHASAR: create_mock_thinking_output(
+                PersonaType.BALTHASAR, "BALTHASARの思考結果"
+            ),
+            PersonaType.CASPER: create_mock_thinking_output(
+                PersonaType.CASPER, "CASPERの思考結果"
+            ),
+        }
+
+        # debateメソッドへの呼び出しを記録
+        debate_calls = []
+
+        async def mock_debate(
+            agent_self, others_thoughts: Dict[PersonaType, str], round_num: int
+        ) -> DebateOutput:
+            """debateメソッドのモック"""
+            debate_calls.append({
+                "persona_type": agent_self.persona.type,
+                "others_thoughts": others_thoughts,
+                "round_num": round_num,
+            })
+            return DebateOutput(
+                persona_type=agent_self.persona.type,
+                round_number=round_num,
+                responses={},
+                timestamp=datetime.now()
+            )
+
+        with patch('magi.agents.agent.Agent.debate', mock_debate):
+            asyncio.run(engine._run_debate_phase(thinking_results))
+
+        # 各エージェントがdebateを実行したことを確認
+        self.assertEqual(len(debate_calls), 3)
+
+        # 各エージェントが他2つのエージェントの思考を受け取ったことを確認
+        for call in debate_calls:
+            persona_type = call["persona_type"]
+            others_thoughts = call["others_thoughts"]
+
+            # 自分自身の思考は含まれていないことを確認
+            self.assertNotIn(persona_type, others_thoughts)
+
+            # 他の2つのエージェントの思考が含まれていることを確認
+            other_types = [pt for pt in PersonaType if pt != persona_type]
+            for other_type in other_types:
+                self.assertIn(other_type, others_thoughts)
+
+    @given(prompt=prompt_strategy)
+    @settings(max_examples=100, deadline=None)
+    def test_context_contains_actual_thinking_content(self, prompt: str):
+        """コンテキストには実際の思考内容が含まれる
+
+        渡されるコンテキストに思考結果の実際の内容が含まれていることを検証する。
+        """
+        assume(len(prompt.strip()) > 0)
+
+        engine = ConsensusEngine(self.config)
+
+        # 特定の思考結果を設定
+        melchior_content = "MELCHIOR: 論理的分析結果"
+        balthasar_content = "BALTHASAR: リスク分析結果"
+        casper_content = "CASPER: 実利的分析結果"
+
+        thinking_results = {
+            PersonaType.MELCHIOR: create_mock_thinking_output(
+                PersonaType.MELCHIOR, melchior_content
+            ),
+            PersonaType.BALTHASAR: create_mock_thinking_output(
+                PersonaType.BALTHASAR, balthasar_content
+            ),
+            PersonaType.CASPER: create_mock_thinking_output(
+                PersonaType.CASPER, casper_content
+            ),
+        }
+
+        # debateメソッドへの呼び出しを記録
+        debate_calls = []
+
+        async def mock_debate(
+            agent_self, others_thoughts: Dict[PersonaType, str], round_num: int
+        ) -> DebateOutput:
+            """debateメソッドのモック"""
+            debate_calls.append({
+                "persona_type": agent_self.persona.type,
+                "others_thoughts": others_thoughts,
+            })
+            return DebateOutput(
+                persona_type=agent_self.persona.type,
+                round_number=round_num,
+                responses={},
+                timestamp=datetime.now()
+            )
+
+        with patch('magi.agents.agent.Agent.debate', mock_debate):
+            asyncio.run(engine._run_debate_phase(thinking_results))
+
+        # 各エージェントへのコンテキスト内容を確認
+        for call in debate_calls:
+            persona_type = call["persona_type"]
+            others_thoughts = call["others_thoughts"]
+
+            if persona_type == PersonaType.MELCHIOR:
+                # MELCHIORはBALTHASARとCASPERの思考を受け取る
+                self.assertEqual(others_thoughts[PersonaType.BALTHASAR], balthasar_content)
+                self.assertEqual(others_thoughts[PersonaType.CASPER], casper_content)
+            elif persona_type == PersonaType.BALTHASAR:
+                # BALTHASARはMELCHIORとCASPERの思考を受け取る
+                self.assertEqual(others_thoughts[PersonaType.MELCHIOR], melchior_content)
+                self.assertEqual(others_thoughts[PersonaType.CASPER], casper_content)
+            else:
+                # CASPERはMELCHIORとBALTHASARの思考を受け取る
+                self.assertEqual(others_thoughts[PersonaType.MELCHIOR], melchior_content)
+                self.assertEqual(others_thoughts[PersonaType.BALTHASAR], balthasar_content)
+
+
+# **Feature: magi-core, Property 8: ラウンド数に基づく状態遷移**
+# **Validates: Requirements 5.3**
+class TestRoundBasedStateTransition(unittest.TestCase):
+    """ラウンド数に基づく状態遷移プロパティテスト
+
+    Property 8: For any 設定されたラウンド数nに対して、
+    n回のDebateラウンド完了後にVoting Phaseに遷移する
+    """
+
+    def setUp(self):
+        """テストのセットアップ"""
+        self.config = create_test_config()
+
+    @given(debate_rounds=round_count_strategy)
+    @settings(max_examples=100, deadline=None)
+    def test_correct_number_of_debate_rounds(self, debate_rounds: int):
+        """設定されたラウンド数だけDebateが実行される
+
+        config.debate_roundsで設定されたラウンド数だけ
+        Debateラウンドが実行されることを検証する。
+        """
+        # ラウンド数を設定したコンフィグを作成
+        config = Config(
+            api_key="test-api-key",
+            model="claude-3-sonnet-20240229",
+            debate_rounds=debate_rounds,
+            voting_threshold="majority",
+            output_format="markdown",
+            timeout=60,
+            retry_count=3
+        )
+        engine = ConsensusEngine(config)
+
+        # 思考結果をモック
+        thinking_results = {
+            PersonaType.MELCHIOR: create_mock_thinking_output(
+                PersonaType.MELCHIOR, "MELCHIORの思考"
+            ),
+            PersonaType.BALTHASAR: create_mock_thinking_output(
+                PersonaType.BALTHASAR, "BALTHASARの思考"
+            ),
+            PersonaType.CASPER: create_mock_thinking_output(
+                PersonaType.CASPER, "CASPERの思考"
+            ),
+        }
+
+        # debateメソッドへの呼び出しを記録
+        debate_round_numbers = []
+
+        async def mock_debate(
+            agent_self, others_thoughts: Dict[PersonaType, str], round_num: int
+        ) -> DebateOutput:
+            """debateメソッドのモック"""
+            debate_round_numbers.append(round_num)
+            return DebateOutput(
+                persona_type=agent_self.persona.type,
+                round_number=round_num,
+                responses={},
+                timestamp=datetime.now()
+            )
+
+        with patch('magi.agents.agent.Agent.debate', mock_debate):
+            results = asyncio.run(engine._run_debate_phase(thinking_results))
+
+        # 結果のラウンド数を確認
+        self.assertEqual(len(results), debate_rounds)
+
+        # 各ラウンドで3つのエージェントがdebateを実行
+        # (debate_rounds ラウンド × 3 エージェント)
+        expected_debate_calls = debate_rounds * 3
+        self.assertEqual(len(debate_round_numbers), expected_debate_calls)
+
+        # ラウンド番号が正しく設定されていることを確認
+        for i in range(debate_rounds):
+            round_num = i + 1
+            round_calls = [r for r in debate_round_numbers if r == round_num]
+            self.assertEqual(len(round_calls), 3)
+
+    @given(debate_rounds=round_count_strategy)
+    @settings(max_examples=100, deadline=None)
+    def test_phase_transitions_to_voting_after_debates(self, debate_rounds: int):
+        """全Debateラウンド完了後にVoting Phaseに遷移する
+
+        設定されたラウンド数のDebateが完了した後、
+        フェーズがVOTINGに遷移することを検証する。
+        """
+        config = Config(
+            api_key="test-api-key",
+            model="claude-3-sonnet-20240229",
+            debate_rounds=debate_rounds,
+            voting_threshold="majority",
+            output_format="markdown",
+            timeout=60,
+            retry_count=3
+        )
+        engine = ConsensusEngine(config)
+
+        # Debate開始前はDEBATEフェーズ（Thinkingの後）
+        engine._transition_to_phase(ConsensusPhase.DEBATE)
+        self.assertEqual(engine.current_phase, ConsensusPhase.DEBATE)
+
+        # 思考結果をモック
+        thinking_results = {
+            PersonaType.MELCHIOR: create_mock_thinking_output(
+                PersonaType.MELCHIOR, "MELCHIORの思考"
+            ),
+            PersonaType.BALTHASAR: create_mock_thinking_output(
+                PersonaType.BALTHASAR, "BALTHASARの思考"
+            ),
+            PersonaType.CASPER: create_mock_thinking_output(
+                PersonaType.CASPER, "CASPERの思考"
+            ),
+        }
+
+        async def mock_debate(
+            agent_self, others_thoughts: Dict[PersonaType, str], round_num: int
+        ) -> DebateOutput:
+            """debateメソッドのモック"""
+            return DebateOutput(
+                persona_type=agent_self.persona.type,
+                round_number=round_num,
+                responses={},
+                timestamp=datetime.now()
+            )
+
+        with patch('magi.agents.agent.Agent.debate', mock_debate):
+            asyncio.run(engine._run_debate_phase(thinking_results))
+
+        # Debate完了後はVOTINGフェーズに遷移
+        self.assertEqual(engine.current_phase, ConsensusPhase.VOTING)
+
+    def test_default_debate_rounds_is_one(self):
+        """デフォルトのDebateラウンド数は1
+
+        ラウンド数が設定されていない場合、
+        デフォルトで1ラウンドのDebateが実行されることを検証する。
+        """
+        config = create_test_config()  # debate_rounds=1がデフォルト
+        engine = ConsensusEngine(config)
+
+        # 思考結果をモック
+        thinking_results = {
+            PersonaType.MELCHIOR: create_mock_thinking_output(
+                PersonaType.MELCHIOR, "MELCHIORの思考"
+            ),
+            PersonaType.BALTHASAR: create_mock_thinking_output(
+                PersonaType.BALTHASAR, "BALTHASARの思考"
+            ),
+            PersonaType.CASPER: create_mock_thinking_output(
+                PersonaType.CASPER, "CASPERの思考"
+            ),
+        }
+
+        async def mock_debate(
+            agent_self, others_thoughts: Dict[PersonaType, str], round_num: int
+        ) -> DebateOutput:
+            """debateメソッドのモック"""
+            return DebateOutput(
+                persona_type=agent_self.persona.type,
+                round_number=round_num,
+                responses={},
+                timestamp=datetime.now()
+            )
+
+        with patch('magi.agents.agent.Agent.debate', mock_debate):
+            results = asyncio.run(engine._run_debate_phase(thinking_results))
+
+        # デフォルトでは1ラウンド
+        self.assertEqual(len(results), 1)
 
 
 if __name__ == '__main__':
