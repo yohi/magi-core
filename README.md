@@ -121,7 +121,7 @@ MAGI_DEBATE_ROUNDS=3 magi ask "このアーキテクチャの問題点は？"
 | 変数名 | 説明 | デフォルト |
 |--------|------|-----------|
 | `MAGI_API_KEY` | Anthropic APIキー（**必須**） | - |
-| `MAGI_MODEL` | 使用するLLMモデル | `claude-3-sonnet-20240229` |
+| `MAGI_MODEL` | 使用するLLMモデル | `claude-sonnet-4-20250514` |
 | `MAGI_DEBATE_ROUNDS` | Debateフェーズのラウンド数 | `1` |
 | `MAGI_VOTING_THRESHOLD` | 投票閾値（majority/unanimous） | `majority` |
 | `MAGI_TIMEOUT` | APIタイムアウト（秒） | `60` |
@@ -132,7 +132,7 @@ MAGI_DEBATE_ROUNDS=3 magi ask "このアーキテクチャの問題点は？"
 
 ```yaml
 # magi.yaml
-model: claude-3-opus-20240229
+model: claude-sonnet-4-20250514
 debate_rounds: 2
 voting_threshold: majority
 output_format: markdown
@@ -270,33 +270,33 @@ graph TB
         CLI[MAGI CLI]
         ArgParser[Argument Parser]
     end
-    
+
     subgraph "Core Engine"
         CE[Consensus Engine]
         TH[Thinking Phase]
         DB[Debate Phase]
         VT[Voting Phase]
     end
-    
+
     subgraph "Agent System"
         PM[Persona Manager]
         MEL[MELCHIOR-1]
         BAL[BALTHASAR-2]
         CAS[CASPER-3]
     end
-    
+
     subgraph "Plugin System"
         PL[Plugin Loader]
         CMD[Command Executor]
     end
-    
+
     subgraph "Infrastructure"
         LLM[LLM Client]
         CM[Context Manager]
         CFG[Config Manager]
         OUT[Output Formatter]
     end
-    
+
     CLI --> ArgParser
     ArgParser --> CE
     CE --> TH --> DB --> VT

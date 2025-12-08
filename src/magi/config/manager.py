@@ -33,7 +33,7 @@ class Config:
         retry_count: リトライ回数
     """
     api_key: str
-    model: str = "claude-3-sonnet-20240229"
+    model: str = "claude-sonnet-4-20250514"
     debate_rounds: int = 1
     voting_threshold: str = "majority"
     output_format: str = "markdown"

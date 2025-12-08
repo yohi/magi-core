@@ -19,7 +19,7 @@ class TestConfig(unittest.TestCase):
         config = Config(api_key="test-api-key")
 
         self.assertEqual(config.api_key, "test-api-key")
-        self.assertEqual(config.model, "claude-3-sonnet-20240229")
+        self.assertEqual(config.model, "claude-sonnet-4-20250514")
         self.assertEqual(config.debate_rounds, 1)
         self.assertEqual(config.voting_threshold, "majority")
         self.assertEqual(config.output_format, "markdown")
@@ -201,7 +201,7 @@ retry_count: 5
         """環境変数がファイル設定を上書きする"""
         yaml_content = """
 api_key: file-api-key
-model: claude-3-sonnet-20240229
+model: claude-sonnet-4-20250514
 """
         with tempfile.NamedTemporaryFile(
             mode='w', suffix='.yaml', delete=False
