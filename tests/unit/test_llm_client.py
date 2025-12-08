@@ -50,11 +50,11 @@ class TestLLMResponse(unittest.TestCase):
         response = LLMResponse(
             content="応答内容",
             usage={"input_tokens": 100, "output_tokens": 50},
-            model="claude-3-sonnet-20240229"
+            model="claude-sonnet-4-20250514"
         )
         self.assertEqual(response.content, "応答内容")
         self.assertEqual(response.usage["input_tokens"], 100)
-        self.assertEqual(response.model, "claude-3-sonnet-20240229")
+        self.assertEqual(response.model, "claude-sonnet-4-20250514")
 
 
 class TestAPIErrorType(unittest.TestCase):
@@ -75,7 +75,7 @@ class TestLLMClient(unittest.TestCase):
         """デフォルト値での初期化"""
         client = LLMClient(api_key="test-key")
         self.assertEqual(client.api_key, "test-key")
-        self.assertEqual(client.model, "claude-3-sonnet-20240229")
+        self.assertEqual(client.model, "claude-sonnet-4-20250514")
         self.assertEqual(client.retry_count, 3)
         self.assertEqual(client.timeout, 60)
 
@@ -177,7 +177,7 @@ class TestLLMClientAsync(unittest.TestCase):
         mock_response.content = [MagicMock(text="応答テキスト")]
         mock_response.usage.input_tokens = 100
         mock_response.usage.output_tokens = 50
-        mock_response.model = "claude-3-sonnet-20240229"
+        mock_response.model = "claude-sonnet-4-20250514"
 
         with patch.object(
             client._client.messages, "create",
@@ -193,7 +193,7 @@ class TestLLMClientAsync(unittest.TestCase):
                 response = await client.send(request)
                 self.assertEqual(response.content, "応答テキスト")
                 self.assertEqual(response.usage["input_tokens"], 100)
-                self.assertEqual(response.model, "claude-3-sonnet-20240229")
+                self.assertEqual(response.model, "claude-sonnet-4-20250514")
 
             asyncio.run(run_test())
 
@@ -206,7 +206,7 @@ class TestLLMClientAsync(unittest.TestCase):
         mock_response.content = [MagicMock(text="成功")]
         mock_response.usage.input_tokens = 50
         mock_response.usage.output_tokens = 25
-        mock_response.model = "claude-3-sonnet-20240229"
+        mock_response.model = "claude-sonnet-4-20250514"
 
         call_count = 0
 

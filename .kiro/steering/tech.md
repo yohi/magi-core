@@ -38,7 +38,7 @@ uv run coverage html
 
 ## 環境変数・設定
 - `MAGI_API_KEY` (必須): Anthropic API キー
-- `MAGI_MODEL`: 使用モデル（既定 `claude-3-sonnet-20240229`）
+- `MAGI_MODEL`: 使用モデル（既定 `claude-sonnet-4-20250514`）
 - `MAGI_DEBATE_ROUNDS`: Debate ラウンド数（既定 1）
 - `MAGI_VOTING_THRESHOLD`: `majority`/`unanimous`
 - `MAGI_TIMEOUT`: 秒数（既定 60）
