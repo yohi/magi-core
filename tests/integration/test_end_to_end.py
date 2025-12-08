@@ -248,6 +248,7 @@ class TestConsensusEngineContextIntegration(unittest.TestCase):
         
         # 最終的にCOMPLETEDになっていることを確認
         self.assertEqual(self.consensus_engine.current_phase, ConsensusPhase.COMPLETED)
+        self.assertIsNotNone(result)
 
 
 class TestOutputFormatterIntegration(unittest.TestCase):
@@ -478,11 +479,13 @@ class TestFullWorkflowIntegration(unittest.TestCase):
         # 引数解析 → 設定読み込み → CLI実行
         parser = ArgumentParser()
         parsed = parser.parse(["ask", "Test question"])
+        self.assertEqual(parsed.command, "ask")
+        self.assertEqual(parsed.args, ["Test question"])
         
         config = Config(api_key="test-key", debate_rounds=1)
         cli = MagiCLI(config)
         
-        # 実行（モック環境では実際のAPI呼び出しは行われない）
+        # 実行(モック環境では実際のAPI呼び出しは行われない)
         # ここではCLIの構築と引数解析が正しく統合されていることを確認
         self.assertIsNotNone(cli.config)
         self.assertEqual(cli.output_format, OutputFormat.MARKDOWN)
