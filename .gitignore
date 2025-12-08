@@ -162,6 +162,9 @@ CLAUDE.md
 # Kiro設定（テンプレートやルールは除外、specsは含める）
 .kiro/settings/
 
+# Serena関連
+.serena/
+
 # Node.js関連（もし使用する場合）
 node_modules/
 package-lock.json
