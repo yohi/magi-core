@@ -184,5 +184,5 @@
     - プラグイン開発ガイド
     - _Requirements: 1.3_
 
-- [ ] 16. Final Checkpoint - 全テストが通ることを確認
+- [x] 16. Final Checkpoint - 全テストが通ることを確認
   - Ensure all tests pass, ask the user if questions arise.
