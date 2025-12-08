@@ -6,7 +6,7 @@
   "creation_date": "2025-12-07",
   "last_update": "2025-12-08",
   "current_phase": "実装",
-  "overall_completion_percentage": 83.33,
+  "overall_completion_percentage": 87.04,
   "phase_status": {
     "requirements_phase": {
       "completion_percentage": 100,
@@ -22,10 +22,10 @@
       "integration_planned": "yes"
     },
     "tasks_phase": {
-      "completion_percentage": 83.33,
+      "completion_percentage": 87.04,
       "total_tasks": 54,
-      "completed_tasks": 45,
-      "remaining_tasks": 9,
+      "completed_tasks": 47,
+      "remaining_tasks": 7,
       "blocked_tasks": 0
     }
   }
