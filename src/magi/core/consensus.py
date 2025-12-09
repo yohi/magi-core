@@ -517,6 +517,9 @@ class ConsensusEngine:
                     mark_fallback=True,
                 )
                 fallback.setdefault("meta", {})["hardened_fail_safe"] = True
+                if summary_applied:
+                    # ハードニング経路で要約が適用された場合はフォールバック結果にも反映
+                    fallback["summary_applied"] = True
                 self._record_event(
                     "quorum.fallback_legacy",
                     used=bool(fallback.get("voting_results")),
