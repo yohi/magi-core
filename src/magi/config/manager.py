@@ -31,6 +31,7 @@ class Config:
         output_format: 出力形式（"json" または "markdown"）
         timeout: APIタイムアウト秒数
         retry_count: リトライ回数
+        token_budget: トークン予算
     """
     api_key: str
     model: str = "claude-sonnet-4-20250514"
@@ -39,6 +40,7 @@ class Config:
     output_format: str = "markdown"
     timeout: int = 60
     retry_count: int = 3
+    token_budget: int = 8192
 
 
 @dataclass
@@ -70,10 +72,11 @@ class ConfigManager:
         "output_format": "MAGI_OUTPUT_FORMAT",
         "timeout": "MAGI_TIMEOUT",
         "retry_count": "MAGI_RETRY_COUNT",
+        "token_budget": "CONSENSUS_TOKEN_BUDGET",
     }
 
     # 整数型の設定キー
-    INT_KEYS = ("debate_rounds", "timeout", "retry_count")
+    INT_KEYS = ("debate_rounds", "timeout", "retry_count", "token_budget")
 
     def __init__(self):
         """ConfigManagerを初期化"""
@@ -265,6 +268,12 @@ class ConfigManager:
         if config.retry_count < 0:
             errors.append(
                 f"retry_count: 0以上の値を指定してください（現在: {config.retry_count}）"
+            )
+
+        # token_budgetの検証
+        if config.token_budget <= 0:
+            errors.append(
+                f"token_budget: 1以上の値を指定してください（現在: {config.token_budget}）"
             )
 
         return ValidationResult(
