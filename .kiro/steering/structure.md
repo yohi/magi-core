@@ -15,12 +15,19 @@ magi-core/
 - `__main__.py`: CLI エントリーポイント (`magi` script)
 - `agents/`: ペルソナ・エージェント実装
 - `core/`: 合議エンジン、コンテキスト管理
+  - `consensus.py`: 合議フロー制御
+  - `context.py`: コンテキスト/ログ管理
+  - `token_budget.py`: TokenBudgetManager（要約・圧縮・削減ログ）
+  - `template_loader.py`: テンプレート外部化・TTLキャッシュ・ホットリロード
+  - `schema_validator.py`: ツール呼び出し JSON スキーマ検証
+  - `quorum.py`: クオーラム・リトライ・フェイルセーフ判定
 - `cli/`: 引数パーサーと CLI 起動
 - `config/`: ConfigManager
 - `llm/`: LLM クライアント
-- `output/`: フォーマッタ
-- `plugins/`: PluginLoader/CommandExecutor
-- 共通モデル・エラーはルート直下の `models.py`/`errors.py`
+- `output/`: フォーマッタ/ストリーミング出力
+- `plugins/`: PluginLoader/CommandExecutor/PluginGuard
+- `security/`: SecurityFilter（サニタイズ・禁止パターン検知）
+- 共通モデル・エラーはルート直下の `models.py` / `errors.py`
 
 ## コード/命名規約
 - src レイアウト。インポートは `magi.` プレフィックスで統一。
