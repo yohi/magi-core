@@ -338,12 +338,6 @@ class ConsensusEngine:
         agents = self._create_agents()
         effective_quorum = min(self.config.quorum_threshold, len(agents))
 
-        # フェーズ開始時にクオーラム管理を初期化（実際に参加するエージェント数で評価）
-        self.quorum_manager = QuorumManager(
-            total_agents=len(agents),
-            quorum=effective_quorum,
-            max_retries=self.config.retry_count,
-        )
         failed_personas: List[str] = []
         partial_results = False
         voting_results: Dict[PersonaType, VoteOutput] = {}
