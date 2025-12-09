@@ -15,6 +15,7 @@ from magi.cli.parser import ArgumentParser, ParsedCommand, VALID_COMMANDS
 from magi.output.formatter import OutputFormat
 from magi.plugins.loader import PluginLoader, Plugin
 from magi.plugins.executor import CommandExecutor, CommandResult
+from magi.plugins.guard import PluginGuard
 from magi.errors import MagiException, ErrorCode
 
 
@@ -219,9 +220,11 @@ class MagiCLI:
             CommandResult: コマンド実行結果
         """
         executor = CommandExecutor(timeout=plugin.bridge.timeout)
-        
+        guard = PluginGuard()
+        safe_args = guard.validate(plugin.bridge.command, [request])
+
         # 非同期実行
-        return asyncio.run(executor.execute(plugin.bridge.command, [request]))
+        return asyncio.run(executor.execute(plugin.bridge.command, safe_args))
 
     def show_help(self) -> None:
         """ヘルプメッセージを表示"""

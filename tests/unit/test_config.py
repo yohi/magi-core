@@ -25,6 +25,7 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(config.output_format, "markdown")
         self.assertEqual(config.timeout, 60)
         self.assertEqual(config.retry_count, 3)
+        self.assertTrue(config.log_context_reduction_key)
 
     def test_config_custom_values(self):
         """カスタム値が正しく設定されることを確認"""
@@ -35,7 +36,8 @@ class TestConfig(unittest.TestCase):
             voting_threshold="unanimous",
             output_format="json",
             timeout=120,
-            retry_count=5
+            retry_count=5,
+            log_context_reduction_key=False,
         )
 
         self.assertEqual(config.api_key, "custom-api-key")
@@ -45,6 +47,7 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(config.output_format, "json")
         self.assertEqual(config.timeout, 120)
         self.assertEqual(config.retry_count, 5)
+        self.assertFalse(config.log_context_reduction_key)
 
 
 class TestValidationResult(unittest.TestCase):
@@ -138,6 +141,15 @@ class TestConfigManagerLoadFromEnv(unittest.TestCase):
         config = self.manager.load()
 
         self.assertEqual(config.retry_count, 5)
+
+    def test_load_log_context_reduction_from_env(self):
+        """LOG_CONTEXT_REDUCTION_KEY からの読み込み"""
+        os.environ["MAGI_API_KEY"] = "test-key"
+        os.environ["LOG_CONTEXT_REDUCTION_KEY"] = "0"
+
+        config = self.manager.load()
+
+        self.assertFalse(config.log_context_reduction_key)
 
     def test_missing_api_key_raises_error(self):
         """APIキーが設定されていない場合はエラー"""

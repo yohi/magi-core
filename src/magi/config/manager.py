@@ -49,6 +49,7 @@ class Config:
     template_base_path: str = "templates"
     quorum_threshold: int = 2
     stream_retry_count: int = 5
+    log_context_reduction_key: bool = True
 
 
 @dataclass
@@ -87,6 +88,7 @@ class ConfigManager:
         "template_base_path": "CONSENSUS_TEMPLATE_BASE_PATH",
         "quorum_threshold": "CONSENSUS_QUORUM_THRESHOLD",
         "stream_retry_count": "MAGI_CLI_STREAM_RETRY_COUNT",
+        "log_context_reduction_key": "LOG_CONTEXT_REDUCTION_KEY",
     }
 
     # 整数型の設定キー
@@ -100,6 +102,7 @@ class ConfigManager:
         "quorum_threshold",
         "stream_retry_count",
     )
+    BOOL_KEYS = ("log_context_reduction_key",)
 
     def __init__(self):
         """ConfigManagerを初期化"""
@@ -195,6 +198,8 @@ class ConfigManager:
                         config[key] = int(value)
                     except ValueError:
                         pass  # 無効な値は無視
+                elif key in self.BOOL_KEYS:
+                    config[key] = str(value).lower() not in ("0", "false", "off", "no")
                 else:
                     config[key] = value
 
@@ -241,6 +246,8 @@ class ConfigManager:
                         result[key] = int(value)
                     except (ValueError, TypeError):
                         pass  # 無効な値は無視
+                elif key in self.BOOL_KEYS:
+                    result[key] = bool(value) if isinstance(value, bool) else str(value).lower() not in ("0", "false", "off", "no")
                 else:
                     result[key] = value
 

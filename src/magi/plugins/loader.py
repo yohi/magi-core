@@ -1,16 +1,23 @@
+import re
 import yaml
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List
 
 from magi.errors import create_plugin_error, ErrorCode, MagiException
-from magi.models import PersonaType 
+from magi.models import PersonaType
+from magi.plugins.guard import PluginGuard
+
+HASH_PATTERN = re.compile(r"^sha256:[0-9a-fA-F]{64}$")
+GUARD = PluginGuard()
 
 @dataclass
 class PluginMetadata:
     name: str
     version: str = "1.0.0"
     description: str = ""
+    signature: Optional[str] = None
+    hash: Optional[str] = None
 
 @dataclass
 class BridgeConfig:
@@ -23,6 +30,8 @@ class Plugin:
     metadata: PluginMetadata
     bridge: BridgeConfig
     agent_overrides: Dict[PersonaType, str] = field(default_factory=dict)
+    signature: Optional[str] = None
+    hash: Optional[str] = None
 
 class PluginLoader:
     """YAMLプラグイン定義の読み込みとバリデーション"""
@@ -54,7 +63,9 @@ class PluginLoader:
         metadata = PluginMetadata(
             name=plugin_data["plugin"]["name"],
             version=plugin_data["plugin"].get("version", "1.0.0"),
-            description=plugin_data["plugin"].get("description", "")
+            description=plugin_data["plugin"].get("description", ""),
+            signature=plugin_data["plugin"].get("signature"),
+            hash=plugin_data["plugin"].get("hash"),
         )
         bridge = BridgeConfig(
             command=plugin_data["bridge"]["command"],
@@ -72,7 +83,13 @@ class PluginLoader:
                     # Unknown persona types are ignored
                     pass
         
-        return Plugin(metadata=metadata, bridge=bridge, agent_overrides=agent_overrides)
+        return Plugin(
+            metadata=metadata,
+            bridge=bridge,
+            agent_overrides=agent_overrides,
+            signature=metadata.signature,
+            hash=metadata.hash,
+        )
 
     def validate(self, plugin_data: Dict) -> "ValidationResult":
         """プラグイン定義の妥当性を検証"""
@@ -92,6 +109,12 @@ class PluginLoader:
                 errors.append("Plugin 'version' must be a string.")
             if "description" in plugin_data["plugin"] and not isinstance(plugin_data["plugin"]["description"], str):
                 errors.append("Plugin 'description' must be a string.")
+            signature = plugin_data["plugin"].get("signature")
+            digest = plugin_data["plugin"].get("hash")
+            if not signature and not digest:
+                errors.append("Plugin signature or hash is required.")
+            if digest and not HASH_PATTERN.match(digest):
+                errors.append("Plugin 'hash' must be sha256:<64hex> format.")
 
         # Validate 'bridge' section
         if "bridge" not in plugin_data or not isinstance(plugin_data["bridge"], dict):
@@ -101,6 +124,11 @@ class PluginLoader:
                 errors.append("Bridge 'command' is required and must be a string.")
             if "interface" not in plugin_data["bridge"] or plugin_data["bridge"]["interface"] not in ["stdio", "file"]:
                 errors.append("Bridge 'interface' is required and must be 'stdio' or 'file'.")
+            else:
+                try:
+                    GUARD.validate(plugin_data["bridge"]["command"], [])
+                except MagiException as exc:
+                    errors.append(exc.error.message)
             if "timeout" in plugin_data["bridge"] and not isinstance(plugin_data["bridge"]["timeout"], int):
                 errors.append("Bridge 'timeout' must be an integer.")
             elif "timeout" in plugin_data["bridge"] and plugin_data["bridge"]["timeout"] <= 0:
