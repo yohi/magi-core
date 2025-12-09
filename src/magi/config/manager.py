@@ -41,6 +41,10 @@ class Config:
     timeout: int = 60
     retry_count: int = 3
     token_budget: int = 8192
+    schema_retry_count: int = 3
+    template_ttl_seconds: int = 300
+    vote_template_name: str = "vote_prompt"
+    template_base_path: str = "templates"
 
 
 @dataclass
@@ -73,10 +77,21 @@ class ConfigManager:
         "timeout": "MAGI_TIMEOUT",
         "retry_count": "MAGI_RETRY_COUNT",
         "token_budget": "CONSENSUS_TOKEN_BUDGET",
+        "schema_retry_count": "CONSENSUS_SUMMARY_RETRY_COUNT",
+        "template_ttl_seconds": "CONSENSUS_TEMPLATE_TTL_SECONDS",
+        "vote_template_name": "CONSENSUS_VOTE_TEMPLATE",
+        "template_base_path": "CONSENSUS_TEMPLATE_BASE_PATH",
     }
 
     # 整数型の設定キー
-    INT_KEYS = ("debate_rounds", "timeout", "retry_count", "token_budget")
+    INT_KEYS = (
+        "debate_rounds",
+        "timeout",
+        "retry_count",
+        "token_budget",
+        "schema_retry_count",
+        "template_ttl_seconds",
+    )
 
     def __init__(self):
         """ConfigManagerを初期化"""
@@ -274,6 +289,16 @@ class ConfigManager:
         if config.token_budget <= 0:
             errors.append(
                 f"token_budget: 1以上の値を指定してください（現在: {config.token_budget}）"
+            )
+
+        if config.schema_retry_count < 0 or config.schema_retry_count > 10:
+            errors.append(
+                f"schema_retry_count: 0〜10 の範囲で指定してください（現在: {config.schema_retry_count}）"
+            )
+
+        if config.template_ttl_seconds <= 0:
+            errors.append(
+                f"template_ttl_seconds: 1以上の値を指定してください（現在: {config.template_ttl_seconds}）"
             )
 
         return ValidationResult(
