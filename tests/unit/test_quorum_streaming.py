@@ -6,8 +6,7 @@ import unittest.mock
 from unittest.mock import AsyncMock, MagicMock
 
 from magi.config.manager import Config
-from magi.core.consensus import ConsensusEngine, StreamingEmitter
-from magi.core.quorum import QuorumManager
+from magi.core.consensus import ConsensusEngine
 from magi.models import Decision, PersonaType, Vote, VoteOutput
 
 
@@ -93,37 +92,6 @@ class TestQuorumManagerAndFailSafe(unittest.TestCase):
         self.assertEqual(0, result["exit_code"])
         # 成功した2名のみが集計される
         self.assertEqual(2, len(result["voting_results"]))
-
-
-class TestStreamingEmitter(unittest.TestCase):
-    """ストリーミング再送出のリトライを検証する"""
-
-    def test_emit_retries_on_failure_and_succeeds(self):
-        """最初の送出に失敗してもリトライ回数内なら成功する"""
-        calls = {"count": 0}
-
-        def sink(chunk: str, phase: str):
-            calls["count"] += 1
-            if calls["count"] == 1:
-                raise RuntimeError("first fail")
-            return True
-
-        emitter = StreamingEmitter(retry_count=2, sink=sink)
-        emitter.emit("token", phase="voting")
-
-        self.assertEqual(2, calls["count"])
-
-    def test_emit_gives_up_after_max_retry(self):
-        """リトライ上限超過でエラーを返す"""
-
-        def sink(chunk: str, phase: str):
-            raise RuntimeError("always")
-
-        emitter = StreamingEmitter(retry_count=2, sink=sink)
-        result = emitter.emit("token", phase="voting")
-
-        self.assertFalse(result.success)
-        self.assertEqual(2, result.attempts)
 
 
 if __name__ == "__main__":

@@ -39,37 +39,10 @@ from magi.models import (
     ThinkingOutput,
     Vote,
     VoteOutput,
-    StreamingEmitResult,
 )
 
 # ロガーの設定
 logger = logging.getLogger(__name__)
-
-
-class StreamingEmitter:
-    """LLMストリーミングをCLIへ送出するためのユーティリティ"""
-
-    def __init__(self, retry_count: int = 5, sink=None):
-        self.retry_count = retry_count
-        # sink は chunk と phase を引数にとるコールバック
-        self._sink = sink or (lambda chunk, phase: None)
-
-    def emit(self, chunk: str, phase: str) -> StreamingEmitResult:
-        """ストリームチャンクを送出し、失敗時はリトライする"""
-        attempts = 0
-        last_error: Optional[Exception] = None
-        max_attempts = max(1, self.retry_count)
-
-        for attempt in range(1, max_attempts + 1):
-            attempts = attempt
-            try:
-                self._sink(chunk, phase)
-                return StreamingEmitResult(success=True, attempts=attempts)
-            except Exception as exc:  # pragma: no cover - エラー経路のみ
-                last_error = exc
-                continue
-
-        return StreamingEmitResult(success=False, attempts=attempts, last_error=last_error)
 
 
 class ConsensusEngine:
@@ -121,10 +94,6 @@ class ConsensusEngine:
             total_agents=len(PersonaType),
             quorum=self.config.quorum_threshold,
             max_retries=self.config.retry_count,
-        )
-        # ストリーミング送出
-        self.streaming_emitter = StreamingEmitter(
-            retry_count=self.config.stream_retry_count
         )
 
     def _transition_to_phase(self, phase: ConsensusPhase) -> None:
