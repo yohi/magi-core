@@ -1,7 +1,8 @@
 """トークン予算管理と要約ロジック."""
 
+import math
 from dataclasses import dataclass
-from typing import List
+from typing import List, Tuple
 
 from magi.models import ConsensusPhase
 
@@ -45,7 +46,7 @@ class TokenBudgetManager:
 
     def estimate_tokens(self, text: str) -> int:
         """文字列のトークン数を推定する."""
-        return int(len(text) * self.tokens_per_char)
+        return int(math.ceil(len(text) * self.tokens_per_char))
 
     def enforce(self, context: str, phase: ConsensusPhase) -> BudgetResult:
         """コンテキストに予算を適用し、必要なら要約/圧縮する."""
@@ -95,20 +96,21 @@ class TokenBudgetManager:
 
         scored_segments.sort(key=lambda item: (-item[0], item[1]))
 
-        picked: List[str] = []
+        picked: List[Tuple[int, str]] = []
         token_count = 0
-        for _, _, segment in scored_segments:
+        for _, idx, segment in scored_segments:
             segment_tokens = self.estimate_tokens(segment)
             if token_count + segment_tokens > self.max_tokens:
                 continue
-            picked.append(segment)
+            picked.append((idx, segment))
             token_count += segment_tokens
 
         if not picked:
             # すべて長すぎる場合は先頭セグメントを予算に合わせて切り詰めて使用する
             return self._trim_to_budget(segments[0])
 
-        return "\n\n".join(picked)
+        picked.sort(key=lambda item: item[0])
+        return "\n\n".join(segment for _, segment in picked)
 
     def _trim_to_budget(self, context: str) -> str:
         """最終的に予算に収まるよう安全に切り詰める."""

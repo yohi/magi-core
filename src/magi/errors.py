@@ -35,6 +35,9 @@ class ErrorCode(Enum):
     # エージェントエラー
     AGENT_THINKING_FAILED = "AGENT_001"
 
+    # コンセンサスエンジンエラー
+    CONSENSUS_SCHEMA_RETRY_EXCEEDED = "CONSENSUS_SCHEMA_RETRY_EXCEEDED"
+
 
 @dataclass
 class MagiError:

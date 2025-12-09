@@ -16,12 +16,16 @@ Requirements:
 
 import asyncio
 import logging
+import uuid
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from magi.agents.agent import Agent
 from magi.agents.persona import PersonaManager
 from magi.config.manager import Config
 from magi.core.context import ContextManager
+from magi.core.schema_validator import SchemaValidationError, SchemaValidator
+from magi.core.template_loader import TemplateLoader
 from magi.core.token_budget import ReductionLog, TokenBudgetManager
 from magi.llm.client import LLMClient
 from magi.models import (
@@ -54,7 +58,12 @@ class ConsensusEngine:
         current_phase: 現在のフェーズ
     """
 
-    def __init__(self, config: Config):
+    def __init__(
+        self,
+        config: Config,
+        schema_validator: Optional[SchemaValidator] = None,
+        template_loader: Optional[TemplateLoader] = None,
+    ):
         """ConsensusEngineを初期化
 
         Args:
@@ -64,6 +73,12 @@ class ConsensusEngine:
         self.persona_manager = PersonaManager()
         self.context_manager = ContextManager()
         self.current_phase = ConsensusPhase.THINKING
+        self.schema_validator = schema_validator or SchemaValidator()
+        self.template_loader = template_loader or TemplateLoader(
+            Path(self.config.template_base_path),
+            ttl_seconds=self.config.template_ttl_seconds,
+            schema_validator=self.schema_validator,
+        )
 
         # エラーログを保持
         self._errors: List[Dict] = []
@@ -99,7 +114,12 @@ class ConsensusEngine:
         agents = {}
         for persona_type in PersonaType:
             persona = self.persona_manager.get_persona(persona_type)
-            agents[persona_type] = Agent(persona, llm_client)
+            agents[persona_type] = Agent(
+                persona,
+                llm_client,
+                schema_validator=self.schema_validator,
+                template_loader=self.template_loader,
+            )
 
         return agents
 
@@ -344,20 +364,65 @@ class ConsensusEngine:
             Returns:
                 VoteOutput または失敗時はNone
             """
-            try:
-                return await agent.vote(context)
-            except Exception as e:
-                # エラーを記録
-                error_info = {
-                    "phase": ConsensusPhase.VOTING.value,
-                    "persona_type": persona_type.value,
-                    "error": str(e),
-                }
-                self._errors.append(error_info)
-                logger.error(
-                    f"エージェント {persona_type.value} の投票に失敗: {e}"
-                )
-                return None
+            payload_id = uuid.uuid4().hex
+            template_revision = self.template_loader.cached(self.config.vote_template_name)
+            template_version = (
+                template_revision.version if template_revision else "unknown"
+            )
+            attempt = 0
+            max_retry = self.config.schema_retry_count
+
+            while True:
+                try:
+                    return await agent.vote(context)
+                except SchemaValidationError as e:
+                    attempt += 1
+                    logger.warning(
+                        "consensus.schema.validation_failed payload_id=%s persona=%s "
+                        "attempt=%s max=%s template_version=%s errors=%s",
+                        payload_id,
+                        persona_type.value,
+                        attempt,
+                        max_retry,
+                        template_version,
+                        ";".join(e.errors),
+                    )
+                    if attempt > max_retry:
+                        logger.warning(
+                            "consensus.schema.retry_exhausted retry_count=%s max=%s "
+                            "template_version=%s payload_id=%s",
+                            attempt - 1,
+                            max_retry,
+                            template_version,
+                            payload_id,
+                        )
+                        logger.error(
+                            "consensus.schema.rejected payload_id=%s", payload_id
+                        )
+                        self._errors.append(
+                            {
+                                "code": "CONSENSUS_SCHEMA_RETRY_EXCEEDED",
+                                "phase": ConsensusPhase.VOTING.value,
+                                "persona_type": persona_type.value,
+                                "errors": e.errors,
+                                "payload_id": payload_id,
+                                "template_version": template_version,
+                            }
+                        )
+                        return None
+                    # リトライ継続
+                    continue
+                except Exception as e:
+                    error_info = {
+                        "phase": ConsensusPhase.VOTING.value,
+                        "persona_type": persona_type.value,
+                        "error": str(e),
+                    }
+                    self._errors.append(error_info)
+                    logger.error(
+                        "エージェント %s の投票に失敗: %s", persona_type.value, e
+                    )
+                    return None
 
         # 全エージェントの投票を並列実行
         tasks = [
