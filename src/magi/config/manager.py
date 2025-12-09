@@ -50,6 +50,8 @@ class Config:
     quorum_threshold: int = 2
     stream_retry_count: int = 5
     log_context_reduction_key: bool = True
+    enable_hardened_consensus: bool = True
+    legacy_fallback_on_fail_safe: bool = False
 
 
 @dataclass
@@ -89,6 +91,8 @@ class ConfigManager:
         "quorum_threshold": "CONSENSUS_QUORUM_THRESHOLD",
         "stream_retry_count": "MAGI_CLI_STREAM_RETRY_COUNT",
         "log_context_reduction_key": "LOG_CONTEXT_REDUCTION_KEY",
+        "enable_hardened_consensus": "CONSENSUS_HARDENED_ENABLED",
+        "legacy_fallback_on_fail_safe": "CONSENSUS_LEGACY_FALLBACK",
     }
 
     # 整数型の設定キー
@@ -102,7 +106,11 @@ class ConfigManager:
         "quorum_threshold",
         "stream_retry_count",
     )
-    BOOL_KEYS = ("log_context_reduction_key",)
+    BOOL_KEYS = (
+        "log_context_reduction_key",
+        "enable_hardened_consensus",
+        "legacy_fallback_on_fail_safe",
+    )
 
     def __init__(self):
         """ConfigManagerを初期化"""
