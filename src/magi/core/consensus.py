@@ -22,6 +22,7 @@ from magi.agents.agent import Agent
 from magi.agents.persona import PersonaManager
 from magi.config.manager import Config
 from magi.core.context import ContextManager
+from magi.core.token_budget import ReductionLog, TokenBudgetManager
 from magi.llm.client import LLMClient
 from magi.models import (
     ConsensusPhase,
@@ -66,6 +67,12 @@ class ConsensusEngine:
 
         # エラーログを保持
         self._errors: List[Dict] = []
+        # コンテキスト削減ログを保持
+        self._reduction_logs: List[ReductionLog] = []
+        # トークン予算マネージャ
+        self.token_budget_manager = TokenBudgetManager(
+            max_tokens=self.config.token_budget
+        )
 
     def _transition_to_phase(self, phase: ConsensusPhase) -> None:
         """指定されたフェーズに遷移
@@ -307,6 +314,23 @@ class ConsensusEngine:
         # 議論コンテキストを構築
         context = self._build_voting_context(thinking_results, debate_results)
 
+        # トークン予算を適用
+        budget_result = self.token_budget_manager.enforce(
+            context, ConsensusPhase.VOTING
+        )
+        summary_applied = budget_result.summary_applied
+        if budget_result.summary_applied:
+            self._reduction_logs.extend(budget_result.logs)
+            for log_item in budget_result.logs:
+                logger.info(
+                    "コンテキスト削減: phase=%s reason=%s before=%s after=%s",
+                    log_item.phase,
+                    log_item.reason,
+                    log_item.before_tokens,
+                    log_item.after_tokens,
+                )
+            context = budget_result.context
+
         async def vote_with_error_handling(
             persona_type: PersonaType,
             agent: Agent
@@ -394,6 +418,8 @@ class ConsensusEngine:
             "decision": decision,
             "exit_code": exit_code,
             "all_conditions": all_conditions,
+            "summary_applied": summary_applied,
+            "context": context,
         }
 
     def _build_voting_context(
@@ -503,3 +529,8 @@ class ConsensusEngine:
             エラーログのリスト
         """
         return self._errors.copy()
+
+    @property
+    def context_reduction_logs(self) -> List[ReductionLog]:
+        """コンテキスト削減ログを取得."""
+        return self._reduction_logs.copy()
