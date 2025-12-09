@@ -335,13 +335,15 @@ class ConsensusEngine:
         """
         from magi.models import VotingTally
 
-        # フェーズ開始時にクオーラム管理を初期化
+        agents = self._create_agents()
+        effective_quorum = min(self.config.quorum_threshold, len(agents))
+
+        # フェーズ開始時にクオーラム管理を初期化（実際に参加するエージェント数で評価）
         self.quorum_manager = QuorumManager(
-            total_agents=len(PersonaType),
-            quorum=self.config.quorum_threshold,
+            total_agents=len(agents),
+            quorum=effective_quorum,
             max_retries=self.config.retry_count,
         )
-        agents = self._create_agents()
         failed_personas: List[str] = []
         partial_results = False
         voting_results: Dict[PersonaType, VoteOutput] = {}
@@ -468,7 +470,7 @@ class ConsensusEngine:
 
         # クオーラム判定
         partial_results = 0 < len(voting_results) < len(agents)
-        if len(voting_results) < self.config.quorum_threshold:
+        if len(voting_results) < effective_quorum:
             reason = "quorum 未達によりフェイルセーフ"
             self._errors.append(
                 {
