@@ -18,6 +18,7 @@ from magi.core.context import ContextManager
 from magi.agents.persona import PersonaManager
 from magi.agents.agent import Agent
 from magi.config.manager import Config
+from magi.errors import MagiException
 from magi.models import (
     ConsensusPhase,
     ConsensusResult,
@@ -349,6 +350,31 @@ class TestConsensusTokenBudget(unittest.TestCase):
         self.assertFalse(result["summary_applied"])
         self.assertEqual([], self.engine.context_reduction_logs)
         self.assertEqual(short_context, result["context"])
+
+
+class TestConsensusSecurityFilter(unittest.TestCase):
+    """SecurityFilterによる入力ブロックのテスト"""
+
+    def setUp(self):
+        self.engine = ConsensusEngine(Config(api_key="test-api-key"))
+
+    def test_execute_raises_when_abuse_detected(self):
+        """detect_abuseがブロックを返した場合にMagiExceptionを送出すること"""
+        blocked_detection = MagicMock(blocked=True, matched_rules=["ruleX"])
+        with patch.object(
+            self.engine.security_filter,
+            "detect_abuse",
+            return_value=blocked_detection,
+        ):
+            with self.assertRaises(MagiException) as ctx:
+                asyncio.run(self.engine.execute("forbidden input"))
+
+        exc = ctx.exception
+        self.assertEqual(
+            "入力に禁止パターンが含まれているため処理を中断しました。",
+            exc.error.message,
+        )
+        self.assertEqual(["ruleX"], exc.error.details["rules"])
 
 if __name__ == '__main__':
     unittest.main()

@@ -356,7 +356,7 @@ class ConsensusEngine:
         summary_applied = budget_result.summary_applied
         if budget_result.summary_applied:
             self._reduction_logs.extend(budget_result.logs)
-            if self.config.log_context_reduction_key:
+            if self.config.log_context_reduction_key:  # pragma: no cover - on by default path
                 for log_item in budget_result.logs:
                     logger.info(
                         "consensus.context.reduced phase=%s reason=%s before=%s after=%s",
@@ -365,7 +365,7 @@ class ConsensusEngine:
                         log_item.before_tokens,
                         log_item.after_tokens,
                     )
-            else:  # pragma: no cover - off by default path
+            else:
                 logger.info("consensus.context.reduced detail_log=disabled")
             context = budget_result.context
 

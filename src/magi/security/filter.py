@@ -61,10 +61,13 @@ class SecurityFilter:
     def detect_abuse(self, raw: str) -> DetectionResult:
         """禁止パターン検知のみを行う"""
         matched = self._detect_patterns(raw or "")
-        return DetectionResult(blocked=bool(matched), matched_rules=matched)
+        # ホワイトリスト逸脱のみの場合はブロックしない
+        non_whitelist_matches = [rule for rule in matched if rule != "whitelist_deviation"]
+        blocked = bool(non_whitelist_matches)
+        return DetectionResult(blocked=blocked, matched_rules=matched)
 
     def sanitize_for_logging(self, text: str) -> str:
-        """ログ用にサニタイズする（機微情報をエスケープ）"""
+        """ログ用にサニタイズする(機微情報をエスケープ)"""
         normalized = self._normalize(text or "")
         return self._escape_control_sequences(normalized)
 

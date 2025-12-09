@@ -199,7 +199,7 @@ class ConfigManager:
                     except ValueError:
                         pass  # 無効な値は無視
                 elif key in self.BOOL_KEYS:
-                    config[key] = str(value).lower() not in ("0", "false", "off", "no")
+                    config[key] = str(value).lower() not in ("0", "false", "off", "no", "")
                 else:
                     config[key] = value
 
@@ -247,7 +247,7 @@ class ConfigManager:
                     except (ValueError, TypeError):
                         pass  # 無効な値は無視
                 elif key in self.BOOL_KEYS:
-                    result[key] = bool(value) if isinstance(value, bool) else str(value).lower() not in ("0", "false", "off", "no")
+                    result[key] = bool(value) if isinstance(value, bool) else str(value).lower() not in ("0", "false", "off", "no", "")
                 else:
                     result[key] = value
 
