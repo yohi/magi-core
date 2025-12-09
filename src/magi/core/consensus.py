@@ -570,6 +570,9 @@ class ConsensusEngine:
             "all_conditions": all_conditions,
             "summary_applied": summary_applied,
             "context": context,
+            "fail_safe": False,
+            "excluded_agents": sorted(set(failed_personas)),
+            "partial_results": partial_results,
         }
 
     def _build_voting_context(
