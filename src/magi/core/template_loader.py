@@ -7,7 +7,7 @@ YAML/JSON/Jinja2 形式のテンプレートを読み込み、TTL 付きキャ�
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 import json
 import logging
 
@@ -39,12 +39,14 @@ class TemplateLoader:
         ttl_seconds: int = 300,
         now_fn: Optional[Callable[[], datetime]] = None,
         schema_validator: Optional[SchemaValidator] = None,
+        event_hook: Optional[Callable[[Dict[str, Any]], None]] = None,
     ):
         self._base_path = Path(base_path)
         self._ttl_seconds = ttl_seconds
         self._now = now_fn or datetime.utcnow
         self._validator = schema_validator or SchemaValidator()
         self._cache: Dict[str, TemplateRevision] = {}
+        self._event_hook = event_hook
 
     def load(self, name: str) -> TemplateRevision:
         """テンプレートを読み込む（キャッシュ優先）"""
@@ -61,6 +63,10 @@ class TemplateLoader:
     def cached(self, name: str) -> Optional[TemplateRevision]:
         """キャッシュ済みリビジョンを返す"""
         return self._cache.get(name)
+
+    def set_event_hook(self, event_hook: Optional[Callable[[Dict[str, Any]], None]]) -> None:
+        """イベントフックを動的に設定する"""
+        self._event_hook = event_hook
 
     def _reload(self, name: str, reason: str) -> TemplateRevision:
         path = self._resolve_path(name)
@@ -88,6 +94,13 @@ class TemplateLoader:
             revision.version,
             self._ttl_seconds,
         )
+        self._emit_event(
+            "template.reload",
+            reason=reason,
+            previous_version=previous.version if previous else "none",
+            new_version=revision.version,
+            ttl=self._ttl_seconds,
+        )
         if previous and previous.version != revision.version:
             logger.info(
                 "consensus.template.version_changed old=%s new=%s mode=%s",
@@ -95,10 +108,21 @@ class TemplateLoader:
                 revision.version,
                 "hot-reload" if reason != "auto" else "auto",
             )
+            self._emit_event(
+                "template.version_changed",
+                old=previous.version,
+                new=revision.version,
+                mode="hot-reload" if reason != "auto" else "auto",
+            )
         return revision
 
     def _resolve_path(self, name: str) -> Path:
         """テンプレートファイルの解決を行う"""
+        # パストラバーサル対策
+        if ".." in name or name.startswith("/"):
+            raise ValueError(f"不正なテンプレート名です: {name}")
+
+        base_path = self._base_path.resolve()
         candidate_names = [name] if Path(name).suffix else [
             f"{name}.yaml",
             f"{name}.yml",
@@ -107,11 +131,20 @@ class TemplateLoader:
         ]
 
         for candidate in candidate_names:
-            path = self._base_path / candidate
+            path = (base_path / candidate).resolve()
+            try:
+                path.relative_to(base_path)
+            except ValueError:
+                raise ValueError(f"不正なテンプレートパスです: {name}")
             if path.exists():
                 return path
 
         raise FileNotFoundError(f"テンプレート {name} が見つかりません: {self._base_path}")
+
+    def _emit_event(self, event_type: str, **payload: Any) -> None:
+        """イベントフックがあれば通知する"""
+        if self._event_hook:
+            self._event_hook({"type": event_type, **payload})
 
     def _read_file(self, path: Path):
         """拡張子ごとにテンプレートを読み込む"""

@@ -301,13 +301,24 @@ class Agent:
         if not validation.ok:
             raise SchemaValidationError(validation.errors)
 
-        vote_str = str(data["vote"]).upper()
-        if vote_str == "APPROVE":
-            vote = Vote.APPROVE
-        elif vote_str == "DENY":
-            vote = Vote.DENY
-        else:
-            vote = Vote.CONDITIONAL
+        vote_raw = data["vote"]
+        vote_str = str(vote_raw).strip().upper()
+        vote_map = {
+            "APPROVE": Vote.APPROVE,
+            "DENY": Vote.DENY,
+            "CONDITIONAL": Vote.CONDITIONAL,
+        }
+        try:
+            vote = vote_map[vote_str]
+        except KeyError as exc:
+            logger.error(
+                "無効な投票値を受信しました: original=%r normalized=%s",
+                vote_raw,
+                vote_str,
+            )
+            raise ValueError(
+                f"投票値が不正です: original={vote_raw!r} normalized={vote_str}"
+            ) from exc
 
         conditions = None
         if vote == Vote.CONDITIONAL:

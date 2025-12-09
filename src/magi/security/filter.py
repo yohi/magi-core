@@ -96,11 +96,12 @@ class SecurityFilter:
     def _detect_patterns(self, text: str) -> List[str]:
         """禁止パターンとホワイトリスト逸脱を検知"""
         matched: List[str] = []
+        text_to_check = text if isinstance(text, str) else ""
         for name, pattern in FORBIDDEN_PATTERNS.items():
-            if pattern.search(text):
+            if pattern.search(text_to_check):
                 matched.append(name)
 
-        if text and not WHITELIST_PATTERN.match(text):
+        if text_to_check and not WHITELIST_PATTERN.fullmatch(text_to_check):
             matched.append("whitelist_deviation")
 
         return matched

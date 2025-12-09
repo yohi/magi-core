@@ -15,10 +15,12 @@ Requirements:
 """
 
 import asyncio
+import inspect
 import logging
+import sys
 import uuid
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from magi.agents.agent import Agent
 from magi.agents.persona import PersonaManager
@@ -77,11 +79,19 @@ class ConsensusEngine:
         self.context_manager = ContextManager()
         self.current_phase = ConsensusPhase.THINKING
         self.schema_validator = schema_validator or SchemaValidator()
-        self.template_loader = template_loader or TemplateLoader(
-            Path(self.config.template_base_path),
-            ttl_seconds=self.config.template_ttl_seconds,
-            schema_validator=self.schema_validator,
-        )
+        self._events: List[Dict[str, Any]] = []
+        if template_loader is not None:
+            self.template_loader = template_loader
+            # 既存インスタンスでもイベントを収集できるようにフックを差し込む
+            if hasattr(self.template_loader, "set_event_hook"):
+                self.template_loader.set_event_hook(self._record_event)
+        else:
+            self.template_loader = TemplateLoader(
+                Path(self.config.template_base_path),
+                ttl_seconds=self.config.template_ttl_seconds,
+                schema_validator=self.schema_validator,
+                event_hook=self._record_event,
+            )
         self.security_filter = SecurityFilter()
 
         # エラーログを保持
@@ -313,49 +323,46 @@ class ConsensusEngine:
     async def _run_voting_phase(
         self,
         thinking_results: Dict[PersonaType, ThinkingOutput],
-        debate_results: List[DebateRound]
+        debate_results: List[DebateRound],
     ) -> Dict:
-        """Voting Phaseを実行
-
-        各エージェントに投票を要求し、投票結果を集計して最終判定を決定する。
-
-        Requirements:
-            - 6.1: APPROVE、DENY、CONDITIONALのいずれかの投票を要求
-            - 6.2: 全エージェントが投票を完了すると投票結果を集計し最終判定を決定
-            - 6.3: 投票結果がAPPROVEの場合はExit Code 0を返す
-            - 6.4: 投票結果がDENYの場合はExit Code 1を返す
-            - 6.5: 投票結果がCONDITIONALを含む場合は条件付き承認の詳細を出力に含める
-
-        Args:
-            thinking_results: Thinking Phaseの結果
-            debate_results: Debate Phaseの結果
-
-        Returns:
-            Dict: 投票結果を含む辞書
-                - voting_results: 各エージェントの投票結果
-                - decision: 最終判定（Decision）
-                - exit_code: 終了コード
-                - all_conditions: 全てのCONDITIONAL条件を集約したリスト
-        """
+        """Voting Phaseを実行"""
         from magi.models import VotingTally
 
+        # フラグ無効なら旧経路を使用
+        if not getattr(self.config, "enable_hardened_consensus", True):
+            return await self._run_voting_phase_legacy(
+                thinking_results, debate_results, mark_fallback=False
+            )
+
         agents = self._create_agents()
+        self.quorum_manager = QuorumManager(
+            total_agents=len(agents),
+            quorum=self.config.quorum_threshold,
+            max_retries=self.config.retry_count,
+        )
         effective_quorum = min(self.config.quorum_threshold, len(agents))
 
         failed_personas: List[str] = []
-        partial_results = False
         voting_results: Dict[PersonaType, VoteOutput] = {}
 
         # 議論コンテキストを構築
         context = self._build_voting_context(thinking_results, debate_results)
 
-        # トークン予算を適用
+        # トークン予算を適用 (新経路のみ)
         budget_result = self.token_budget_manager.enforce(
             context, ConsensusPhase.VOTING
         )
         summary_applied = budget_result.summary_applied
         if budget_result.summary_applied:
             self._reduction_logs.extend(budget_result.logs)
+            for log_item in budget_result.logs:
+                self._record_event(
+                    "context.reduced",
+                    phase=log_item.phase,
+                    reason=log_item.reason,
+                    before_tokens=log_item.before_tokens,
+                    after_tokens=log_item.after_tokens,
+                )
             if self.config.log_context_reduction_key:  # pragma: no cover - on by default path
                 for log_item in budget_result.logs:
                     logger.info(
@@ -370,20 +377,13 @@ class ConsensusEngine:
             context = budget_result.context
 
         async def vote_with_error_handling(
-            persona_type: PersonaType,
-            agent: Agent
+            persona_type: PersonaType, agent: Agent
         ) -> Optional[VoteOutput]:
-            """エラーハンドリング付きの投票実行
-
-            Args:
-                persona_type: ペルソナタイプ
-                agent: エージェント
-
-            Returns:
-                VoteOutput または失敗時はNone
-            """
+            """エラーハンドリング付きの投票実行"""
             payload_id = uuid.uuid4().hex
-            template_revision = self.template_loader.cached(self.config.vote_template_name)
+            template_revision = self.template_loader.cached(
+                self.config.vote_template_name
+            )
             template_version = (
                 template_revision.version if template_revision else "unknown"
             )
@@ -397,6 +397,15 @@ class ConsensusEngine:
                             return await agent.vote(context)
                         except SchemaValidationError as e:
                             schema_attempt += 1
+                            self._record_event(
+                                "schema.retry",
+                                persona=persona_type.value,
+                                attempt=schema_attempt,
+                                max=max_schema_retry,
+                                template_version=template_version,
+                                payload_id=payload_id,
+                                errors=e.errors,
+                            )
                             logger.warning(
                                 "consensus.schema.validation_failed payload_id=%s persona=%s "
                                 "attempt=%s max=%s template_version=%s errors=%s",
@@ -408,6 +417,14 @@ class ConsensusEngine:
                                 ";".join(e.errors),
                             )
                             if schema_attempt > max_schema_retry:
+                                self._record_event(
+                                    "schema.retry_exhausted",
+                                    retry_count=schema_attempt - 1,
+                                    max=max_schema_retry,
+                                    template_version=template_version,
+                                    payload_id=payload_id,
+                                    persona=persona_type.value,
+                                )
                                 logger.warning(
                                     "consensus.schema.retry_exhausted retry_count=%s max=%s "
                                     "template_version=%s payload_id=%s",
@@ -415,6 +432,9 @@ class ConsensusEngine:
                                     max_schema_retry,
                                     template_version,
                                     payload_id,
+                                )
+                                self._record_event(
+                                    "schema.rejected", payload_id=payload_id
                                 )
                                 logger.error(
                                     "consensus.schema.rejected payload_id=%s", payload_id
@@ -441,6 +461,12 @@ class ConsensusEngine:
                         "attempt": attempt + 1,
                     }
                     self._errors.append(error_info)
+                    self._record_event(
+                        "vote.error",
+                        persona=persona_type.value,
+                        attempt=attempt + 1,
+                        message=str(e),
+                    )
                     logger.error(
                         "エージェント %s の投票に失敗: %s (attempt=%s)",
                         persona_type.value,
@@ -449,7 +475,6 @@ class ConsensusEngine:
                     )
                     if attempt >= self.config.retry_count:
                         break
-                    # 次のリトライへ
                     continue
             failed_personas.append(persona_type.value)
             self.quorum_manager.exclude(persona_type.value)
@@ -460,7 +485,6 @@ class ConsensusEngine:
             vote_with_error_handling(persona_type, agent)
             for persona_type, agent in agents.items()
         ]
-
         vote_outputs = await asyncio.gather(*tasks)
 
         # 結果を辞書に格納（成功したもののみ）
@@ -469,7 +493,6 @@ class ConsensusEngine:
                 voting_results[persona_type] = output
                 self.quorum_manager.note_success(persona_type.value)
 
-        # クオーラム判定
         partial_results = 0 < len(voting_results) < len(agents)
         if len(voting_results) < effective_quorum:
             reason = "quorum 未達によりフェイルセーフ"
@@ -481,6 +504,31 @@ class ConsensusEngine:
                     "excluded": failed_personas,
                 }
             )
+            self._record_event(
+                "quorum.fail_safe",
+                reason=reason,
+                excluded=sorted(set(failed_personas)),
+                partial_results=partial_results,
+            )
+            if getattr(self.config, "legacy_fallback_on_fail_safe", False):
+                fallback = await self._run_voting_phase_legacy(
+                    thinking_results,
+                    debate_results,
+                    context_override=context,
+                    agents_override=agents,
+                    mark_fallback=True,
+                )
+                fallback.setdefault("meta", {})["hardened_fail_safe"] = True
+                if summary_applied:
+                    # ハードニング経路で要約が適用された場合はフォールバック結果にも反映
+                    fallback["summary_applied"] = True
+                self._record_event(
+                    "quorum.fallback_legacy",
+                    used=bool(fallback.get("voting_results")),
+                    excluded=sorted(set(failed_personas)),
+                )
+                return fallback
+
             return {
                 "voting_results": {},
                 "decision": Decision.DENIED,
@@ -492,15 +540,14 @@ class ConsensusEngine:
                 "reason": reason,
                 "excluded_agents": sorted(set(failed_personas)),
                 "partial_results": partial_results,
+                "legacy_fallback_used": False,
             }
 
         # 投票を集計
         approve_count = sum(
             1 for v in voting_results.values() if v.vote == Vote.APPROVE
         )
-        deny_count = sum(
-            1 for v in voting_results.values() if v.vote == Vote.DENY
-        )
+        deny_count = sum(1 for v in voting_results.values() if v.vote == Vote.DENY)
         conditional_count = sum(
             1 for v in voting_results.values() if v.vote == Vote.CONDITIONAL
         )
@@ -508,32 +555,25 @@ class ConsensusEngine:
         tally = VotingTally(
             approve_count=approve_count,
             deny_count=deny_count,
-            conditional_count=conditional_count
+            conditional_count=conditional_count,
         )
 
-        # 最終判定を決定
         decision = tally.get_decision(self.config.voting_threshold)
-
-        # Exit Codeを決定
         if decision == Decision.APPROVED:
             exit_code = 0
         elif decision == Decision.DENIED:
             exit_code = 1
-        else:  # CONDITIONAL
+        else:
             exit_code = 2
 
-        # 全てのCONDITIONAL条件を集約
         all_conditions = []
         for vote_output in voting_results.values():
             if vote_output.vote == Vote.CONDITIONAL and vote_output.conditions:
                 all_conditions.extend(vote_output.conditions)
 
-        # フェーズをCOMPLETEDに遷移
         self._transition_to_phase(ConsensusPhase.COMPLETED)
 
-        logger.info(
-            f"Voting Phase完了: {decision.value} (Exit Code: {exit_code})"
-        )
+        logger.info(f"Voting Phase完了: {decision.value} (Exit Code: {exit_code})")
 
         return {
             "voting_results": voting_results,
@@ -545,6 +585,134 @@ class ConsensusEngine:
             "fail_safe": False,
             "excluded_agents": sorted(set(failed_personas)),
             "partial_results": partial_results,
+            "legacy_fallback_used": False,
+        }
+
+    async def _run_voting_phase_legacy(
+        self,
+        thinking_results: Dict[PersonaType, ThinkingOutput],
+        debate_results: List[DebateRound],
+        context_override: Optional[str] = None,
+        agents_override: Optional[Dict[PersonaType, Agent]] = None,
+        mark_fallback: bool = False,
+    ) -> Dict:
+        """旧経路でのVoting実行
+
+        ハードニング無効またはフェイルセーフ時のフォールバック用。
+        """
+        from magi.models import VotingTally
+
+        agents = agents_override or self._create_agents()
+        context = (
+            context_override
+            if context_override is not None
+            else self._build_voting_context(thinking_results, debate_results)
+        )
+
+        voting_results: Dict[PersonaType, VoteOutput] = {}
+        failed_personas: List[str] = []
+
+        async def vote_once(persona_type: PersonaType, agent: Agent) -> Optional[VoteOutput]:
+            try:
+                return await agent.vote(context)
+            except Exception as exc:
+                if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                    raise
+                self._errors.append(
+                    {
+                        "phase": ConsensusPhase.VOTING.value,
+                        "persona_type": persona_type.value,
+                        "error": str(exc),
+                        "mode": "legacy",
+                    }
+                )
+                return None
+
+        tasks = [
+            vote_once(persona_type, agent)
+            for persona_type, agent in agents.items()
+        ]
+        gather_result = asyncio.gather(*tasks)
+        if inspect.isawaitable(gather_result):
+            outputs = await gather_result
+        else:
+            # モックで同期オブジェクトが返るケースに備えてコルーチンを破棄
+            for task in tasks:
+                if inspect.iscoroutine(task):
+                    task.close()
+            outputs = gather_result
+
+        if sys.version_info >= (3, 10):
+            persona_outputs = zip(agents.keys(), outputs, strict=True)
+        else:
+            if len(agents) != len(outputs):
+                raise ValueError(
+                    f"投票結果数が不一致: agents={len(agents)} outputs={len(outputs)}"
+                )
+            persona_outputs = zip(agents.keys(), outputs)
+
+        for persona_type, output in persona_outputs:
+            if output is not None:
+                voting_results[persona_type] = output
+            else:
+                failed_personas.append(persona_type.value)
+
+        partial_results = 0 < len(voting_results) < len(agents)
+        if not voting_results:
+            # 旧経路でも票が得られない場合はフェイルセーフ
+            return {
+                "voting_results": {},
+                "decision": Decision.DENIED,
+                "exit_code": 1,
+                "all_conditions": [],
+                "summary_applied": False,
+                "context": context,
+                "fail_safe": True,
+                "reason": "legacy path quorum不足",
+                "excluded_agents": sorted(set(failed_personas)),
+                "partial_results": partial_results,
+                "legacy_mode": True,
+                "legacy_fallback_used": mark_fallback,
+            }
+
+        approve_count = sum(
+            1 for v in voting_results.values() if v.vote == Vote.APPROVE
+        )
+        deny_count = sum(1 for v in voting_results.values() if v.vote == Vote.DENY)
+        conditional_count = sum(
+            1 for v in voting_results.values() if v.vote == Vote.CONDITIONAL
+        )
+
+        tally = VotingTally(
+            approve_count=approve_count,
+            deny_count=deny_count,
+            conditional_count=conditional_count,
+        )
+        decision = tally.get_decision(self.config.voting_threshold)
+        if decision == Decision.APPROVED:
+            exit_code = 0
+        elif decision == Decision.DENIED:
+            exit_code = 1
+        else:
+            exit_code = 2
+
+        all_conditions = []
+        for vote_output in voting_results.values():
+            if vote_output.vote == Vote.CONDITIONAL and vote_output.conditions:
+                all_conditions.extend(vote_output.conditions)
+
+        return {
+            "voting_results": voting_results,
+            "decision": decision,
+            "exit_code": exit_code,
+            "all_conditions": all_conditions,
+            "summary_applied": False,
+            "context": context,
+            "fail_safe": False,
+            "excluded_agents": sorted(set(failed_personas)),
+            "partial_results": partial_results,
+            "legacy_mode": True,
+            "legacy_fallback_used": mark_fallback,
         }
 
     def _build_voting_context(
@@ -667,6 +835,16 @@ class ConsensusEngine:
             エラーログのリスト
         """
         return self._errors.copy()
+
+    def _record_event(self, event_type: str, **payload: Any) -> None:
+        """構造化イベントを記録する"""
+        event = {"type": event_type, **payload}
+        self._events.append(event)
+
+    @property
+    def events(self) -> List[Dict[str, Any]]:
+        """イベントログを取得"""
+        return self._events.copy()
 
     @property
     def context_reduction_logs(self) -> List[ReductionLog]:
