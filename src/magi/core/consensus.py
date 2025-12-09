@@ -457,8 +457,8 @@ class ConsensusEngine:
                                         "template_version": template_version,
                                     }
                                 )
-                            failed_personas.append(persona_type.value)
-                            self.quorum_manager.exclude(persona_type.value)
+                                failed_personas.append(persona_type.value)
+                                self.quorum_manager.exclude(persona_type.value)
                                 return None
                             continue
                 except Exception as e:  # pragma: no cover - リトライロジックで検証
