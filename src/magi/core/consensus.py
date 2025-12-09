@@ -28,7 +28,9 @@ from magi.core.quorum import QuorumManager
 from magi.core.schema_validator import SchemaValidationError, SchemaValidator
 from magi.core.template_loader import TemplateLoader
 from magi.core.token_budget import ReductionLog, TokenBudgetManager
+from magi.errors import MagiException, create_agent_error
 from magi.llm.client import LLMClient
+from magi.security.filter import SecurityFilter
 from magi.models import (
     ConsensusPhase,
     ConsensusResult,
@@ -80,6 +82,7 @@ class ConsensusEngine:
             ttl_seconds=self.config.template_ttl_seconds,
             schema_validator=self.schema_validator,
         )
+        self.security_filter = SecurityFilter()
 
         # エラーログを保持
         self._errors: List[Dict] = []
@@ -126,6 +129,7 @@ class ConsensusEngine:
                 llm_client,
                 schema_validator=self.schema_validator,
                 template_loader=self.template_loader,
+                security_filter=self.security_filter,
             )
 
         return agents
@@ -352,14 +356,17 @@ class ConsensusEngine:
         summary_applied = budget_result.summary_applied
         if budget_result.summary_applied:
             self._reduction_logs.extend(budget_result.logs)
-            for log_item in budget_result.logs:
-                logger.info(
-                    "コンテキスト削減: phase=%s reason=%s before=%s after=%s",
-                    log_item.phase,
-                    log_item.reason,
-                    log_item.before_tokens,
-                    log_item.after_tokens,
-                )
+            if self.config.log_context_reduction_key:  # pragma: no cover - on by default path
+                for log_item in budget_result.logs:
+                    logger.info(
+                        "consensus.context.reduced phase=%s reason=%s before=%s after=%s",
+                        log_item.phase,
+                        log_item.reason,
+                        log_item.before_tokens,
+                        log_item.after_tokens,
+                    )
+            else:
+                logger.info("consensus.context.reduced detail_log=disabled")
             context = budget_result.context
 
         async def vote_with_error_handling(
@@ -610,6 +617,19 @@ class ConsensusEngine:
         Returns:
             ConsensusResult: 合議結果
         """
+        detection = self.security_filter.detect_abuse(prompt)
+        if detection.blocked:
+            logger.warning(
+                "consensus.input.rejected rules=%s",
+                ",".join(detection.matched_rules),
+            )
+            raise MagiException(
+                create_agent_error(
+                    "入力に禁止パターンが含まれているため処理を中断しました。",
+                    details={"rules": detection.matched_rules},
+                )
+            )
+
         # プラグインのオーバーライドを適用
         if plugin is not None and hasattr(plugin, 'agent_overrides'):
             self.persona_manager.apply_overrides(plugin.agent_overrides)

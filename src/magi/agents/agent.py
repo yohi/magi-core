@@ -16,6 +16,7 @@ from magi.core.schema_validator import (
     SchemaValidator,
 )
 from magi.core.template_loader import TemplateLoader
+from magi.errors import MagiException, create_agent_error
 from magi.llm.client import LLMClient, LLMRequest
 from magi.models import (
     DebateOutput,
@@ -24,6 +25,7 @@ from magi.models import (
     Vote,
     VoteOutput,
 )
+from magi.security.filter import SecurityFilter
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,7 @@ class Agent:
         llm_client: LLMClient,
         schema_validator: Optional[SchemaValidator] = None,
         template_loader: Optional[TemplateLoader] = None,
+        security_filter: Optional[SecurityFilter] = None,
     ):
         """Agentを初期化
 
@@ -56,6 +59,7 @@ class Agent:
         self.llm_client = llm_client
         self.schema_validator = schema_validator or SchemaValidator()
         self.template_loader = template_loader
+        self.security_filter = security_filter or SecurityFilter()
 
     async def think(self, prompt: str) -> ThinkingOutput:
         """独立した思考を生成
@@ -69,9 +73,17 @@ class Agent:
         Returns:
             ThinkingOutput: 思考結果
         """
+        sanitized = self.security_filter.sanitize_prompt(prompt)
+        if sanitized.blocked:
+            raise MagiException(
+                create_agent_error(
+                    "ユーザー入力に禁止パターンが含まれています。",
+                    details={"rules": sanitized.matched_rules},
+                )
+            )
         request = LLMRequest(
             system_prompt=self.persona.system_prompt,
-            user_prompt=self._build_thinking_prompt(prompt)
+            user_prompt=self._build_thinking_prompt(sanitized.safe)
         )
 
         response = await self.llm_client.send(request)

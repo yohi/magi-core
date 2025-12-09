@@ -385,6 +385,7 @@ plugin:
   name: test-plugin
   version: "1.0.0"
   description: "Test plugin for integration testing"
+  hash: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 bridge:
   command: echo
