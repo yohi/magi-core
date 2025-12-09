@@ -48,10 +48,6 @@ class VotingTally:
         deny_count: DENY票の数
         conditional_count: CONDITIONAL票の数
     """
-    # 判定閾値の定数
-    UNANIMOUS_THRESHOLD = 3
-    MAJORITY_THRESHOLD = 2
-
     approve_count: int
     deny_count: int
     conditional_count: int
