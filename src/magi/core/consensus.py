@@ -498,7 +498,7 @@ class ConsensusEngine:
             reason = "quorum 未達によりフェイルセーフ"
             self._errors.append(
                 {
-                    "code": "CONSENSUS_QUORUM_UNSATISFIED",
+                    "code": ErrorCode.CONSENSUS_QUORUM_UNSATISFIED.value,
                     "phase": ConsensusPhase.VOTING.value,
                     "reason": reason,
                     "excluded": failed_personas,

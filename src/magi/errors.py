@@ -37,6 +37,7 @@ class ErrorCode(Enum):
 
     # コンセンサスエンジンエラー
     CONSENSUS_SCHEMA_RETRY_EXCEEDED = "CONSENSUS_001"
+    CONSENSUS_QUORUM_UNSATISFIED = "CONSENSUS_002"
 
 
 @dataclass
