@@ -121,10 +121,13 @@ class TokenBudgetManager:
     def _score_segment(segment: str) -> int:
         """セグメントの重要度スコアを計算する."""
         score = 1
-        if any(
-            marker in segment
-            for marker in ("##", "【", "###", "---", "反論", "Thinking", "Debate")
-        ):
+        heading_markers = ("##", "###")
+        priority_markers = ("【", "---", "反論", "Thinking", "Debate")
+
+        # Markdown見出しは他の重要マーカーより強く扱い、後段のまとめを優先する
+        if any(marker in segment for marker in heading_markers):
+            score += 3
+        elif any(marker in segment for marker in priority_markers):
             score += 2
         if len(segment) < 120:
             score += 1
