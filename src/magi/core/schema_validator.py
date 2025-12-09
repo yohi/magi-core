@@ -34,9 +34,9 @@ class SchemaValidator:
     """
 
     _ALLOWED_VOTES = {
-        Vote.APPROVE.value,
-        Vote.DENY.value,
-        Vote.CONDITIONAL.value,
+        Vote.APPROVE.value.upper(),
+        Vote.DENY.value.upper(),
+        Vote.CONDITIONAL.value.upper(),
     }
 
     def __init__(self, template_required_fields: Optional[List[str]] = None):
@@ -56,9 +56,9 @@ class SchemaValidator:
 
         vote_value = payload.get("vote")
         if isinstance(vote_value, str):
-            vote_normalized = vote_value.strip().lower()
+            vote_normalized = vote_value.strip().upper()
         else:
-            vote_normalized = str(vote_value).lower() if vote_value is not None else ""
+            vote_normalized = str(vote_value).upper() if vote_value is not None else ""
 
         if vote_normalized not in self._ALLOWED_VOTES:
             errors.append("vote は APPROVE | DENY | CONDITIONAL のいずれかを指定してください")
