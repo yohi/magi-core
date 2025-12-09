@@ -5,11 +5,18 @@
 Requirements: 3.2, 3.3, 3.4, 4.1
 """
 import json
+import logging
 import re
 from datetime import datetime
 from typing import Dict, Optional
 
 from magi.agents.persona import Persona
+from magi.core.schema_validator import (
+    SchemaValidationError,
+    SchemaValidator,
+)
+from magi.core.template_loader import TemplateLoader
+from magi.errors import MagiException, create_agent_error
 from magi.llm.client import LLMClient, LLMRequest
 from magi.models import (
     DebateOutput,
@@ -18,6 +25,9 @@ from magi.models import (
     Vote,
     VoteOutput,
 )
+from magi.security.filter import SecurityFilter
+
+logger = logging.getLogger(__name__)
 
 
 class Agent:
@@ -31,7 +41,14 @@ class Agent:
         llm_client: LLMクライアント
     """
 
-    def __init__(self, persona: Persona, llm_client: LLMClient):
+    def __init__(
+        self,
+        persona: Persona,
+        llm_client: LLMClient,
+        schema_validator: Optional[SchemaValidator] = None,
+        template_loader: Optional[TemplateLoader] = None,
+        security_filter: Optional[SecurityFilter] = None,
+    ):
         """Agentを初期化
 
         Args:
@@ -40,6 +57,9 @@ class Agent:
         """
         self.persona = persona
         self.llm_client = llm_client
+        self.schema_validator = schema_validator or SchemaValidator()
+        self.template_loader = template_loader
+        self.security_filter = security_filter or SecurityFilter()
 
     async def think(self, prompt: str) -> ThinkingOutput:
         """独立した思考を生成
@@ -53,9 +73,17 @@ class Agent:
         Returns:
             ThinkingOutput: 思考結果
         """
+        sanitized = self.security_filter.sanitize_prompt(prompt)
+        if sanitized.blocked:
+            raise MagiException(
+                create_agent_error(
+                    "ユーザー入力に禁止パターンが含まれています。",
+                    details={"rules": sanitized.matched_rules},
+                )
+            )
         request = LLMRequest(
             system_prompt=self.persona.system_prompt,
-            user_prompt=self._build_thinking_prompt(prompt)
+            user_prompt=self._build_thinking_prompt(sanitized.safe)
         )
 
         response = await self.llm_client.send(request)
@@ -180,6 +208,15 @@ class Agent:
         Returns:
             str: 構築されたプロンプト
         """
+        if self.template_loader:
+            try:
+                revision = self.template_loader.load("vote_prompt")
+                variables = revision.variables or {}
+                variables = {**variables, "context": context}
+                return revision.template.format(**variables)
+            except Exception as exc:
+                logger.warning("投票テンプレートの読み込みに失敗しました: %s", exc)
+
         return f"""これはVoting Phaseです。これまでの議論を踏まえて、最終投票を行ってください。
 
 【これまでの議論】
@@ -249,51 +286,47 @@ class Agent:
         Returns:
             VoteOutput: パースされた投票結果
         """
+        json_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", content, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            json_str = content
+
         try:
-            # JSONを抽出（マークダウンコードブロックも考慮）
-            json_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', content, re.DOTALL)
-            if json_match:
-                json_str = json_match.group(1)
-            else:
-                # コードブロックがない場合は直接パース試行
-                json_str = content
-
             data = json.loads(json_str)
+        except json.JSONDecodeError as exc:
+            raise SchemaValidationError([f"JSONのデコードに失敗しました: {exc}"]) from exc
 
-            # 投票を取得（文字列に変換してからupper()を呼び出す）
-            vote_value = data.get("vote")
-            if vote_value is None:
-                vote_str = ""
-            else:
-                vote_str = str(vote_value).upper()
+        validation = self.schema_validator.validate_vote_payload(data)
+        if not validation.ok:
+            raise SchemaValidationError(validation.errors)
 
-            if vote_str == "APPROVE":
-                vote = Vote.APPROVE
-            elif vote_str == "DENY":
-                vote = Vote.DENY
-            else:
-                vote = Vote.CONDITIONAL
-
-            # 理由を取得
-            reason = data.get("reason", "理由なし")
-
-            # 条件を取得（CONDITIONALの場合）
-            conditions = None
-            if vote == Vote.CONDITIONAL:
-                conditions = data.get("conditions", [])
-
-            return VoteOutput(
-                persona_type=self.persona.type,
-                vote=vote,
-                reason=reason,
-                conditions=conditions
+        vote_raw = data["vote"]
+        vote_str = str(vote_raw).strip().upper()
+        vote_map = {
+            "APPROVE": Vote.APPROVE,
+            "DENY": Vote.DENY,
+            "CONDITIONAL": Vote.CONDITIONAL,
+        }
+        try:
+            vote = vote_map[vote_str]
+        except KeyError as exc:
+            logger.error(
+                "無効な投票値を受信しました: original=%r normalized=%s",
+                vote_raw,
+                vote_str,
             )
+            raise ValueError(
+                f"投票値が不正です: original={vote_raw!r} normalized={vote_str}"
+            ) from exc
 
-        except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
-            # パースに失敗した場合はフォールバック
-            return VoteOutput(
-                persona_type=self.persona.type,
-                vote=Vote.CONDITIONAL,
-                reason=f"投票レスポンスのパース失敗: {content[:100]}...",
-                conditions=None
-            )
+        conditions = None
+        if vote == Vote.CONDITIONAL:
+            conditions = data.get("conditions", [])
+
+        return VoteOutput(
+            persona_type=self.persona.type,
+            vote=vote,
+            reason=data["reason"],
+            conditions=conditions,
+        )

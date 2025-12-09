@@ -3,6 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import yaml
 import sys
+from string import ascii_letters, digits
 
 # プロジェクトルートをPythonパスに追加
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -13,6 +14,11 @@ from hypothesis.strategies import text, dictionaries, sampled_from, integers
 from magi.plugins.loader import PluginLoader, PluginMetadata, BridgeConfig, Plugin, ValidationResult
 from magi.errors import MagiException, ErrorCode
 from magi.models import PersonaType
+
+
+def _build_invalid_yaml(text_value: str) -> str:
+    """無効なYAML文字列を生成する"""
+    return "{" + text_value + ":"
 
 class TestPluginLoader(unittest.TestCase):
 
@@ -30,7 +36,11 @@ class TestPluginLoader(unittest.TestCase):
         plugin_name=text(min_size=1, max_size=20),
         plugin_version=text(min_size=1, max_size=10),
         plugin_description=text(min_size=0, max_size=50),
-        command=text(min_size=1, max_size=30),
+        command=text(
+            min_size=1,
+            max_size=30,
+            alphabet=ascii_letters + digits + "-_./"
+        ),
         interface=sampled_from(["stdio", "file"]),
         timeout=integers(min_value=1, max_value=300),
         melchior_override=text(min_size=0, max_size=100),
@@ -47,7 +57,8 @@ class TestPluginLoader(unittest.TestCase):
             "plugin": {
                 "name": plugin_name,
                 "version": plugin_version,
-                "description": plugin_description
+                "description": plugin_description,
+                "hash": "sha256:" + ("a" * 64),
             },
             "bridge": {
                 "command": command,
@@ -86,7 +97,11 @@ class TestPluginLoader(unittest.TestCase):
     # Test cases for default values
     @given(
         plugin_name=text(min_size=1, max_size=20),
-        command=text(min_size=1, max_size=30),
+        command=text(
+            min_size=1,
+            max_size=30,
+            alphabet=ascii_letters + digits + "-_./"
+        ),
         interface=sampled_from(["stdio", "file"]),
     )
     @settings(max_examples=20)
@@ -94,6 +109,7 @@ class TestPluginLoader(unittest.TestCase):
         plugin_data = {
             "plugin": {
                 "name": plugin_name,
+                "hash": "sha256:" + ("b" * 64),
             },
             "bridge": {
                 "command": command,
@@ -115,11 +131,55 @@ class TestPluginLoader(unittest.TestCase):
         self.assertEqual(plugin.bridge.timeout, 30)          # Default timeout
         self.assertEqual(plugin.agent_overrides, {})       # Default empty dict
 
+    def test_missing_signature_or_hash_is_rejected(self):
+        """署名またはハッシュが欠落したプラグインは拒否される"""
+        plugin_data = {
+            "plugin": {
+                "name": "example",
+                "version": "1.0.0",
+                "description": "desc",
+            },
+            "bridge": {
+                "command": "echo",
+                "interface": "stdio",
+                "timeout": 10,
+            },
+        }
+
+        plugin_file = self.temp_path / "missing_security.yaml"
+        plugin_file.write_text(yaml.dump(plugin_data))
+
+        with self.assertRaises(MagiException) as cm:
+            self.loader.load(plugin_file)
+
+        self.assertEqual(cm.exception.error.code, ErrorCode.PLUGIN_YAML_PARSE_ERROR.value)
+        self.assertIn("signature", cm.exception.error.message.lower())
+
+    def test_command_with_meta_characters_is_rejected(self):
+        """メタ文字を含むコマンドは無効として扱われる"""
+        plugin_data = {
+            "plugin": {
+                "name": "danger",
+                "version": "1.0.0",
+                "hash": "sha256:" + ("c" * 64),
+            },
+            "bridge": {
+                "command": "rm -rf /",  # 意図的にメタ文字を含む
+                "interface": "stdio",
+            }
+        }
+
+        plugin_file = self.temp_path / "invalid_command.yaml"
+        plugin_file.write_text(yaml.dump(plugin_data))
+
+        with self.assertRaises(MagiException) as cm:
+            self.loader.load(plugin_file)
+
+        self.assertEqual(cm.exception.error.code, ErrorCode.PLUGIN_YAML_PARSE_ERROR.value)
+
     # **Feature: magi-core, Property 14: 無効なYAMLのエラーハンドリング**
     # **Validates: Requirements 8.3**
-    @given(invalid_yaml_content=text(min_size=1, max_size=100).map(lambda s: "{" + s + ":").filter(
-        lambda s: True  # A simple heuristic to generate invalid YAMLs
-    ))
+    @given(invalid_yaml_content=text(min_size=1, max_size=100).map(_build_invalid_yaml))
     @settings(max_examples=50)
     def test_invalid_yaml_error_handling(self, invalid_yaml_content):
         plugin_file = self.temp_path / "invalid_plugin.yaml"

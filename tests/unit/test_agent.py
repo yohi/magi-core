@@ -252,10 +252,11 @@ class TestAgentVote(unittest.IsolatedAsyncioTestCase):
         self.assertIn("条件1", result.conditions)
 
     async def test_vote_handles_invalid_json(self):
-        """voteメソッドは不正なJSONを適切に処理する"""
+        """voteメソッドは不正なJSONを検知して例外を送出する"""
         from magi.agents.agent import Agent
         from magi.agents.persona import Persona
         from magi.llm.client import LLMClient, LLMResponse
+        from magi.core.schema_validator import SchemaValidationError
 
         persona = Persona(
             type=PersonaType.MELCHIOR,
@@ -272,11 +273,8 @@ class TestAgentVote(unittest.IsolatedAsyncioTestCase):
         ))
 
         agent = Agent(persona=persona, llm_client=mock_client)
-        result = await agent.vote("コンテキスト")
-
-        # フォールバックとしてCONDITIONALになることを確認
-        self.assertEqual(result.vote, Vote.CONDITIONAL)
-        self.assertIn("パース失敗", result.reason)
+        with self.assertRaises(SchemaValidationError):
+            await agent.vote("コンテキスト")
 
 
 if __name__ == '__main__':

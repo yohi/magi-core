@@ -43,7 +43,7 @@ valid_version = text(
 valid_command = text(
     min_size=1,
     max_size=100,
-    alphabet='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-./ '
+    alphabet='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-./'
 ).filter(lambda s: s.strip() != '')
 
 # オーバーライドプロンプトのストラテジー（任意の文字列、YAML安全）
@@ -96,7 +96,8 @@ class TestPluginLoaderProperty13(unittest.TestCase):
             "plugin": {
                 "name": plugin_name,
                 "version": plugin_version,
-                "description": plugin_description
+                "description": plugin_description,
+                "hash": "sha256:" + ("d" * 64),
             },
             "bridge": {
                 "command": command,
@@ -146,6 +147,7 @@ class TestPluginLoaderProperty13(unittest.TestCase):
         plugin_data = {
             "plugin": {
                 "name": plugin_name,
+                "hash": "sha256:" + ("e" * 64),
             },
             "bridge": {
                 "command": command,
@@ -187,6 +189,7 @@ class TestPluginLoaderProperty13(unittest.TestCase):
         plugin_data = {
             "plugin": {
                 "name": plugin_name,
+                "hash": "sha256:" + ("e" * 64),
                 # version and description are optional
             },
             "bridge": {
@@ -226,6 +229,7 @@ class TestPluginLoaderProperty13(unittest.TestCase):
         original_data = {
             "plugin": {
                 "name": plugin_name,
+                "hash": "sha256:" + ("f" * 64),
             },
             "bridge": {
                 "command": command,
@@ -311,7 +315,8 @@ class TestPluginLoaderProperty14(unittest.TestCase):
         """
         plugin_data = {
             "plugin": {
-                "name": "test_plugin"
+                "name": "test_plugin",
+                "hash": "sha256:" + ("1" * 64),
             }
             # Missing 'bridge' section
         }
@@ -332,7 +337,8 @@ class TestPluginLoaderProperty14(unittest.TestCase):
         plugin_data = {
             "plugin": {
                 # Missing 'name'
-                "version": "1.0.0"
+                "version": "1.0.0",
+                "hash": "sha256:" + ("2" * 64),
             },
             "bridge": {
                 "command": "some_command",
@@ -359,7 +365,8 @@ class TestPluginLoaderProperty14(unittest.TestCase):
         """
         plugin_data = {
             "plugin": {
-                "name": "test_plugin"
+                "name": "test_plugin",
+                "hash": "sha256:" + ("3" * 64),
             },
             "bridge": {
                 "command": "some_command",
@@ -384,7 +391,8 @@ class TestPluginLoaderProperty14(unittest.TestCase):
         """
         plugin_data = {
             "plugin": {
-                "name": "test_plugin"
+                "name": "test_plugin",
+                "hash": "sha256:" + ("4" * 64),
             },
             "bridge": {
                 "command": "some_command",
@@ -427,7 +435,8 @@ class TestPluginLoaderProperty14(unittest.TestCase):
         """
         plugin_data = {
             "plugin": {
-                "name": "test_plugin"
+                "name": "test_plugin",
+                "hash": "sha256:" + ("5" * 64),
             },
             "bridge": {
                 "command": "some_command",

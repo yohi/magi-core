@@ -48,10 +48,6 @@ class VotingTally:
         deny_count: DENY票の数
         conditional_count: CONDITIONAL票の数
     """
-    # 判定閾値の定数
-    UNANIMOUS_THRESHOLD = 3
-    MAJORITY_THRESHOLD = 2
-
     approve_count: int
     deny_count: int
     conditional_count: int
@@ -68,17 +64,24 @@ class VotingTally:
         Raises:
             ValueError: thresholdが"unanimous"または"majority"以外の場合
         """
+        total_votes = self.approve_count + self.deny_count + self.conditional_count
+
         if threshold == "unanimous":
-            if self.approve_count == self.UNANIMOUS_THRESHOLD:
+            if total_votes > 0 and self.approve_count == total_votes:
                 return Decision.APPROVED
             elif self.deny_count >= 1:
                 return Decision.DENIED
             else:
                 return Decision.CONDITIONAL
         elif threshold == "majority":
-            if self.approve_count >= self.MAJORITY_THRESHOLD:
+            if total_votes == 0:
+                return Decision.CONDITIONAL
+
+            majority_threshold = total_votes // 2 + 1
+
+            if self.approve_count >= majority_threshold:
                 return Decision.APPROVED
-            elif self.deny_count >= self.MAJORITY_THRESHOLD:
+            elif self.deny_count >= majority_threshold:
                 return Decision.DENIED
             else:
                 return Decision.CONDITIONAL
@@ -166,3 +169,23 @@ class ConsensusResult:
     final_decision: Decision
     exit_code: int
     all_conditions: Optional[List[str]] = None
+
+
+@dataclass
+class QuorumState:
+    """クオーラム判定の状態"""
+
+    alive: int
+    quorum: int
+    partial_results: bool
+    retries_left: int
+    excluded: List[str]
+
+
+@dataclass
+class StreamingEmitResult:
+    """ストリーミング送出結果"""
+
+    success: bool
+    attempts: int
+    last_error: Optional[Exception] = None

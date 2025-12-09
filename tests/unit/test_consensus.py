@@ -18,6 +18,7 @@ from magi.core.context import ContextManager
 from magi.agents.persona import PersonaManager
 from magi.agents.agent import Agent
 from magi.config.manager import Config
+from magi.errors import MagiException
 from magi.models import (
     ConsensusPhase,
     ConsensusResult,
@@ -278,6 +279,102 @@ class TestConsensusEngineAgentCreation(unittest.TestCase):
                 self.assertIsInstance(agent, Agent)
                 self.assertEqual(agent.persona.type, persona_type)
 
+
+class TestConsensusTokenBudget(unittest.TestCase):
+    """Voting前のトークン予算管理のテスト"""
+
+    def setUp(self):
+        self.config = Config(api_key="test-api-key", token_budget=50)
+        self.engine = ConsensusEngine(self.config)
+
+    def _mock_agents(self, vote_output: VoteOutput):
+        return {
+            PersonaType.MELCHIOR: MagicMock(
+                vote=AsyncMock(return_value=vote_output)
+            ),
+            PersonaType.BALTHASAR: MagicMock(
+                vote=AsyncMock(return_value=vote_output)
+            ),
+            PersonaType.CASPER: MagicMock(
+                vote=AsyncMock(return_value=vote_output)
+            ),
+        }
+
+    def test_over_budget_context_is_compressed_and_logged(self):
+        """投票前コンテキストが予算超過なら圧縮されログが記録される"""
+        long_context = "【Debate結果】\n" + ("詳細" * 400)
+        vote_output = VoteOutput(
+            persona_type=PersonaType.MELCHIOR,
+            vote=Vote.APPROVE,
+            reason="ok"
+        )
+
+        with patch.object(
+            self.engine, "_build_voting_context", return_value=long_context
+        ), patch.object(
+            self.engine, "_create_agents", return_value=self._mock_agents(vote_output)
+        ):
+            result = asyncio.run(
+                self.engine._run_voting_phase({}, [])
+            )
+
+        self.assertTrue(result["summary_applied"])
+        logs = self.engine.context_reduction_logs
+        self.assertGreater(len(logs), 0)
+        self.assertEqual(logs[0].phase, ConsensusPhase.VOTING.value)
+        self.assertLess(logs[0].after_tokens, logs[0].before_tokens)
+        # 予算を超えていないことを確認
+        self.assertLessEqual(
+            self.engine.token_budget_manager.estimate_tokens(result["context"]),
+            self.config.token_budget
+        )
+
+    def test_under_budget_context_passes_through(self):
+        """予算内なら要約せずそのまま渡す"""
+        short_context = "短いコンテキスト"
+        vote_output = VoteOutput(
+            persona_type=PersonaType.MELCHIOR,
+            vote=Vote.APPROVE,
+            reason="ok"
+        )
+
+        with patch.object(
+            self.engine, "_build_voting_context", return_value=short_context
+        ), patch.object(
+            self.engine, "_create_agents", return_value=self._mock_agents(vote_output)
+        ):
+            result = asyncio.run(
+                self.engine._run_voting_phase({}, [])
+            )
+
+        self.assertFalse(result["summary_applied"])
+        self.assertEqual([], self.engine.context_reduction_logs)
+        self.assertEqual(short_context, result["context"])
+
+
+class TestConsensusSecurityFilter(unittest.TestCase):
+    """SecurityFilterによる入力ブロックのテスト"""
+
+    def setUp(self):
+        self.engine = ConsensusEngine(Config(api_key="test-api-key"))
+
+    def test_execute_raises_when_abuse_detected(self):
+        """detect_abuseがブロックを返した場合にMagiExceptionを送出すること"""
+        blocked_detection = MagicMock(blocked=True, matched_rules=["ruleX"])
+        with patch.object(
+            self.engine.security_filter,
+            "detect_abuse",
+            return_value=blocked_detection,
+        ):
+            with self.assertRaises(MagiException) as ctx:
+                asyncio.run(self.engine.execute("forbidden input"))
+
+        exc = ctx.exception
+        self.assertEqual(
+            "入力に禁止パターンが含まれているため処理を中断しました。",
+            exc.error.message,
+        )
+        self.assertEqual(["ruleX"], exc.error.details["rules"])
 
 if __name__ == '__main__':
     unittest.main()

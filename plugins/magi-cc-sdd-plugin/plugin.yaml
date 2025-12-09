@@ -7,6 +7,7 @@
 plugin:
   name: magi-cc-sdd-plugin
   version: "1.0.0"
+  hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
   description: "仕様書駆動開発(SDD)のためのcc-sdd統合プラグイン。仕様書の作成と3賢者によるレビューを行います。"
 
 bridge:

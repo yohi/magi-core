@@ -31,6 +31,9 @@ class Config:
         output_format: 出力形式（"json" または "markdown"）
         timeout: APIタイムアウト秒数
         retry_count: リトライ回数
+        token_budget: トークン予算
+        quorum_threshold: クオーラム閾値
+        stream_retry_count: ストリーミング送出のリトライ回数
     """
     api_key: str
     model: str = "claude-sonnet-4-20250514"
@@ -39,6 +42,16 @@ class Config:
     output_format: str = "markdown"
     timeout: int = 60
     retry_count: int = 3
+    token_budget: int = 8192
+    schema_retry_count: int = 3
+    template_ttl_seconds: int = 300
+    vote_template_name: str = "vote_prompt"
+    template_base_path: str = "templates"
+    quorum_threshold: int = 2
+    stream_retry_count: int = 5
+    log_context_reduction_key: bool = True
+    enable_hardened_consensus: bool = True
+    legacy_fallback_on_fail_safe: bool = False
 
 
 @dataclass
@@ -70,10 +83,34 @@ class ConfigManager:
         "output_format": "MAGI_OUTPUT_FORMAT",
         "timeout": "MAGI_TIMEOUT",
         "retry_count": "MAGI_RETRY_COUNT",
+        "token_budget": "CONSENSUS_TOKEN_BUDGET",
+        "schema_retry_count": "CONSENSUS_SUMMARY_RETRY_COUNT",
+        "template_ttl_seconds": "CONSENSUS_TEMPLATE_TTL_SECONDS",
+        "vote_template_name": "CONSENSUS_VOTE_TEMPLATE",
+        "template_base_path": "CONSENSUS_TEMPLATE_BASE_PATH",
+        "quorum_threshold": "CONSENSUS_QUORUM_THRESHOLD",
+        "stream_retry_count": "MAGI_CLI_STREAM_RETRY_COUNT",
+        "log_context_reduction_key": "LOG_CONTEXT_REDUCTION_KEY",
+        "enable_hardened_consensus": "CONSENSUS_HARDENED_ENABLED",
+        "legacy_fallback_on_fail_safe": "CONSENSUS_LEGACY_FALLBACK",
     }
 
     # 整数型の設定キー
-    INT_KEYS = ("debate_rounds", "timeout", "retry_count")
+    INT_KEYS = (
+        "debate_rounds",
+        "timeout",
+        "retry_count",
+        "token_budget",
+        "schema_retry_count",
+        "template_ttl_seconds",
+        "quorum_threshold",
+        "stream_retry_count",
+    )
+    BOOL_KEYS = (
+        "log_context_reduction_key",
+        "enable_hardened_consensus",
+        "legacy_fallback_on_fail_safe",
+    )
 
     def __init__(self):
         """ConfigManagerを初期化"""
@@ -169,6 +206,8 @@ class ConfigManager:
                         config[key] = int(value)
                     except ValueError:
                         pass  # 無効な値は無視
+                elif key in self.BOOL_KEYS:
+                    config[key] = str(value).lower() not in ("0", "false", "off", "no", "")
                 else:
                     config[key] = value
 
@@ -215,6 +254,8 @@ class ConfigManager:
                         result[key] = int(value)
                     except (ValueError, TypeError):
                         pass  # 無効な値は無視
+                elif key in self.BOOL_KEYS:
+                    result[key] = bool(value) if isinstance(value, bool) else str(value).lower() not in ("0", "false", "off", "no", "")
                 else:
                     result[key] = value
 
@@ -265,6 +306,32 @@ class ConfigManager:
         if config.retry_count < 0:
             errors.append(
                 f"retry_count: 0以上の値を指定してください（現在: {config.retry_count}）"
+            )
+
+        # token_budgetの検証
+        if config.token_budget <= 0:
+            errors.append(
+                f"token_budget: 1以上の値を指定してください（現在: {config.token_budget}）"
+            )
+
+        if config.schema_retry_count < 0 or config.schema_retry_count > 10:
+            errors.append(
+                f"schema_retry_count: 0〜10 の範囲で指定してください（現在: {config.schema_retry_count}）"
+            )
+
+        if config.template_ttl_seconds <= 0:
+            errors.append(
+                f"template_ttl_seconds: 1以上の値を指定してください（現在: {config.template_ttl_seconds}）"
+            )
+
+        if config.quorum_threshold <= 0:
+            errors.append(
+                f"quorum_threshold: 1以上の値を指定してください（現在: {config.quorum_threshold}）"
+            )
+
+        if config.stream_retry_count < 0:
+            errors.append(
+                f"stream_retry_count: 0以上の値を指定してください（現在: {config.stream_retry_count}）"
             )
 
         return ValidationResult(
