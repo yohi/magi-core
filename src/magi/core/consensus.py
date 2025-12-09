@@ -24,6 +24,7 @@ from magi.agents.agent import Agent
 from magi.agents.persona import PersonaManager
 from magi.config.manager import Config
 from magi.core.context import ContextManager
+from magi.core.quorum import QuorumManager
 from magi.core.schema_validator import SchemaValidationError, SchemaValidator
 from magi.core.template_loader import TemplateLoader
 from magi.core.token_budget import ReductionLog, TokenBudgetManager
@@ -38,10 +39,37 @@ from magi.models import (
     ThinkingOutput,
     Vote,
     VoteOutput,
+    StreamingEmitResult,
 )
 
 # ロガーの設定
 logger = logging.getLogger(__name__)
+
+
+class StreamingEmitter:
+    """LLMストリーミングをCLIへ送出するためのユーティリティ"""
+
+    def __init__(self, retry_count: int = 5, sink=None):
+        self.retry_count = retry_count
+        # sink は chunk と phase を引数にとるコールバック
+        self._sink = sink or (lambda chunk, phase: None)
+
+    def emit(self, chunk: str, phase: str) -> StreamingEmitResult:
+        """ストリームチャンクを送出し、失敗時はリトライする"""
+        attempts = 0
+        last_error: Optional[Exception] = None
+        max_attempts = max(1, self.retry_count)
+
+        for attempt in range(1, max_attempts + 1):
+            attempts = attempt
+            try:
+                self._sink(chunk, phase)
+                return StreamingEmitResult(success=True, attempts=attempts)
+            except Exception as exc:  # pragma: no cover - エラー経路のみ
+                last_error = exc
+                continue
+
+        return StreamingEmitResult(success=False, attempts=attempts, last_error=last_error)
 
 
 class ConsensusEngine:
@@ -87,6 +115,16 @@ class ConsensusEngine:
         # トークン予算マネージャ
         self.token_budget_manager = TokenBudgetManager(
             max_tokens=self.config.token_budget
+        )
+        # クオーラム管理
+        self.quorum_manager = QuorumManager(
+            total_agents=len(PersonaType),
+            quorum=self.config.quorum_threshold,
+            max_retries=self.config.retry_count,
+        )
+        # ストリーミング送出
+        self.streaming_emitter = StreamingEmitter(
+            retry_count=self.config.stream_retry_count
         )
 
     def _transition_to_phase(self, phase: ConsensusPhase) -> None:
@@ -328,7 +366,15 @@ class ConsensusEngine:
         """
         from magi.models import VotingTally
 
+        # フェーズ開始時にクオーラム管理を初期化
+        self.quorum_manager = QuorumManager(
+            total_agents=len(PersonaType),
+            quorum=self.config.quorum_threshold,
+            max_retries=self.config.retry_count,
+        )
         agents = self._create_agents()
+        failed_personas: List[str] = []
+        partial_results = False
         voting_results: Dict[PersonaType, VoteOutput] = {}
 
         # 議論コンテキストを構築
@@ -369,60 +415,73 @@ class ConsensusEngine:
             template_version = (
                 template_revision.version if template_revision else "unknown"
             )
-            attempt = 0
-            max_retry = self.config.schema_retry_count
+            max_schema_retry = self.config.schema_retry_count
 
-            while True:
+            for attempt in range(0, self.config.retry_count + 1):
+                schema_attempt = 0
                 try:
-                    return await agent.vote(context)
-                except SchemaValidationError as e:
-                    attempt += 1
-                    logger.warning(
-                        "consensus.schema.validation_failed payload_id=%s persona=%s "
-                        "attempt=%s max=%s template_version=%s errors=%s",
-                        payload_id,
-                        persona_type.value,
-                        attempt,
-                        max_retry,
-                        template_version,
-                        ";".join(e.errors),
-                    )
-                    if attempt > max_retry:
-                        logger.warning(
-                            "consensus.schema.retry_exhausted retry_count=%s max=%s "
-                            "template_version=%s payload_id=%s",
-                            attempt - 1,
-                            max_retry,
-                            template_version,
-                            payload_id,
-                        )
-                        logger.error(
-                            "consensus.schema.rejected payload_id=%s", payload_id
-                        )
-                        self._errors.append(
-                            {
-                                "code": "CONSENSUS_SCHEMA_RETRY_EXCEEDED",
-                                "phase": ConsensusPhase.VOTING.value,
-                                "persona_type": persona_type.value,
-                                "errors": e.errors,
-                                "payload_id": payload_id,
-                                "template_version": template_version,
-                            }
-                        )
-                        return None
-                    # リトライ継続
-                    continue
-                except Exception as e:
+                    while True:
+                        try:
+                            return await agent.vote(context)
+                        except SchemaValidationError as e:
+                            schema_attempt += 1
+                            logger.warning(
+                                "consensus.schema.validation_failed payload_id=%s persona=%s "
+                                "attempt=%s max=%s template_version=%s errors=%s",
+                                payload_id,
+                                persona_type.value,
+                                schema_attempt,
+                                max_schema_retry,
+                                template_version,
+                                ";".join(e.errors),
+                            )
+                            if schema_attempt > max_schema_retry:
+                                logger.warning(
+                                    "consensus.schema.retry_exhausted retry_count=%s max=%s "
+                                    "template_version=%s payload_id=%s",
+                                    schema_attempt - 1,
+                                    max_schema_retry,
+                                    template_version,
+                                    payload_id,
+                                )
+                                logger.error(
+                                    "consensus.schema.rejected payload_id=%s", payload_id
+                                )
+                                self._errors.append(
+                                    {
+                                        "code": "CONSENSUS_SCHEMA_RETRY_EXCEEDED",
+                                        "phase": ConsensusPhase.VOTING.value,
+                                        "persona_type": persona_type.value,
+                                        "errors": e.errors,
+                                        "payload_id": payload_id,
+                                        "template_version": template_version,
+                                    }
+                                )
+                            failed_personas.append(persona_type.value)
+                            self.quorum_manager.exclude(persona_type.value)
+                                return None
+                            continue
+                except Exception as e:  # pragma: no cover - リトライロジックで検証
                     error_info = {
                         "phase": ConsensusPhase.VOTING.value,
                         "persona_type": persona_type.value,
                         "error": str(e),
+                        "attempt": attempt + 1,
                     }
                     self._errors.append(error_info)
                     logger.error(
-                        "エージェント %s の投票に失敗: %s", persona_type.value, e
+                        "エージェント %s の投票に失敗: %s (attempt=%s)",
+                        persona_type.value,
+                        e,
+                        attempt + 1,
                     )
-                    return None
+                    if attempt >= self.config.retry_count:
+                        break
+                    # 次のリトライへ
+                    continue
+            failed_personas.append(persona_type.value)
+            self.quorum_manager.exclude(persona_type.value)
+            return None
 
         # 全エージェントの投票を並列実行
         tasks = [
@@ -436,6 +495,32 @@ class ConsensusEngine:
         for persona_type, output in zip(agents.keys(), vote_outputs):
             if output is not None:
                 voting_results[persona_type] = output
+                self.quorum_manager.note_success(persona_type.value)
+
+        # クオーラム判定
+        partial_results = 0 < len(voting_results) < len(agents)
+        if len(voting_results) < self.config.quorum_threshold:
+            reason = "quorum 未達によりフェイルセーフ"
+            self._errors.append(
+                {
+                    "code": "CONSENSUS_QUORUM_UNSATISFIED",
+                    "phase": ConsensusPhase.VOTING.value,
+                    "reason": reason,
+                    "excluded": failed_personas,
+                }
+            )
+            return {
+                "voting_results": {},
+                "decision": Decision.DENIED,
+                "exit_code": 1,
+                "all_conditions": [],
+                "summary_applied": summary_applied,
+                "context": context,
+                "fail_safe": True,
+                "reason": reason,
+                "excluded_agents": sorted(set(failed_personas)),
+                "partial_results": partial_results,
+            }
 
         # 投票を集計
         approve_count = sum(
