@@ -49,6 +49,25 @@ class TestTokenBudgetManager(unittest.TestCase):
         self.assertIn("まとめ", result.context)
         self.assertLessEqual(manager.estimate_tokens(result.context), manager.max_tokens)
 
+    def test_trims_when_no_segment_fits_budget(self):
+        """どのセグメントも予算内に収まらない場合は切り詰める."""
+        manager = TokenBudgetManager(max_tokens=10, tokens_per_char=1.0)
+        context = "非常に長いセグメント" * 5
+
+        result = manager.enforce(context, ConsensusPhase.DEBATE)
+
+        self.assertTrue(result.summary_applied)
+        self.assertEqual(1, len(result.logs))
+        self.assertEqual("token_budget_exceeded_summary", result.logs[0].reason)
+        self.assertLessEqual(manager.estimate_tokens(result.context), manager.max_tokens)
+        self.assertGreater(result.reduced_tokens, 0)
+        self.assertGreater(result.logs[0].before_tokens, result.logs[0].after_tokens)
+
+    def test_invalid_tokens_per_char_raises_value_error(self):
+        """tokens_per_char が0以下なら例外を送出する."""
+        with self.assertRaises(ValueError):
+            TokenBudgetManager(max_tokens=10, tokens_per_char=0)
+
 
 if __name__ == "__main__":
     unittest.main()

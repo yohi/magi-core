@@ -19,7 +19,7 @@
 
 #### Acceptance Criteria
 1. WHEN エージェントに投票を要求する場合 THEN Consensus Engine SHALL 定義済みスキーマに従うツールベースの JSON 形式での出力を必須とする。
-2. IF 受信した投票ペイロードがスキーマ検証に失敗した場合 THEN Consensus Engine SHALL `CONSENSUS_SUMMARY_RETRY_COUNT` (integer, recommended default: 3, allowable range: 0–10, 0 の場合はリトライなし) 回まで再生成を試み、上限到達時は `CONSENSUS_SCHEMA_RETRY_EXCEEDED` エラーで処理を中断し、WARN ログ `consensus.schema.retry_exhausted retry_count=<count> max=<max> template_version=<ver> payload_id=<id>` と ERROR ログ `consensus.schema.rejected payload_id=<id>` を出力する。
+2. IF 受信した投票ペイロードがスキーマ検証に失敗した場合 THEN Consensus Engine SHALL `CONSENSUS_SUMMARY_RETRY_COUNT` (integer, recommended default: 3, allowable range: 0–10, 0 の場合はリトライなし) 回まで再生成を試み、上限到達時は `CONSENSUS_001` エラーで処理を中断し、WARN ログ `consensus.schema.retry_exhausted retry_count=<count> max=<max> template_version=<ver> payload_id=<id>` と ERROR ログ `consensus.schema.rejected payload_id=<id>` を出力する。
 3. WHERE プロンプトテンプレートをコード外で更新する場合 THE Consensus Engine SHALL 外部設定ファイルからテンプレートを読み込み、以下の形式をサポートする: YAML (`.yaml`/`.yml`), JSON (`.json`), Jinja2 (`.j2` 本体 + `.yaml`/`.json` メタデータ)。各形式での必須フィールドは `name` (string), `version` (semver または ISO-8601 timestamp), `schema_ref` (JSON Schema へのパス/URL), `template` (string 本文), `variables` (object, optional) とし、欠落時は検証エラーを返す。
 4. WHEN テンプレートを再読み込みする場合 THEN Consensus Engine SHALL バージョン付きタイムスタンプによるキャッシュエントリを採用し、ステージングで検証後にアトミックにスワップする。TTL ベースの無効化 (configurable, recommended default: 300s) を行い、TTL 失効時は自動再読み込みし、また管理 API/CLI により強制リフレッシュを受け付ける。リロード時は INFO ログ `consensus.template.reload reason=<auto|ttl|force> previous=<old> new=<new> ttl=<sec>` を出力する。
 5. WHEN テンプレートのホットリロードが発生した場合 THEN 新規リクエストはスワップ直後の新バージョンを即時使用し、処理中のリクエストは開始時のバージョンで完了する。バージョン切り替え時にはイベント/ログ `consensus.template.version_changed old=<old> new=<new> mode=hot-reload` を記録する。

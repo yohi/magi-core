@@ -23,6 +23,21 @@ class TestPluginGuard(unittest.TestCase):
 
         self.assertEqual(sanitized, ["safe_input", "another"])
 
+    def test_rejects_invalid_command_name(self):
+        """コマンド名に禁止文字が含まれる場合は拒否する"""
+        guard = PluginGuard()
+
+        with self.assertRaises(MagiException):
+            guard.validate("rm;rf", ["ok"])
+
+    def test_none_arguments_are_skipped(self):
+        """None 引数は無視されて正常に返る"""
+        guard = PluginGuard()
+
+        sanitized = guard.validate("echo", ["ok", None, "still_ok"])
+
+        self.assertEqual(["ok", "still_ok"], sanitized)
+
 
 if __name__ == "__main__":  # pragma: no cover - 実行用
     unittest.main()

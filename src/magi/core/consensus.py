@@ -30,7 +30,7 @@ from magi.core.quorum import QuorumManager
 from magi.core.schema_validator import SchemaValidationError, SchemaValidator
 from magi.core.template_loader import TemplateLoader
 from magi.core.token_budget import ReductionLog, TokenBudgetManager
-from magi.errors import MagiException, create_agent_error
+from magi.errors import ErrorCode, MagiException, create_agent_error
 from magi.llm.client import LLMClient
 from magi.security.filter import SecurityFilter
 from magi.models import (
@@ -441,7 +441,7 @@ class ConsensusEngine:
                                 )
                                 self._errors.append(
                                     {
-                                        "code": "CONSENSUS_SCHEMA_RETRY_EXCEEDED",
+                                        "code": ErrorCode.CONSENSUS_SCHEMA_RETRY_EXCEEDED.value,
                                         "phase": ConsensusPhase.VOTING.value,
                                         "persona_type": persona_type.value,
                                         "errors": e.errors,
@@ -498,7 +498,7 @@ class ConsensusEngine:
             reason = "quorum 未達によりフェイルセーフ"
             self._errors.append(
                 {
-                    "code": "CONSENSUS_QUORUM_UNSATISFIED",
+                    "code": ErrorCode.CONSENSUS_QUORUM_UNSATISFIED.value,
                     "phase": ConsensusPhase.VOTING.value,
                     "reason": reason,
                     "excluded": failed_personas,

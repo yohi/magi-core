@@ -54,6 +54,18 @@ class TestSecurityFilter(unittest.TestCase):
         self.assertFalse(result.blocked)
         self.assertEqual(["whitelist_deviation"], result.matched_rules)
 
+    def test_sanitize_for_logging_normalizes_and_escapes(self):
+        """ログ用サニタイズで改行・制御記号が正規化される"""
+        raw = "line1\r\nline2{{payload}}\u200d\0"
+
+        sanitized = self.filter.sanitize_for_logging(raw)
+
+        self.assertIn("line2", sanitized)
+        self.assertNotIn("\r", sanitized)
+        self.assertNotIn("\u200d", sanitized)
+        self.assertIn("\\{{payload\\}}", sanitized)
+        self.assertIn("\\u0000", sanitized)
+
 
 if __name__ == "__main__":  # pragma: no cover - 実行用
     unittest.main()
