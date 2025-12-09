@@ -68,17 +68,24 @@ class VotingTally:
         Raises:
             ValueError: thresholdが"unanimous"または"majority"以外の場合
         """
+        total_votes = self.approve_count + self.deny_count + self.conditional_count
+
         if threshold == "unanimous":
-            if self.approve_count == self.UNANIMOUS_THRESHOLD:
+            if total_votes > 0 and self.approve_count == total_votes:
                 return Decision.APPROVED
             elif self.deny_count >= 1:
                 return Decision.DENIED
             else:
                 return Decision.CONDITIONAL
         elif threshold == "majority":
-            if self.approve_count >= self.MAJORITY_THRESHOLD:
+            if total_votes == 0:
+                return Decision.CONDITIONAL
+
+            majority_threshold = total_votes // 2 + 1
+
+            if self.approve_count >= majority_threshold:
                 return Decision.APPROVED
-            elif self.deny_count >= self.MAJORITY_THRESHOLD:
+            elif self.deny_count >= majority_threshold:
                 return Decision.DENIED
             else:
                 return Decision.CONDITIONAL

@@ -56,11 +56,11 @@ class SchemaValidator:
 
         vote_value = payload.get("vote")
         if isinstance(vote_value, str):
-            vote_upper = vote_value.upper()
+            vote_normalized = vote_value.strip().lower()
         else:
-            vote_upper = str(vote_value).upper() if vote_value is not None else ""
+            vote_normalized = str(vote_value).lower() if vote_value is not None else ""
 
-        if vote_upper not in self._ALLOWED_VOTES:
+        if vote_normalized not in self._ALLOWED_VOTES:
             errors.append("vote は APPROVE | DENY | CONDITIONAL のいずれかを指定してください")
 
         reason = payload.get("reason")
