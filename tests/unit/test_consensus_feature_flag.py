@@ -119,6 +119,56 @@ class TestConsensusFeatureFlag(unittest.TestCase):
         self.assertIn("schema.retry_exhausted", event_types)
         self.assertIn("schema.rejected", event_types)
 
+    def test_legacy_zip_strict_raises_on_length_mismatch_py310_plus(self):
+        """Python 3.10+ で zip(strict=True) が長さ不一致を検知する"""
+        config = Config(api_key="test-api-key", enable_hardened_consensus=False)
+        engine = ConsensusEngine(config)
+
+        agent = MagicMock()
+        agent.vote = AsyncMock(return_value=VoteOutput(
+            persona_type=PersonaType.MELCHIOR,
+            vote=Vote.APPROVE,
+            reason="ok",
+        ))
+
+        with patch.object(
+            engine, "_build_voting_context", return_value="ctx"
+        ), patch.object(
+            engine, "_create_agents", return_value={PersonaType.MELCHIOR: agent}
+        ), patch(
+            "magi.core.consensus.asyncio.gather", return_value=[]
+        ), patch(
+            "magi.core.consensus.sys.version_info", (3, 10, 0, "final", 0)
+        ):
+            with self.assertRaises(ValueError):
+                asyncio.run(engine._run_voting_phase_legacy({}, []))
+
+    def test_legacy_zip_len_check_raises_on_length_mismatch_pre310(self):
+        """Python 3.9 互換経路で長さ不一致を検知する"""
+        config = Config(api_key="test-api-key", enable_hardened_consensus=False)
+        engine = ConsensusEngine(config)
+
+        agent = MagicMock()
+        agent.vote = AsyncMock(return_value=VoteOutput(
+            persona_type=PersonaType.MELCHIOR,
+            vote=Vote.APPROVE,
+            reason="ok",
+        ))
+
+        with patch.object(
+            engine, "_build_voting_context", return_value="ctx"
+        ), patch.object(
+            engine, "_create_agents", return_value={PersonaType.MELCHIOR: agent}
+        ), patch(
+            "magi.core.consensus.asyncio.gather", return_value=[]
+        ), patch(
+            "magi.core.consensus.sys.version_info", (3, 9, 9, "final", 0)
+        ):
+            with self.assertRaisesRegex(
+                ValueError, "投票結果数が不一致: agents=1 outputs=0"
+            ):
+                asyncio.run(engine._run_voting_phase_legacy({}, []))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -16,6 +16,7 @@ Requirements:
 
 import asyncio
 import logging
+import sys
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -346,7 +347,7 @@ class ConsensusEngine:
         # 議論コンテキストを構築
         context = self._build_voting_context(thinking_results, debate_results)
 
-        # トークン予算を適用（新経路のみ）
+        # トークン予算を適用 (新経路のみ)
         budget_result = self.token_budget_manager.enforce(
             context, ConsensusPhase.VOTING
         )
@@ -614,6 +615,8 @@ class ConsensusEngine:
             try:
                 return await agent.vote(context)
             except Exception as exc:
+                if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                    raise
                 self._errors.append(
                     {
                         "phase": ConsensusPhase.VOTING.value,
@@ -630,7 +633,16 @@ class ConsensusEngine:
         ]
         outputs = await asyncio.gather(*tasks)
 
-        for persona_type, output in zip(agents.keys(), outputs):
+        if sys.version_info >= (3, 10):
+            persona_outputs = zip(agents.keys(), outputs, strict=True)
+        else:
+            if len(agents) != len(outputs):
+                raise ValueError(
+                    f"投票結果数が不一致: agents={len(agents)} outputs={len(outputs)}"
+                )
+            persona_outputs = zip(agents.keys(), outputs)
+
+        for persona_type, output in persona_outputs:
             if output is not None:
                 voting_results[persona_type] = output
             else:
