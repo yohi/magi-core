@@ -169,3 +169,23 @@ class ConsensusResult:
     final_decision: Decision
     exit_code: int
     all_conditions: Optional[List[str]] = None
+
+
+@dataclass
+class QuorumState:
+    """クオーラム判定の状態"""
+
+    alive: int
+    quorum: int
+    partial_results: bool
+    retries_left: int
+    excluded: List[str]
+
+
+@dataclass
+class StreamingEmitResult:
+    """ストリーミング送出結果"""
+
+    success: bool
+    attempts: int
+    last_error: Optional[Exception] = None
