@@ -15,6 +15,7 @@ Requirements:
 """
 
 import asyncio
+import inspect
 import logging
 import sys
 import uuid
@@ -631,7 +632,15 @@ class ConsensusEngine:
             vote_once(persona_type, agent)
             for persona_type, agent in agents.items()
         ]
-        outputs = await asyncio.gather(*tasks)
+        gather_result = asyncio.gather(*tasks)
+        if inspect.isawaitable(gather_result):
+            outputs = await gather_result
+        else:
+            # モックで同期オブジェクトが返るケースに備えてコルーチンを破棄
+            for task in tasks:
+                if inspect.iscoroutine(task):
+                    task.close()
+            outputs = gather_result
 
         if sys.version_info >= (3, 10):
             persona_outputs = zip(agents.keys(), outputs, strict=True)
