@@ -2,7 +2,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from magi.models import ConsensusPhase
 
@@ -30,23 +30,56 @@ class BudgetResult:
 class TokenBudgetManager:
     """トークン予算の強制と要約/圧縮を行う."""
 
-    def __init__(self, max_tokens: int, tokens_per_char: float = 0.5) -> None:
+    _LANGUAGE_TOKEN_RATES = {
+        "ja": 0.72,  # 実測レンジ: おおよそ0.67〜0.77
+        "en": 0.45,  # 実測レンジ: おおよそ0.35〜0.50
+    }
+
+    def __init__(
+        self,
+        max_tokens: int,
+        tokens_per_char: Optional[float] = None,
+        language: Optional[str] = None,
+    ) -> None:
         """コンストラクタ.
+
+        日本語は英語より1文字あたりのトークン数が大きく、実測レンジは
+        おおよそ日本語0.67〜0.77、英語0.35〜0.50程度。この差を考慮するため、
+        言語別ヒューリスティックか明示的なトークン率を選べるようにする。
 
         Args:
             max_tokens: 許容する最大トークン数。
-            tokens_per_char: 文字あたりの推定トークン数。
+            tokens_per_char: 文字あたりの推定トークン数。指定があれば最優先。
+            language: 言語コード（例: "ja", "en"）。tokens_per_char未指定時に使用。
         """
-        if tokens_per_char <= 0:
+        if tokens_per_char is not None and tokens_per_char <= 0:
             raise ValueError("tokens_per_char must be > 0")
         if max_tokens < 0:
             raise ValueError("max_tokens must be >= 0")
         self.max_tokens = max_tokens
-        self.tokens_per_char = tokens_per_char
+        self.language = language.lower() if language else None
+        self.tokens_per_char = (
+            tokens_per_char
+            if tokens_per_char is not None
+            else self._resolve_tokens_per_char(self.language)
+        )
 
-    def estimate_tokens(self, text: str) -> int:
+    def estimate_tokens(self, text: str, language: Optional[str] = None) -> int:
         """文字列のトークン数を推定する."""
-        return int(math.ceil(len(text) * self.tokens_per_char))
+        rate = (
+            self._resolve_tokens_per_char(language)
+            if language is not None
+            else self.tokens_per_char
+        )
+        return int(math.ceil(len(text) * rate))
+
+    def _resolve_tokens_per_char(self, language: Optional[str]) -> float:
+        """言語ごとの推定トークン率を返す."""
+        if language:
+            lang = language.lower()
+            if lang in self._LANGUAGE_TOKEN_RATES:
+                return self._LANGUAGE_TOKEN_RATES[lang]
+        return 0.5
 
     def enforce(self, context: str, phase: ConsensusPhase) -> BudgetResult:
         """コンテキストに予算を適用し、必要なら要約/圧縮する."""

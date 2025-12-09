@@ -41,22 +41,22 @@ graph TB
 - 新規サービス/インフラ導入なし。テンプレートはローカルファイル/URL 読み込みとキャッシュで対応。
 
 ### Key Design Decisions
-- **Decision**: トークン予算管理を「階層的要約＋重要度圧縮」で行う  
-  **Context**: Debate/ Voting で 8k+ トークンに到達しやすく、単純切り捨ては意味喪失につながる。  
-  **Alternatives**: (a) 固定長スライドウィンドウ、(b) 低品質短縮（先頭/末尾切り捨て）、(c) LLM 要約＋重要度ソート。  
-  **Selected Approach**: (c) を採用し、ContextManager 拡張で段階的に (1) 粗いトークン推定、(2) LLM 要約またはキーフレーズ抽出、(3) 重要度順でトリミングを実施。削減ログと指標を記録。  
+- **Decision**: トークン予算管理を「階層的要約＋重要度圧縮」で行う
+  **Context**: Debate/ Voting で 8k+ トークンに到達しやすく、単純切り捨ては意味喪失につながる。
+  **Alternatives**: (a) 固定長スライドウィンドウ、(b) 低品質短縮（先頭/末尾切り捨て）、(c) LLM 要約＋重要度ソート。
+  **Selected Approach**: (c) を採用し、ContextManager 拡張で段階的に (1) 粗いトークン推定、(2) LLM 要約またはキーフレーズ抽出、(3) 重要度順でトリミングを実施。削減ログと指標を記録。
   **Trade-offs**: LLM 呼び出し増によるレイテンシ上昇 vs. 情報保持性・再現性向上。
 
-- **Decision**: 投票出力を JSON Schema + ツールベースの出力に統一  
-  **Context**: 現状は正規表現抽出＋パース失敗時の条件付きフォールバックでスキーマ保証が弱い。  
-  **Alternatives**: (a) 文字列パース継続、(b) pydantic でバリデーション、(c) Anthropic tools/JSON Schema 連携＋再試行。  
-  **Selected Approach**: (c) を採用し、LLM tools に VotePayload スキーマを渡し、`jsonschema` で検証、失敗時に上限付きリトライと WARN/ERROR ログを出力。  
+- **Decision**: 投票出力を JSON Schema + ツールベースの出力に統一
+  **Context**: 現状は正規表現抽出＋パース失敗時の条件付きフォールバックでスキーマ保証が弱い。
+  **Alternatives**: (a) 文字列パース継続、(b) pydantic でバリデーション、(c) Anthropic tools/JSON Schema 連携＋再試行。
+  **Selected Approach**: (c) を採用し、LLM tools に VotePayload スキーマを渡し、`jsonschema` で検証、失敗時に上限付きリトライと WARN/ERROR ログを出力。
   **Trade-offs**: ツール呼び出し前提によりプロンプト自由度が減るが、再現性と監査性を確保。
 
-- **Decision**: クオーラム欠損時はフェイルセーフ優先のステートマシン化  
-  **Context**: 部分結果を返すと誤判定リスクがある。  
-  **Alternatives**: (a) ベストエフォート返却、(b) 常に再試行後に返却、(c) フェーズ別クオーラム/リトライ閾値を持つステートマシン。  
-  **Selected Approach**: (c) を採用し、フェーズ毎に「有効エージェント数」「リトライ残数」「部分結果フラグ」を管理。クオーラム未達なら即フェイルセーフを返し、部分結果はログのみ保持。  
+- **Decision**: クオーラム欠損時はフェイルセーフ優先のステートマシン化
+  **Context**: 部分結果を返すと誤判定リスクがある。
+  **Alternatives**: (a) ベストエフォート返却、(b) 常に再試行後に返却、(c) フェーズ別クオーラム/リトライ閾値を持つステートマシン。
+  **Selected Approach**: (c) を採用し、フェーズ毎に「有効エージェント数」「リトライ残数」「部分結果フラグ」を管理。クオーラム未達なら即フェイルセーフを返し、部分結果はログのみ保持。
   **Trade-offs**: 成果物が返らないケースが増えるが、安全性と透明性を優先。
 
 ## System Flows
@@ -117,8 +117,8 @@ interface ConsensusEngineService {
 interface ConsensusRequest { prompt: string; pluginOverrides?: Record<string, string>; }
 interface ConsensusDecision { decision: Decision; votingResults: Record<string, VotePayload>; exitCode: number; allConditions: string[]; }
 ```
-- **Preconditions**: テンプレートとスキーマがロード済みであること。  
-- **Postconditions**: フェーズ完了時にログ/メトリクスを記録し、クオーラム未達ならフェイルセーフ応答を返す。  
+- **Preconditions**: テンプレートとスキーマがロード済みであること。
+- **Postconditions**: フェーズ完了時にログ/メトリクスを記録し、クオーラム未達ならフェイルセーフ応答を返す。
 - **Invariants**: フェーズは単調増加（THINKING→DEBATE→VOTING→COMPLETED）。
 
 #### QuorumManager / RetryController
@@ -150,8 +150,8 @@ interface ConsensusContext { thinking: string[]; debates: string[]; metadata: Co
 interface BudgetResult { context: string; reducedTokens: number; summaryApplied: boolean; logs: ReductionLog[]; }
 interface ReductionLog { reason: string; before: number; after: number; phase: string; }
 ```
-- **Preconditions**: max_tokens 設定と CONSENSUS_TOKEN_BUDGET が有効。  
-- **Postconditions**: 削減理由と指標をログへ記録。  
+- **Preconditions**: max_tokens 設定と CONSENSUS_TOKEN_BUDGET が有効。
+- **Postconditions**: 削減理由と指標をログへ記録。
 - **Invariants**: 出力コンテキスト長 ≤ CONSENSUS_TOKEN_BUDGET。
 
 ### Template & Schema
@@ -167,7 +167,7 @@ interface TemplateLoader {
 interface TemplateRevision { name: string; version: string; schemaRef: string; template: string; variables?: Record<string, string>; loadedAt: string; }
 type ReloadMode = "auto" | "ttl" | "force";
 ```
-- **Preconditions**: 必須フィールド (name, version, schema_ref, template) が存在。  
+- **Preconditions**: 必須フィールド (name, version, schema_ref, template) が存在。
 - **Postconditions**: 成功時のみキャッシュをスワップ。失敗時は旧版を維持し WARN/ERROR を記録。
 
 #### SchemaValidator
@@ -182,8 +182,8 @@ interface SchemaValidator {
 interface VotePayload { vote: "APPROVE" | "DENY" | "CONDITIONAL"; reason: string; conditions?: string[]; }
 interface ValidationResult { ok: boolean; errors: string[]; }
 ```
-- **Preconditions**: Schema が最新キャッシュから解決済み。  
-- **Postconditions**: 失敗時に retry_count を消費し、閾値超過でエラーコード `CONSENSUS_SCHEMA_RETRY_EXCEEDED` を返す。
+- **Preconditions**: Schema が最新キャッシュから解決済み。
+- **Postconditions**: 失敗時に retry_count を消費し、閾値超過でエラーコード `CONSENSUS_001` を返す。
 
 ### Streaming & Logging
 #### StreamingEmitter
@@ -224,16 +224,16 @@ interface DetectionResult { blocked: boolean; matchedRules: string[]; }
 | `QuorumState` | alive: int, quorum: int, partialResults: bool, retriesLeft: int | クオーラム状態管理 |
 
 ### Event Contracts & Integration
-- **Logging**:  
-  - `consensus.template.reload reason=<mode> previous=<old> new=<new> ttl=<sec>`  
-  - `consensus.schema.retry_exhausted retry_count=<count> max=<max> template_version=<ver> payload_id=<id>`  
-  - `consensus.context.reduced phase=<phase> before=<b> after=<a> method=<summary|trim>`  
+- **Logging**:
+  - `consensus.template.reload reason=<mode> previous=<old> new=<new> ttl=<sec>`
+  - `consensus.schema.retry_exhausted retry_count=<count> max=<max> template_version=<ver> payload_id=<id>`
+  - `consensus.context.reduced phase=<phase> before=<b> after=<a> method=<summary|trim>`
 - **Failure Surfaces**: フェイルセーフ/部分結果応答に不足理由・除外エージェント・部分結果有無を含める。
 
 ## Error Handling
 - **User Errors (4xx)**: スキーマ不一致・入力検知違反は即座にユーザー向け理由を返し、処理を中断。
 - **System Errors (5xx)**: LLM/IO 失敗は `_retry_with_backoff` と QuorumManager で再試行。上限到達でフェイルセーフ。
-- **Business Logic Errors (422)**: クオーラム未達、リトライ枯渇時は部分結果を破棄しフェイルセーフ応答。  
+- **Business Logic Errors (422)**: クオーラム未達、リトライ枯渇時は部分結果を破棄しフェイルセーフ応答。
 - **Monitoring**: すべてのリトライ・削減・リロード事象を構造化ログで記録し、メトリクス（成功率、平均削減率、ストリーム再接続回数）を収集。
 
 ## Testing Strategy
@@ -261,6 +261,5 @@ graph TB
   P3 --> P4[Phase 4: QuorumManager + StreamingEmitter 有効化<br/>feature flag ON]
   P4 --> RB[Rollback: flag OFF で旧実装へ即復帰]
 ```
-- 検証チェックポイント: 各フェーズで単体/統合テストと CLI 手動確認。ロールバックはフラグで即座に切替。  
+- 検証チェックポイント: 各フェーズで単体/統合テストと CLI 手動確認。ロールバックはフラグで即座に切替。
 - リスク: LLM 要約によるレイテンシ増大はキャッシュと軽量要約で緩和。ツール呼び出し対応が必要なためモデル互換性を事前検証。
-
