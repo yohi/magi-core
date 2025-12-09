@@ -36,6 +36,10 @@ class TokenBudgetManager:
             max_tokens: 許容する最大トークン数。
             tokens_per_char: 文字あたりの推定トークン数。
         """
+        if tokens_per_char <= 0:
+            raise ValueError("tokens_per_char must be > 0")
+        if max_tokens < 0:
+            raise ValueError("max_tokens must be >= 0")
         self.max_tokens = max_tokens
         self.tokens_per_char = tokens_per_char
 
@@ -101,8 +105,8 @@ class TokenBudgetManager:
             token_count += segment_tokens
 
         if not picked:
-            # すべて長すぎる場合は先頭セグメントを使用する
-            return segments[0]
+            # すべて長すぎる場合は先頭セグメントを予算に合わせて切り詰めて使用する
+            return self._trim_to_budget(segments[0])
 
         return "\n\n".join(picked)
 

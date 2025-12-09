@@ -269,6 +269,15 @@ class TestConsensusEngineAgentCreation(unittest.TestCase):
             self.assertIn(PersonaType.BALTHASAR, agents)
             self.assertIn(PersonaType.CASPER, agents)
 
+    def test_create_agents_with_correct_personas(self):
+        """各エージェントが正しいペルソナで作成されることを確認"""
+        with patch('magi.core.consensus.LLMClient'):
+            agents = self.engine._create_agents()
+
+            for persona_type, agent in agents.items():
+                self.assertIsInstance(agent, Agent)
+                self.assertEqual(agent.persona.type, persona_type)
+
 
 class TestConsensusTokenBudget(unittest.TestCase):
     """Voting前のトークン予算管理のテスト"""
@@ -340,16 +349,6 @@ class TestConsensusTokenBudget(unittest.TestCase):
         self.assertFalse(result["summary_applied"])
         self.assertEqual([], self.engine.context_reduction_logs)
         self.assertEqual(short_context, result["context"])
-
-    def test_create_agents_with_correct_personas(self):
-        """各エージェントが正しいペルソナで作成されることを確認"""
-        with patch('magi.core.consensus.LLMClient'):
-            agents = self.engine._create_agents()
-
-            for persona_type, agent in agents.items():
-                self.assertIsInstance(agent, Agent)
-                self.assertEqual(agent.persona.type, persona_type)
-
 
 if __name__ == '__main__':
     unittest.main()

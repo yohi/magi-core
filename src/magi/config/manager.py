@@ -270,6 +270,12 @@ class ConfigManager:
                 f"retry_count: 0以上の値を指定してください（現在: {config.retry_count}）"
             )
 
+        # token_budgetの検証
+        if config.token_budget <= 0:
+            errors.append(
+                f"token_budget: 1以上の値を指定してください（現在: {config.token_budget}）"
+            )
+
         return ValidationResult(
             is_valid=len(errors) == 0,
             errors=errors
