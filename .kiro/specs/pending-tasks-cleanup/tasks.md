@@ -7,7 +7,7 @@
   - _Requirements: 1_
   - テスト方法:
     - Unit: `tests/unit/test_cli.py::TestMagiCLI` で成功・フェイルセーフ・ログ警告の出力を検証する。
-    - Integration: `tests/integration/test_end_to_end.py::TestEndToEnd` で `magi ask` が Thinking/Debate/Voting を通過し、フェイルセーフ時も終了コードとstderrが整合することを確認する。
+    - Integration: `tests/integration/test_end_to_end.py::TestFullWorkflowIntegration` で `magi ask` が Thinking/Debate/Voting を通過し、フェイルセーフ時も終了コードとstderrが整合することを確認する。
     - Property: 入力サイズ・型・境界値・特殊文字・JSON 深度をランダム生成し、許容失敗率 <1%・P95 レイテンシ <500ms で合議結果/フェイルセーフが安定すること。
 
 - [x] 2. Voting ペイロードの jsonschema 検証とリトライ制御
