@@ -151,7 +151,7 @@ class GuardrailsAdapter(Protocol):
   - グローバル: `guardrails.timeout_seconds`（int, 既定 3）、`guardrails.on_timeout_behavior`（`fail-closed`/`fail-open`、既定 `fail-closed`）、`guardrails.on_error_policy`（同上）。
   - プロバイダごと: `guardrails.providers.{name}.enabled`（bool）、`guardrails.providers.{name}.model`、`guardrails.providers.{name}.endpoint`、`guardrails.providers.{name}.timeout_seconds`、`guardrails.providers.{name}.on_error_policy`（未設定時はグローバル継承）。
   - 例:
-    ```
+    ```yaml
     guardrails:
       timeout_seconds: 3
       on_timeout_behavior: fail-closed
@@ -164,7 +164,7 @@ class GuardrailsAdapter(Protocol):
           timeout_seconds: 2   # プロバイダ上書き
           on_error_policy: fail-open
     ```
-- **プロバイダ指針**: Llama Guard 等の意味検知モデルを想定し、プロバイダ名・モデル名・エンドポイントを config で差し替え可能にする。モデル例: `meta-llama/llama-guard-3-8B`（2024-05-xx）、`meta-llama/llama-guard-4-12B`（2024-10-xx）。ライセンスは Meta Llama Community License に従い、商用利用可否や Acceptable Use 制限を運用前に確認すること（Apache 2.0 ではない点に注意）。プロバイダ差替えやモデル更新は config で行うこと。
+- **プロバイダ指針**: Llama Guard 等の意味検知モデルを想定し、プロバイダ名・モデル名・エンドポイントを config で差し替え可能にする。モデル例: `meta-llama/llama-guard-3-8B`（2025-02-12）、`meta-llama/llama-guard-4-12B`（2025-04-30）。ライセンスは Meta Llama Community License に従い、商用利用可否や Acceptable Use 制限を運用前に確認すること（Apache 2.0 ではない点に注意）。プロバイダ差替えやモデル更新は config で行うこと。
 
 ### PluginSignatureValidator
 - **責務**: `PluginMetadata.signature` を公開鍵で検証。ハッシュと併用して完全性＋真正性を確保。
