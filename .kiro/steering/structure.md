@@ -3,6 +3,7 @@
 ## ルート構成（抜粋）
 ```text
 magi-core/
+├── .kiro/             # ステアリング・spec ドキュメント
 ├── src/magi/           # アプリ本体（CLI/Core/Agents/Plugins など）
 ├── tests/              # unit/property/integration テスト
 ├── plugins/            # 追加プラグイン（例: magi-cc-sdd-plugin）
@@ -21,13 +22,18 @@ magi-core/
   - `template_loader.py`: テンプレート外部化・TTLキャッシュ・ホットリロード
   - `schema_validator.py`: ツール呼び出し JSON スキーマ検証
   - `quorum.py`: クオーラム・リトライ・フェイルセーフ判定
+  - `spec_sync.py`: `spec.json` と `tasks.md` の整合同期（バックアップ+atomic write）
 - `cli/`: 引数パーサーと CLI 起動
 - `config/`: ConfigManager
 - `llm/`: LLM クライアント
 - `output/`: フォーマッタ/ストリーミング出力
-- `plugins/`: PluginLoader/CommandExecutor/PluginGuard
-- `security/`: SecurityFilter（サニタイズ・禁止パターン検知）
+- `plugins/`: PluginLoader/CommandExecutor/PluginGuard（`loader.py` / `executor.py` / `guard.py`）
+- `security/`: SecurityFilter（`filter.py` でサニタイズ・禁止パターン検知）
 - 共通モデル・エラーはルート直下の `models.py` / `errors.py`
+
+## .kiro 配下
+- `.kiro/steering/`: プロダクト/技術/構造のステアリング文書
+- `.kiro/specs/`: 各機能の requirements/design/tasks/spec.json 管理
 
 ## コード/命名規約
 - src レイアウト。インポートは `magi.` プレフィックスで統一。
