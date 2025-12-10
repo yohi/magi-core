@@ -6,7 +6,7 @@
   "creation_date": "2025-12-07",
   "last_update": "2025-12-08",
   "current_phase": "実装",
-  "overall_completion_percentage": 87.04,
+  "overall_completion_percentage": 100.0,
   "phase_status": {
     "requirements_phase": {
       "completion_percentage": 100,
@@ -22,11 +22,21 @@
       "integration_planned": "yes"
     },
     "tasks_phase": {
-      "completion_percentage": 87.04,
+      "completion_percentage": 100.0,
       "total_tasks": 54,
-      "completed_tasks": 47,
-      "remaining_tasks": 7,
+      "completed_tasks": 54,
+      "remaining_tasks": 0,
       "blocked_tasks": 0
+    }
+  },
+  "meta": {
+    "tasks_sync": {
+      "synced_from": "tasks.md",
+      "synced_at": "2025-12-10T00:00:00Z",
+      "generator_version": "magi-cli",
+      "status_summary": "done",
+      "in_progress_count": 0,
+      "completion_rate": 100.0
     }
   }
 }
