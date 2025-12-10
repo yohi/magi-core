@@ -12,7 +12,7 @@
   - リトライ上限超過時にフェイルセーフ応答を生成し、ConsensusEngine/CLI に伝播させる。
   - _Requirements: 4_
 
-- [ ] 3. トークン圧縮の要約ステップと削減ログ精度向上
+- [x] 3. トークン圧縮の要約ステップと削減ログ精度向上
   - 入力コンテキストが閾値超過時に重要度選択後の要約ステップを追加し、再計算後の出力を返す。
   - 削減ログに size_before/after、retain_ratio、summary_applied、strategy を記録し、監査ログへ出力する。
   - `LOG_CONTEXT_REDUCTION_KEY` 有効時に削減前後サイズと要約概要を含む監査ログを出力する。

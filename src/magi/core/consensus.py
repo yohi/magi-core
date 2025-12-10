@@ -362,15 +362,25 @@ class ConsensusEngine:
                     reason=log_item.reason,
                     before_tokens=log_item.before_tokens,
                     after_tokens=log_item.after_tokens,
+                    retain_ratio=log_item.retain_ratio,
+                    summary_applied=log_item.summary_applied,
+                    strategy=log_item.strategy,
                 )
             if self.config.log_context_reduction_key:  # pragma: no cover - on by default path
                 for log_item in budget_result.logs:
                     logger.info(
-                        "consensus.context.reduced phase=%s reason=%s before=%s after=%s",
+                        (
+                            "consensus.context.reduced phase=%s reason=%s "
+                            "before=%s after=%s retain_ratio=%.3f "
+                            "summary_applied=%s strategy=%s"
+                        ),
                         log_item.phase,
                         log_item.reason,
                         log_item.before_tokens,
                         log_item.after_tokens,
+                        log_item.retain_ratio,
+                        log_item.summary_applied,
+                        log_item.strategy,
                     )
             else:
                 logger.info("consensus.context.reduced detail_log=disabled")
