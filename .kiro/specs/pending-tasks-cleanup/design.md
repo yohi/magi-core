@@ -131,6 +131,7 @@ flowchart TB
 ```
 
 ## Requirements Traceability
+
 | Requirement | 概要 | 主担当コンポーネント | 補助コンポーネント | フロー |
 |-------------|------|----------------------|--------------------|--------|
 | R1 | magi ask 合議実行と結果提示 | CLI Ask, ConsensusEngine | TokenBudgetManager, SchemaValidator, Logging | 合議実行フロー |
@@ -139,6 +140,7 @@ flowchart TB
 | R4 | Voting スキーマ検証+リトライ | SchemaValidator | ConsensusEngine, Logging | 合議実行フロー |
 | R5 | 要約付きトークン圧縮と精緻ログ | TokenBudgetManager | Logging | 圧縮フロー |
 | R6 | メタ整合・property テスト復活 | Spec Metadata Sync, PluginLoader Tests | Logging, CI | 変更なし（運用手順） |
+
 
 ## Components and Interfaces
 
