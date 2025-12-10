@@ -65,7 +65,8 @@ class SecurityFilter:
     def sanitize_prompt(self, raw: str) -> SanitizedText:
         """ユーザー入力をサニタイズし、禁止パターンを検知する。
 
-        removed_patterns は現状未実装のため常に空リストとなる。
+        removed_patterns / removed_patterns_present に禁止パターン検知結果
+        （または検知なし時のフォールバック情報）を格納する。
         """
         text = raw or ""
         self._validate_length(text)
