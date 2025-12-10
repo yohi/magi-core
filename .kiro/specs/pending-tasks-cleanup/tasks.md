@@ -25,7 +25,7 @@
   - フォーマット統一として `mask_hashing` ブール設定が true の場合のみ `masked:sha256:<first8hex>`（SHA-256 の先頭 8 文字、小文字 hex）をログに用い、false の場合は固定トークンを用いる。
   - _Requirements: 3_
 
-- [ ] 5. `magi spec --review` での 3 賢者レビュー統合表示
+- [x] 5. `magi spec --review` での 3 賢者レビュー統合表示
   - cc-sdd プラグイン契約を明文化し、役割を「賢者別レビュー JSON を返す」こととする。出力スキーマは `reviewer_id`, `status`, `score`, `message`, `timestamp` を必須フィールドとする。
   - 部分失敗を許容し、成功したレビューは即時表示、失敗したレビューは集約してフラグ表示しつつ全体表示を中断しない。
   - リトライは最大試行回数・待機方式（固定または指数バックオフ）・試行ごとのタイムアウトを設定し、デフォルト値（例: max_attempts=3, fixed_wait=1s, per_attempt_timeout=5s, global_timeout=15s）を明記する。無限待ちを避けるためグローバル/リクエストタイムアウトを必須とする。
