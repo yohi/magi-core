@@ -6,8 +6,8 @@
   - 既存の Agent 生成フローを新しい注入経路に置き換え、後方互換を維持する
   - _Requirements: 品質/D.I改善_
 - [ ] 1.2 ジッター付き指数バックオフの導入
-  - LLM リトライで Full Jitter を用いた待機時間計算を行い、レートリミット時の同時再試行を分散する
-  - レート制限とその他エラーで異なる待機上限を設定し、リトライ上限を超えた場合に適切な例外を返す
+  - LLM リトライで Full Jitter を用いた待機時間計算を行い、レートリミット時の同時再試行を分散する（計算式: `wait_time = random(0, min(cap, base * 2^attempt))`、base は 500ms を目安とする）
+  - レート制限: 待機上限 cap = 60s、最大リトライ回数 = 6 回。その他エラー: cap = 10s、最大リトライ回数 = 3 回。リトライ上限超過時は適切な例外とエラーコードを返す
   - _Requirements: 性能/リトライジッター_
 - [ ] 1.3 LLM リトライのテスト拡充
   - ジッター範囲内で待機が行われること、リトライ上限超過で例外となることをモックで検証する
@@ -38,18 +38,38 @@
   - バックプレッシャや中断時のイベント/ログを記録し、再現性を確保する
   - _Requirements: 性能/直列性改善, セキュリティ/多層防御_
 - [ ] 3.3 Debate ストリーミングのテスト
-  - テスト用 StreamingEmitter でチャンク配信順序と中断時の挙動（破棄・タイムアウト）を検証する
-  - ストリーミング OFF 時に既存の一括出力が維持されることを確認する
+  - テスト用 StreamingEmitter でチャンク配信順序と中断時の挙動（破棄・タイムアウト）を検証する。キュー満杯時は LIFO（最新優先）で古いチャンクをドロップすることを明示し、ドロップ発生時に警告ログが出ることをアサートする
+  - ドロップ後も残存チャンクの配信順序が維持されることを検証する
+  - ストリーミング OFF 時に既存の一括出力（バルク）経路が変化しないことを確認する
   - _Requirements: 性能/直列性改善_
 
 - [ ] 4. Guardrails 追加とサニタイズ順序の強化
 - [ ] 4.1 Guardrails チェックの挿入とフラグ制御
   - Guardrails を SecurityFilter の前段に挿入し、feature flag で有効化/無効化を制御する
-  - タイムアウト（例: 3s）と失敗時挙動の既定を fail-closed とし、運用で必要な場合のみ fail-open フラグを提供する
+  - タイムアウト（config: `guardrails.timeout_seconds`、既定 3s）と失敗時挙動（`guardrails.on_timeout_behavior` = fail-closed/fail-open, `guardrails.on_error_policy`）を設定駆動にし、既定は fail-closed とする
+  - Config スキーマ設計: guardrails と StreamingEmitter の timeout キーをまとめて明記する（例）
+    ```yaml
+    guardrails:
+      timeout_seconds: 3
+      on_timeout_behavior: fail-closed
+      on_error_policy: fail-closed
+      providers:
+        llama_guard:
+          enabled: true
+          model: meta-llama/llama-guard-3-8B
+          endpoint: https://guard.example.com/v1/check
+          timeout_seconds: 2
+          on_error_policy: fail-open
+    streaming:
+      emitter:
+        queue_size: 100
+        emit_timeout_seconds: 2
+    ```
+  - 上記スキーマが design.md のガイド（プロバイダ差替え/モデル更新・fail-open/timeout キー）と整合することを確認し、設計側のサンプルと対応付ける
   - _Requirements: セキュリティ/ガード強化_
 - [ ] 4.2 サニタイズ順序と二重防御の整合
   - Guardrails → SecurityFilter → Template/Schema の順序をコードに反映し、二重サニタイズでの副作用がないようにする
-  - 失敗・タイムアウト時のログと拒否レスポンスを統一する
+  - 失敗・タイムアウト時のログと拒否レスポンスを統一し、`guardrails.timeout_seconds` / `guardrails.on_timeout_behavior` / `guardrails.on_error_policy` の設定値が実装に反映されることを確認する
   - _Requirements: セキュリティ/ガード強化_
 - [ ] 4.3 Guardrails テスト
   - ブロックケース、タイムアウト、fail-open/closed 切替時の挙動をテストで検証する
@@ -58,8 +78,11 @@
 
 - [ ] 5. プラグイン署名検証の強化
 - [ ] 5.1 署名検証フローの実装
-  - YAML 正規化後の内容を署名検証し、公開鍵を設定ファイルまたは `MAGI_PLUGIN_PUBKEY_PATH` からロードできるようにする
+  - YAML 正規化後の内容を署名検証し、公開鍵を設定ファイルまたは `MAGI_PLUGIN_PUBKEY_PATH` からロードできるようにする（優先度: 設定ファイル > `MAGI_PLUGIN_PUBKEY_PATH` > ビルトイン/フェイルバック）。各段でロード可否をログ出力する
+  - 「旧ハッシュパス」は SHA-256 のみを保持し署名検証できないレガシー形式（verify-only モード）であると定義し、検出時は verify-only として動作させる
   - 検証失敗時はブロックし、署名有無・鍵識別子・パスをログに残す
+  - 移行計画: レガシー verify-only を 6 ヶ月 deprecation → 3 ヶ月警告 → 3 ヶ月後に完全削除のサンセットスケジュールを明記する
+  - テスト準備: テスト用 RSA/ECDSA キーペア生成手順と、ハッシュのみケース用のハッシュ生成＋ verify-only フラグ付与のモック方法を明記する
   - _Requirements: セキュリティ/署名検証_
 - [ ] 5.2 署名検証のテスト
   - 正常署名・改ざん・鍵不一致・署名欠落の各ケースで適切に通過/拒否されることをテストする
@@ -72,7 +95,10 @@
   - _Requirements: 全般_
 - [ ] 6.2 CLI/ログ/イベントの整合性確認
   - ストリーミング時のログ粒度、fail-safe 時のイベント、署名検証失敗ログなどが一貫した形式で出力されることを確認する
+  - error code / exception 体系とログレベルの対応（例: PLUGIN_YAML_PARSE_ERROR, SIGNATURE_VERIFICATION_FAILED, GUARDRAILS_TIMEOUT/FAILED/FAIL_OPEN, RETRY_EXHAUSTED 等）が実装に反映されていることを確認する
   - _Requirements: 全般_
 - [ ] 6.3 パフォーマンステスト（簡易）
   - Debate ストリーミング有効時と無効時の体感レイテンシを比較し、リトライジッターがサージを抑制することを確認する
+  - 測定項目と SLO: TTFB、総トークン出力時間、CPU/メモリ使用率、メッセージ emit キュー遅延を収集し、ストリーミング有効で体感レイテンシ >=20% 改善、ジッター導入でリトライサージピーク >=50% 低減、CPU/メモリが許容閾値（例: CPU 80% 未満、メモリ 75% 未満）に収まることを pass 条件とする
+  - テスト環境/負荷プロファイル: LLM スタブの応答遅延、同時エージェント数、トークンスループット、テスト時間を明示し、再現性のあるシナリオで測定する
   - _Requirements: 性能_
