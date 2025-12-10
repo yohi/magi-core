@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 1. `magi ask` 合議フローの統合と結果提示
+- [x] 1. `magi ask` 合議フローの統合と結果提示
   - CLI から ConsensusEngine を起動し、Thinking/Debate/Voting 結果またはフェイルセーフ応答を表示する経路を実装する。
   - 合議開始・終了・所要時間・採用モデルを監査ログへ記録し、ログ出力先未設定時は警告を STDERR へ出力する。
   - フェイルセーフ発生時に段階と理由を CLI へ要約表示し、再実行可能な状態を維持する。

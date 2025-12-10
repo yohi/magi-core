@@ -1,22 +1,25 @@
-"""
+""" 
 MagiCLIメインモジュール
 
 MAGIシステムのエントリーポイントとコマンドハンドラーの統合
 """
 
 import asyncio
+import logging
 import sys
+import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from magi import __version__
-from magi.config.manager import Config
 from magi.cli.parser import ArgumentParser, ParsedCommand, VALID_COMMANDS
-from magi.output.formatter import OutputFormat
-from magi.plugins.loader import PluginLoader, Plugin
+from magi.config.manager import Config
+from magi.core.consensus import ConsensusEngine
+from magi.errors import MagiException, ErrorCode
+from magi.output.formatter import OutputFormat, OutputFormatter
 from magi.plugins.executor import CommandExecutor, CommandResult
 from magi.plugins.guard import PluginGuard
-from magi.errors import MagiException, ErrorCode
+from magi.plugins.loader import PluginLoader, Plugin
 
 
 class MagiCLI:
@@ -94,9 +97,104 @@ class MagiCLI:
             print("Usage: magi ask <question>", file=sys.stderr)
             return 1
 
-        # TODO: ConsensusEngineを使用した実装
-        print("ask command is not yet implemented.", file=sys.stderr)
-        return 1
+        question = " ".join(args).strip()
+        if not question:
+            print("Usage: magi ask <question>", file=sys.stderr)
+            return 1
+
+        audit_logger = logging.getLogger("magi.audit.ask")
+        logging_configured = self._has_logging_destination(audit_logger)
+        started_at = time.perf_counter()
+
+        audit_logger.info(
+            "consensus.ask.start",
+            extra={
+                "stage": "ask",
+                "model": self.config.model,
+                "question_preview": question[:80],
+                "output_format": self.output_format.value,
+            },
+        )
+
+        engine = ConsensusEngine(self.config)
+        formatter = OutputFormatter()
+
+        try:
+            result = asyncio.run(engine.execute(question))
+        except MagiException as exc:
+            duration = time.perf_counter() - started_at
+            audit_logger.error(
+                "consensus.ask.error",
+                extra={
+                    "stage": "ask",
+                    "model": self.config.model,
+                    "duration_seconds": round(duration, 3),
+                    "error": str(exc),
+                },
+            )
+            print(f"合議処理でエラーが発生しました: {exc}", file=sys.stderr)
+            if not logging_configured:
+                print(
+                    "警告: ログ出力先が設定されていません。監査ログを保存するには logging のハンドラを設定してください。",
+                    file=sys.stderr,
+                )
+            return 1
+        except Exception as exc:  # pragma: no cover - 想定外の例外
+            duration = time.perf_counter() - started_at
+            audit_logger.exception(
+                "consensus.ask.exception",
+                extra={
+                    "stage": "ask",
+                    "model": self.config.model,
+                    "duration_seconds": round(duration, 3),
+                },
+            )
+            print(
+                f"合議処理で予期しないエラーが発生しました: {exc}",
+                file=sys.stderr,
+            )
+            if not logging_configured:
+                print(
+                    "警告: ログ出力先が設定されていません。監査ログを保存するには logging のハンドラを設定してください。",
+                    file=sys.stderr,
+                )
+            return 1
+
+        duration = time.perf_counter() - started_at
+        audit_logger.info(
+            "consensus.ask.completed",
+            extra={
+                "stage": "ask",
+                "model": self.config.model,
+                "duration_seconds": round(duration, 3),
+                "exit_code": result.exit_code,
+            },
+        )
+
+        output = formatter.format(result, self.output_format)
+        print(output)
+
+        fail_safe = self._extract_fail_safe_summary(engine)
+        if fail_safe is not None:
+            audit_logger.warning(
+                "consensus.ask.fail_safe",
+                extra={
+                    "stage": fail_safe.get("phase", "unknown"),
+                    "reason": fail_safe.get("reason", ""),
+                },
+            )
+            print(
+                f"フェイルセーフ発生 ({fail_safe.get('phase', 'unknown')}): {fail_safe.get('reason', '理由不明')}",
+                file=sys.stderr,
+            )
+
+        if not logging_configured:
+            print(
+                "警告: ログ出力先が設定されていません。監査ログを保存するには logging のハンドラを設定してください。",
+                file=sys.stderr,
+            )
+
+        return result.exit_code
 
     def _run_spec_command(self, args: List[str]) -> int:
         """specコマンドの実行
@@ -225,6 +323,32 @@ class MagiCLI:
 
         # 非同期実行
         return asyncio.run(executor.execute(plugin.bridge.command, safe_args))
+
+    def _has_logging_destination(self, logger: logging.Logger) -> bool:
+        """ログ出力先が設定されているかを判定する"""
+        if logger.handlers:
+            return True
+        return logger.hasHandlers()
+
+    def _extract_fail_safe_summary(self, engine: ConsensusEngine) -> Optional[Dict[str, Any]]:
+        """合議処理で発生したフェイルセーフの概要を抽出する"""
+        events = getattr(engine, "events", [])
+        for event in reversed(events):
+            if event.get("type") == "quorum.fail_safe":
+                return {
+                    "phase": event.get("phase") or "voting",
+                    "reason": event.get("reason", ""),
+                }
+
+        errors = getattr(engine, "errors", [])
+        for error in reversed(errors):
+            if "reason" in error or "error" in error:
+                return {
+                    "phase": error.get("phase", "unknown"),
+                    "reason": error.get("reason") or error.get("error", ""),
+                }
+
+        return None
 
     def show_help(self) -> None:
         """ヘルプメッセージを表示"""
