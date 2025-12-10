@@ -53,6 +53,19 @@ class TestSchemaValidator(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("reason は非空文字列である必要があります", result.errors[0])
 
+    def test_vote_payload_confidence_range(self):
+        """confidence が範囲外ならエラーを返す"""
+        payload = {
+            "vote": Vote.APPROVE.value,
+            "reason": "ok",
+            "confidence": 1.5,
+        }
+
+        result = self.validator.validate_vote_payload(payload)
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any("confidence" in err for err in result.errors))
+
     def test_template_meta_required_fields(self):
         """テンプレートメタの必須フィールドを検証する"""
         meta = {
