@@ -18,7 +18,7 @@
   - `LOG_CONTEXT_REDUCTION_KEY` 有効時に削減前後サイズと要約概要を含む監査ログを出力する。
   - _Requirements: 5_
 
-- [ ] 4. SecurityFilter の禁止パターン監査ログ強化
+- [x] 4. SecurityFilter の禁止パターン監査ログ強化
   - 禁止パターン検知・除去時に `removed_patterns` は空配列禁止とし、未検知時は `[{ "pattern_id": "none", "count": 0 }]` と `removed_patterns_present=false` を必ず記録する。検知時は `{ "pattern_id": "<id>", "count": <n> }` 群と `removed_patterns_present=true` を記録する。
   - マスク済み入力断片とパターン ID を監査ログへ出力し、監査ログ無効時はプロセス起動ごと 1 回だけ STDERR へ警告しつつ、`removed_patterns` は上記フォールバックを必ず書き出す。
   - マスク処理は機微断片を ASCII アスタリスク 8 文字固定トークン「`********`」で置換し、最大 32 UTF-8 コードポイントにパディング/切り詰めする。`original_length` メタデータで元長を併記する。

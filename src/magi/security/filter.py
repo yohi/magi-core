@@ -3,11 +3,14 @@
 ユーザー入力のサニタイズと禁止パターン検出を行う。
 """
 
+import hashlib
 import html
+import logging
 import re
+import sys
 import unicodedata
 from dataclasses import dataclass
-from typing import List
+from typing import List, Dict, Any, Optional, Tuple
 from urllib.parse import unquote
 
 from magi.errors import MagiError, MagiException
@@ -38,6 +41,10 @@ FORBIDDEN_PATTERNS = {
 }
 INVISIBLE_PATTERN = re.compile(r"[\u200d\u200c\uFEFF]")
 MAX_INPUT_LENGTH = 10_000
+MASK_TOKEN = "********"
+MASKED_SNIPPET_MAX_CP = 32
+_AUDIT_WARNING_EMITTED = False
+_AUDIT_LOGGER = logging.getLogger("magi.audit.security")
 
 
 @dataclass
@@ -46,9 +53,10 @@ class SanitizedText:
 
     safe: str
     markers_applied: bool
-    removed_patterns: List[str]
+    removed_patterns: List[Dict[str, Any]]
     matched_rules: List[str]
     blocked: bool
+    removed_patterns_present: bool
 
 
 @dataclass
@@ -62,6 +70,15 @@ class DetectionResult:
 class SecurityFilter:
     """入力サニタイズと検知ロジック"""
 
+    def __init__(
+        self,
+        *,
+        mask_hashing: bool = False,
+        audit_logger: Optional[logging.Logger] = None,
+    ) -> None:
+        self.mask_hashing = mask_hashing
+        self.audit_logger = audit_logger or _AUDIT_LOGGER
+
     def sanitize_prompt(self, raw: str) -> SanitizedText:
         """ユーザー入力をサニタイズし、禁止パターンを検知する。
 
@@ -72,6 +89,8 @@ class SecurityFilter:
         self._validate_length(text)
         matched_rules = self._detect_patterns(text)
         blocked = any(rule != "whitelist_deviation" for rule in matched_rules)
+        removed_patterns, removed_present = self._build_removed_patterns(text)
+        self._emit_audit_log(removed_patterns, removed_present)
 
         normalized = self._normalize(text)
         escaped = self._escape_control_sequences(normalized)
@@ -80,9 +99,10 @@ class SecurityFilter:
         return SanitizedText(
             safe=with_markers,
             markers_applied=True,
-            removed_patterns=[],
+            removed_patterns=removed_patterns,
             matched_rules=matched_rules,
             blocked=blocked,
+            removed_patterns_present=removed_present,
         )
 
     def detect_abuse(self, raw: str) -> DetectionResult:
@@ -163,3 +183,91 @@ class SecurityFilter:
                     recoverable=False,
                 )
             )
+
+    def _mask_fragment(self, fragment: str) -> Tuple[str, int]:
+        """機微断片をマスクし、元の長さを返す"""
+        original_length = len(fragment or "")
+        if self.mask_hashing:
+            digest = hashlib.sha256((fragment or "").encode("utf-8")).hexdigest()[:8]
+            masked = f"masked:sha256:{digest}"
+        else:
+            masked = MASK_TOKEN
+        if len(masked) < MASKED_SNIPPET_MAX_CP:
+            masked = masked.ljust(MASKED_SNIPPET_MAX_CP, "*")
+        else:
+            masked = masked[:MASKED_SNIPPET_MAX_CP]
+        return masked, original_length
+
+    def _build_removed_patterns(self, raw_text: str) -> Tuple[List[Dict[str, Any]], bool]:
+        """検知結果を元に removed_patterns 情報を組み立てる"""
+        entries: List[Dict[str, Any]] = []
+        canonical = self._canonicalize_for_detection(raw_text or "")
+        removed_present = False
+
+        for pattern_id, pattern in FORBIDDEN_PATTERNS.items():
+            matches = list(pattern.finditer(canonical))
+            if not matches:
+                continue
+            removed_present = True
+            masked_snippet, original_length = self._mask_fragment(matches[0].group(0))
+            entries.append(
+                {
+                    "pattern_id": pattern_id,
+                    "count": len(matches),
+                    "masked_snippet": masked_snippet,
+                    "original_length": original_length,
+                }
+            )
+
+        if not removed_present:
+            masked_snippet, _ = self._mask_fragment("")
+            entries.append(
+                {
+                    "pattern_id": "none",
+                    "count": 0,
+                    "masked_snippet": masked_snippet,
+                    "original_length": 0,
+                }
+            )
+
+        return entries, removed_present
+
+    def _emit_audit_log(self, entries: List[Dict[str, Any]], present: bool) -> None:
+        """監査ログへマスク済み断片を出力し、未設定時は一度だけ警告"""
+        logger = self.audit_logger
+        if not self._audit_has_destination(logger):
+            self._warn_audit_once()
+
+        for entry in entries:
+            try:
+                logger.info(
+                    "security.filter.removed_patterns",
+                    extra={
+                        "pattern_id": entry.get("pattern_id"),
+                        "count": entry.get("count", 0),
+                        "masked_snippet": entry.get("masked_snippet"),
+                        "original_length": entry.get("original_length", 0),
+                        "removed_patterns_present": present,
+                        "mask_hashing": self.mask_hashing,
+                    },
+                )
+            except Exception:  # pragma: no cover - ログ失敗は処理継続
+                logger.debug("audit log failed for removed_patterns", exc_info=True)
+
+    @staticmethod
+    def _audit_has_destination(logger: logging.Logger) -> bool:
+        """監査ログの出力先有無を判定する"""
+        if logger.handlers:
+            return True
+        return logger.hasHandlers()
+
+    def _warn_audit_once(self) -> None:
+        """監査ログ未設定時の警告（プロセスで1回だけ）"""
+        global _AUDIT_WARNING_EMITTED
+        if _AUDIT_WARNING_EMITTED:
+            return
+        _AUDIT_WARNING_EMITTED = True
+        print(
+            "警告: 監査ログが無効です。ハンドラを設定して SecurityFilter の監査ログを記録してください。",
+            file=sys.stderr,
+        )
