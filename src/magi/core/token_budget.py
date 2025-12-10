@@ -15,6 +15,9 @@ class ReductionLog:
     reason: str
     before_tokens: int
     after_tokens: int
+    retain_ratio: float
+    summary_applied: bool
+    strategy: str
 
 
 @dataclass
@@ -94,14 +97,31 @@ class TokenBudgetManager:
                 logs=logs,
             )
 
-        reduced = self._compress(context)
+        reduced, trimmed_in_compress = self._compress(context)
         after = self.estimate_tokens(reduced)
-        reason = "token_budget_exceeded_summary"
+        summary_used = False
+        strategy = "trim_to_budget" if trimmed_in_compress else "priority_only"
+        reason = (
+            "token_budget_exceeded_trimmed"
+            if trimmed_in_compress
+            else "token_budget_reduced_priority_only"
+        )
+
+        summarized = self._summarize(reduced)
+        if summarized != reduced and not trimmed_in_compress:
+            summary_used = True
+            strategy = "with_summary"
+            reason = "token_budget_reduced_with_summary"
+            reduced = summarized
+            after = self.estimate_tokens(reduced)
 
         if after > self.max_tokens:
             reduced = self._trim_to_budget(reduced)
             after = self.estimate_tokens(reduced)
+            strategy = "trim_to_budget"
             reason = "token_budget_exceeded_trimmed"
+
+        retain_ratio = after / before if before > 0 else 0.0
 
         logs.append(
             ReductionLog(
@@ -109,6 +129,9 @@ class TokenBudgetManager:
                 reason=reason,
                 before_tokens=before,
                 after_tokens=after,
+                retain_ratio=retain_ratio,
+                summary_applied=summary_used,
+                strategy=strategy,
             )
         )
 
@@ -119,8 +142,12 @@ class TokenBudgetManager:
             logs=logs,
         )
 
-    def _compress(self, context: str) -> str:
-        """簡易な重要度スコアでセグメントを優先度順に圧縮する."""
+    def _compress(self, context: str) -> Tuple[str, bool]:
+        """簡易な重要度スコアでセグメントを優先度順に圧縮する.
+
+        Returns:
+            圧縮後のコンテキストと、切り詰めを行ったかどうかのフラグ。
+        """
         segments = context.split("\n\n")
         scored_segments = []
         for idx, segment in enumerate(segments):
@@ -140,10 +167,28 @@ class TokenBudgetManager:
 
         if not picked:
             # すべて長すぎる場合は先頭セグメントを予算に合わせて切り詰めて使用する
-            return self._trim_to_budget(segments[0])
+            return self._trim_to_budget(segments[0]), True
 
         picked.sort(key=lambda item: item[0])
-        return "\n\n".join(segment for _, segment in picked)
+        return "\n\n".join(segment for _, segment in picked), False
+
+    def _summarize(self, context: str) -> str:
+        """重要度選択後のセグメントを予算に合わせて要約する."""
+        segments = [segment.strip() for segment in context.split("\n\n") if segment.strip()]
+        if not segments:
+            return context
+
+        max_chars = int(self.max_tokens / self.tokens_per_char)
+        per_segment_limit = max(max_chars // len(segments), 1)
+
+        summarized_segments = []
+        for segment in segments:
+            if len(segment) <= per_segment_limit:
+                summarized_segments.append(segment)
+            else:
+                summarized_segments.append(segment[:per_segment_limit])
+
+        return "\n\n".join(summarized_segments)
 
     def _trim_to_budget(self, context: str) -> str:
         """最終的に予算に収まるよう安全に切り詰める."""

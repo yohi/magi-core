@@ -27,6 +27,16 @@ class TestTokenBudgetProperties(unittest.TestCase):
         else:
             self.assertTrue(result.summary_applied)
             self.assertGreaterEqual(len(result.logs), 1)
+            for log in result.logs:
+                self.assertGreater(log.before_tokens, 0)
+                self.assertGreaterEqual(log.after_tokens, 0)
+                self.assertGreaterEqual(log.retain_ratio, 0.0)
+                self.assertLessEqual(log.retain_ratio, 1.0)
+                self.assertIn(
+                    log.strategy,
+                    ("priority_only", "with_summary", "trim_to_budget"),
+                )
+                self.assertIsInstance(log.summary_applied, bool)
 
 
 if __name__ == "__main__":  # pragma: no cover - 実行用
