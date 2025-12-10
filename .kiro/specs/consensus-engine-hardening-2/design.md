@@ -164,7 +164,7 @@ class GuardrailsAdapter(Protocol):
           timeout_seconds: 2   # プロバイダ上書き
           on_error_policy: fail-open
     ```
-- **プロバイダ指針**: Llama Guard 等の意味検知モデルを想定し、プロバイダ名・モデル名・エンドポイントを config で差し替え可能にする。モデル例: `meta-llama/llama-guard-3-8B`（2025-02-12）、`meta-llama/llama-guard-4-12B`（2025-04-30）。ライセンスは Meta Llama Community License に従い、商用利用可否や Acceptable Use 制限を運用前に確認すること（Apache 2.0 ではない点に注意）。プロバイダ差替えやモデル更新は config で行うこと。
+- **プロバイダ指針**: Llama Guard 等の意味検知モデルを想定し、プロバイダ名・モデル名・エンドポイントを config で差し替え可能にする。モデル例: `meta-llama/llama-guard-3-8B`（2024-07-23）、`meta-llama/llama-guard-4-12B`（2025-04-30）。ライセンスは Meta Llama Community License に従い、商用利用可否や Acceptable Use 制限を運用前に確認すること（Apache 2.0 ではない点に注意）。プロバイダ差替えやモデル更新は config で行うこと。
 
 ### PluginSignatureValidator
 - **責務**: `PluginMetadata.signature` を公開鍵で検証。ハッシュと併用して完全性＋真正性を確保。
@@ -190,6 +190,7 @@ class PluginSignatureValidator(Protocol):
 - MagiException 階層とエラーコード
   - 階層: `MagiException` を基底に `ValidationException`（入力/スキーマ）、`SecurityException`（Guardrails/署名）、`PluginValidationException`（プラグイン構文/署名）、`RetryableException`（一時的エラー）を派生させる。Guardrails 時間超過は `GuardrailsTimeoutException(SecurityException)`、モデル応答異常は `GuardrailsModelException(SecurityException)` とする。
   - エラーコードとログレベル:
+
     | error_code | 例外クラス | log level | 説明 |
     | --- | --- | --- | --- |
     | PLUGIN_YAML_PARSE_ERROR | PluginValidationException | ERROR | YAML 構文不正・署名不一致でブロック |
@@ -198,6 +199,7 @@ class PluginSignatureValidator(Protocol):
     | GUARDRAILS_BLOCKED | GuardrailsModelException | ERROR | モデルが危険と判定しブロック |
     | GUARDRAILS_FAIL_OPEN | GuardrailsModelException | CRITICAL | fail-open 設定で通過した場合の監査ログ |
     | RETRY_EXHAUSTED | RetryableException | ERROR | LLM 再試行枯渇 |
+
   - ログ方針: Security/Plugin 系は path・鍵 ID・プロバイダ名を構造化ログに含め、CRITICAL はアラート連携対象とする。
 
 ## テスト戦略
