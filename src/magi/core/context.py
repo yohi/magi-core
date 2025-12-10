@@ -296,3 +296,4 @@ class ContextManager:
         lines.append(f"- 最大トークン数: {self.max_tokens}")
 
         return "\n".join(lines)
+

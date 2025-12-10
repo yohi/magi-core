@@ -33,6 +33,7 @@ class TestTokenBudgetManager(unittest.TestCase):
         self.assertGreater(result.reduced_tokens, 0)
         self.assertEqual(1, len(result.logs))
         self.assertEqual("voting", result.logs[0].phase)
+        self.assertGreater(result.logs[0].before_tokens, result.logs[0].after_tokens)
 
     def test_heading_priority_is_preserved(self):
         """見出しを含む重要セグメントが優先される."""
@@ -58,10 +59,27 @@ class TestTokenBudgetManager(unittest.TestCase):
 
         self.assertTrue(result.summary_applied)
         self.assertEqual(1, len(result.logs))
-        self.assertEqual("token_budget_exceeded_summary", result.logs[0].reason)
+        self.assertEqual("token_budget_exceeded_trimmed", result.logs[0].reason)
         self.assertLessEqual(manager.estimate_tokens(result.context), manager.max_tokens)
         self.assertGreater(result.reduced_tokens, 0)
         self.assertGreater(result.logs[0].before_tokens, result.logs[0].after_tokens)
+
+    def test_reduction_log_contains_retention_metrics(self):
+        """削減ログに保持率と戦略が含まれる."""
+        manager = TokenBudgetManager(max_tokens=60, tokens_per_char=0.5)
+        context = "## Heading\n" + ("詳細" * 200)
+
+        result = manager.enforce(context, ConsensusPhase.VOTING)
+        self.assertTrue(result.summary_applied)
+        self.assertEqual(1, len(result.logs))
+
+        log = result.logs[0]
+        self.assertGreater(log.before_tokens, log.after_tokens)
+        self.assertGreater(log.retain_ratio, 0)
+        self.assertLessEqual(log.retain_ratio, 1.0)
+        self.assertIn(log.strategy, ("priority_only", "with_summary", "trim_to_budget"))
+        self.assertIsInstance(log.summary_applied, bool)
+        self.assertEqual(result.reduced_tokens, log.before_tokens - log.after_tokens)
 
     def test_invalid_tokens_per_char_raises_value_error(self):
         """tokens_per_char が0以下なら例外を送出する."""

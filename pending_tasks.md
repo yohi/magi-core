@@ -7,3 +7,4 @@
 - トークン予算圧縮が単純セグメント選択のみで要約ステップなし。削減ログ精度も限定的。
 - `.kiro/specs/magi-core/spec.json` の remaining_tasks=7 が tasks.md 全完了と不整合。メタ情報更新が必要。
 - プラグインローダーのプロパティテストが `.disabled` で無効化され CI で走っていない。
+

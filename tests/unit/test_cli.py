@@ -4,15 +4,27 @@ CLIレイヤーのユニットテスト
 ArgumentParserとMagiCLIのテストを提供
 """
 
+import json
 import sys
 import unittest
+from datetime import datetime
 from io import StringIO
+from pathlib import Path
 from typing import Dict, Any, List
 from unittest.mock import patch
 
 # テスト対象のモジュールをインポート
 from magi.cli.parser import ArgumentParser, ParsedCommand, ValidationResult
 from magi.output.formatter import OutputFormat
+from magi.plugins.executor import CommandResult
+from magi.models import (
+    ConsensusResult,
+    Decision,
+    PersonaType,
+    ThinkingOutput,
+    Vote,
+    VoteOutput,
+)
 
 
 class TestArgumentParser(unittest.TestCase):
@@ -80,6 +92,13 @@ class TestArgumentParser(unittest.TestCase):
         result = self.parser.parse(["--plugin", "magi-cc-sdd-plugin", "spec"])
         self.assertEqual(result.plugin, "magi-cc-sdd-plugin")
         self.assertEqual(result.command, "spec")
+
+    def test_parse_spec_review_flag(self):
+        """specコマンドの--reviewオプションのパース"""
+        result = self.parser.parse(["spec", "--review", "レビューして"])
+        self.assertEqual(result.command, "spec")
+        self.assertTrue(result.options.get("review"))
+        self.assertEqual(result.args, ["レビューして"])
 
     def test_parse_plugin_no_value(self):
         """プラグインオプションに値がない場合"""
@@ -266,6 +285,189 @@ class TestMagiCLI(unittest.TestCase):
             cli.show_version()
             output = mock_stdout.getvalue()
             self.assertIn(__version__, output)
+
+    def test_run_ask_executes_consensus_and_outputs(self):
+        """askコマンドで合議結果を表示する"""
+        from magi.cli.main import MagiCLI
+        from magi.config.manager import Config
+
+        result = ConsensusResult(
+            thinking_results={
+                PersonaType.MELCHIOR: ThinkingOutput(
+                    persona_type=PersonaType.MELCHIOR,
+                    content="thinking",
+                    timestamp=datetime.utcnow(),
+                )
+            },
+            debate_results=[],
+            voting_results={
+                PersonaType.MELCHIOR: VoteOutput(
+                    persona_type=PersonaType.MELCHIOR,
+                    vote=Vote.APPROVE,
+                    reason="ok",
+                    conditions=[],
+                )
+            },
+            final_decision=Decision.APPROVED,
+            exit_code=0,
+            all_conditions=[],
+        )
+
+        class DummyEngine:
+            def __init__(self, *_args, **_kwargs):
+                self.events: List[Dict[str, Any]] = []
+                self.errors: List[Dict[str, Any]] = []
+                self.last_prompt: str | None = None
+
+            async def execute(self, prompt: str, plugin=None):
+                self.last_prompt = prompt
+                return result
+
+        config = Config(api_key="test-key")
+        cli = MagiCLI(config, output_format=OutputFormat.JSON)
+
+        with patch("magi.cli.main.ConsensusEngine", return_value=DummyEngine()) as engine_cls:
+            with patch.object(cli, "_has_logging_destination", return_value=True):
+                with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
+                    exit_code = cli._run_ask_command(["hello"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn('"final_decision": "approved"', mock_stdout.getvalue())
+        engine_instance = engine_cls.return_value
+        self.assertEqual(engine_instance.last_prompt, "hello")
+
+    def test_run_ask_reports_fail_safe_summary(self):
+        """フェイルセーフ発生時に理由を表示する"""
+        from magi.cli.main import MagiCLI
+        from magi.config.manager import Config
+
+        result = ConsensusResult(
+            thinking_results={},
+            debate_results=[],
+            voting_results={},
+            final_decision=Decision.DENIED,
+            exit_code=1,
+            all_conditions=[],
+        )
+
+        class DummyEngine:
+            def __init__(self, *_args, **_kwargs):
+                self.events: List[Dict[str, Any]] = [
+                    {"type": "quorum.fail_safe", "reason": "quorum 未達", "phase": "voting"}
+                ]
+                self.errors: List[Dict[str, Any]] = [
+                    {"phase": "voting", "reason": "quorum 未達"}
+                ]
+
+            async def execute(self, prompt: str, plugin=None):
+                return result
+
+        config = Config(api_key="test-key")
+        cli = MagiCLI(config, output_format=OutputFormat.JSON)
+
+        with patch("magi.cli.main.ConsensusEngine", return_value=DummyEngine()):
+            with patch.object(cli, "_has_logging_destination", return_value=True):
+                with patch("sys.stdout", new_callable=StringIO):
+                    with patch("sys.stderr", new_callable=StringIO) as mock_stderr:
+                        exit_code = cli._run_ask_command(["question"])
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("フェイルセーフ", mock_stderr.getvalue())
+        self.assertIn("quorum 未達", mock_stderr.getvalue())
+
+    def test_run_ask_warns_when_logger_not_configured(self):
+        """ログ出力先未設定時に警告する"""
+        from magi.cli.main import MagiCLI
+        from magi.config.manager import Config
+
+        result = ConsensusResult(
+            thinking_results={},
+            debate_results=[],
+            voting_results={},
+            final_decision=Decision.APPROVED,
+            exit_code=0,
+            all_conditions=[],
+        )
+
+        class DummyEngine:
+            def __init__(self, *_args, **_kwargs):
+                self.events: List[Dict[str, Any]] = []
+                self.errors: List[Dict[str, Any]] = []
+
+            async def execute(self, prompt: str, plugin=None):
+                return result
+
+        config = Config(api_key="test-key")
+        cli = MagiCLI(config, output_format=OutputFormat.JSON)
+
+        with patch("magi.cli.main.ConsensusEngine", return_value=DummyEngine()):
+            with patch.object(cli, "_has_logging_destination", return_value=False):
+                with patch("sys.stdout", new_callable=StringIO):
+                    with patch("sys.stderr", new_callable=StringIO) as mock_stderr:
+                        cli._run_ask_command(["question"])
+
+        self.assertIn("ログ出力先が設定されていません", mock_stderr.getvalue())
+
+    def test_run_spec_review_outputs_status_and_progress(self):
+        """spec --reviewがレビュー結果を整形表示し部分失敗を許容する"""
+        from magi.cli.main import MagiCLI
+        from magi.config.manager import Config
+
+        review_payload = {
+            "spec": "# Draft\\ncontent",
+            "reviews": [
+                {
+                    "reviewer_id": "sage-a",
+                    "status": "ok",
+                    "score": 0.92,
+                    "message": "looks good",
+                    "timestamp": "2025-12-10T10:00:00Z",
+                },
+                {
+                    "reviewer_id": "sage-b",
+                    "status": "failed",
+                    "score": 0.0,
+                    "message": "timeout",
+                    "timestamp": "2025-12-10T10:00:05Z",
+                },
+                {
+                    "reviewer_id": "sage-c",
+                    "status": "ok",
+                    "score": 0.81,
+                    "message": "needs tests",
+                    "timestamp": "2025-12-10T10:00:07Z",
+                },
+            ],
+        }
+
+        config = Config(api_key="test-key")
+        cli = MagiCLI(config, output_format=OutputFormat.MARKDOWN)
+        plugin_path = Path(__file__).parent.parent.parent / "plugins" / "magi-cc-sdd-plugin" / "plugin.yaml"
+
+        if not plugin_path.exists():
+            self.skipTest("magi-cc-sdd-plugin not found")
+
+        with patch.object(
+            cli,
+            "_execute_cc_sdd",
+            return_value=CommandResult(
+                stdout=json.dumps(review_payload),
+                stderr="",
+                return_code=0,
+                execution_time=0.4,
+            ),
+        ):
+            with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
+                exit_code = cli._run_spec_command(["--review", "ログイン仕様をレビュー"])
+
+        output = mock_stdout.getvalue()
+        self.assertEqual(exit_code, 0)
+        self.assertIn("overall 2/3 complete", output)
+        self.assertIn("sage-a", output)
+        self.assertIn("0.92", output)
+        self.assertIn("sage-b", output)
+        self.assertIn("timeout", output)
+        self.assertIn("max_attempts=3", output)
 
 
 class TestMainEntry(unittest.TestCase):
