@@ -17,7 +17,7 @@ TASKS_PATH = (
 def _load_tasks_sections():
     """tasks.md を読み込み、タスク ID ごとのセクションを返す。"""
     text = TASKS_PATH.read_text(encoding="utf-8")
-    pattern = re.compile(r"^- \[[ x]\]\s*(\d+)\.", re.MULTILINE)
+    pattern = re.compile(r"^- \[[ xX-]\]\s*(\d+)\.", re.MULTILINE)
     matches = list(pattern.finditer(text))
     sections = {}
     for idx, match in enumerate(matches):
@@ -54,7 +54,7 @@ class TestPendingTasksCleanupTasks(unittest.TestCase):
             property_lines = [
                 line
                 for line in sections[task_id].splitlines()
-                if line.strip().startswith("Property:")
+                if re.match(r"^-?\s*Property:", line.strip())
             ]
             self.assertTrue(property_lines, f"Property セクション欠落: {task_id}")
             property_text = " ".join(property_lines)

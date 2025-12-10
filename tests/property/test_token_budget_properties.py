@@ -41,3 +41,4 @@ class TestTokenBudgetProperties(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover - 実行用
     unittest.main()
+

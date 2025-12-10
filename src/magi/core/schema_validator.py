@@ -96,7 +96,7 @@ class SchemaValidator:
             normalized["vote"] = vote_value.strip()
         reason_value = normalized.get("reason")
         if isinstance(reason_value, str):
-            normalized["reason"] = reason_value
+            normalized["reason"] = reason_value.strip()
         return normalized
 
     def validate_vote_payload(self, payload: Dict[str, Any]) -> ValidationResult:

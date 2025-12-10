@@ -197,3 +197,4 @@ class PersonaManager:
                     base_prompt=existing.base_prompt,
                     override_prompt=None
                 )
+

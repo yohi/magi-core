@@ -1,4 +1,4 @@
-""" 
+"""
 MagiCLIメインモジュール
 
 MAGIシステムのエントリーポイントとコマンドハンドラーの統合
@@ -10,7 +10,7 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 
 from magi import __version__
 from magi.cli.parser import ArgumentParser, ParsedCommand, VALID_COMMANDS
@@ -26,7 +26,7 @@ from magi.plugins.loader import PluginLoader, Plugin
 class MagiCLI:
     """MAGIシステムのエントリーポイント"""
 
-    REVIEW_RETRY_DEFAULTS: Dict[str, Any] = {
+    REVIEW_RETRY_DEFAULTS: ClassVar[Dict[str, Any]] = {
         "max_attempts": 3,
         "wait_seconds": 1.0,
         "per_attempt_timeout": 5,
@@ -52,7 +52,7 @@ class MagiCLI:
         self.output_format = output_format
         self.plugin = plugin
 
-    def run(self, command: str, args: List[str], options: Optional[Dict[str, Any]] | None = None) -> int:
+    def run(self, command: str, args: List[str], options: Dict[str, Any] | None = None) -> int:
         """コマンドを実行し、Exit Codeを返す
 
         Args:
@@ -289,7 +289,7 @@ class MagiCLI:
         print(f"Agent overrides loaded for personas: {', '.join(p.name for p in plugin.agent_overrides.keys())}")
 
         return 0
-    
+
     def _run_spec_with_review(self, plugin: Plugin, request: str) -> int:
         """`magi spec --review` フローの実行"""
         review_config = dict(self.REVIEW_RETRY_DEFAULTS)
@@ -477,13 +477,13 @@ class MagiCLI:
             f"retrying in {review_config['wait_seconds']}s...",
             file=sys.stderr,
         )
-    
+
     def _find_plugin_path(self, plugin_name: str) -> Optional[Path]:
         """プラグインパスを検索
-        
+
         Args:
             plugin_name: プラグイン名
-            
+
         Returns:
             プラグインファイルのパス、見つからない場合はNone
         """
@@ -496,13 +496,13 @@ class MagiCLI:
             # ユーザーのホームディレクトリ
             Path.home() / ".magi" / "plugins" / plugin_name / "plugin.yaml",
         ]
-        
+
         for path in search_paths:
             if path.exists():
                 return path
-        
+
         return None
-    
+
     def _execute_cc_sdd(
         self,
         plugin: Plugin,
@@ -512,13 +512,13 @@ class MagiCLI:
         timeout: Optional[int] = None,
     ) -> CommandResult:
         """cc-sddコマンドを実行
-        
+
         Args:
             plugin: ロードされたプラグイン
             request: 仕様書作成のリクエスト
             extra_args: 追加の引数
             timeout: 実行タイムアウト（秒）
-            
+
         Returns:
             CommandResult: コマンド実行結果
         """

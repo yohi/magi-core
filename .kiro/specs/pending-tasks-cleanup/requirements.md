@@ -19,7 +19,7 @@
 #### Acceptance Criteria
 1. WHEN `magi spec --review` を実行したとき THEN システムは cc-sdd プラグインを通じて各賢者のレビュー出力を取得し CLI に整形表示 SHALL。
 2. IF レビュー結果が取得できなかったとき THEN システムは失敗理由と再試行手順を含むメッセージを表示 SHALL。
-3. WHILE レビューが完了していない間 THE システム SHALL ステータスを「進行中」と表示し、完了時には「完了」として要約を表示 SHALL。
+3. WHILE レビューが完了していない間 THEN システムはステータスを「進行中」と表示し、完了時には「完了」として要約を表示 SHALL。
 
 ### Requirement 3: SecurityFilter の禁止パターン監査ログ
 **Objective:** セキュリティ担当として、入力サニタイズで除去された禁止パターンを監査ログに残したい。`removed_patterns` が空になる問題を解消し、追跡可能性を確保するため。
@@ -42,7 +42,7 @@
 
 #### Acceptance Criteria
 1. WHEN 入力コンテキストが予算閾値を超えるとき THEN システムは重要度選択後に要約ステップを実施し、要約差分を再計算 SHALL。
-2. WHILE 圧縮を行う間 THE システム SHALL 削減トークン数・保持率・要約適用の有無をログに記録 SHALL。
+2. WHILE 圧縮を行う間 THEN システムは削減トークン数・保持率・要約適用の有無をログに記録 SHALL。
 3. WHERE `LOG_CONTEXT_REDUCTION_KEY` が有効なとき THEN システムは削減前後のサイズと要約概要を監査ログへ出力 SHALL。
 
 ### Requirement 6: メタデータ整合性とテスト健全性の回復
