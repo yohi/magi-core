@@ -107,11 +107,19 @@ class SchemaValidator:
             return ValidationResult(False, ["payload はオブジェクトである必要があります"])
 
         normalized_payload = self._normalize_vote_payload(payload)
+
+        reason_normalized = normalized_payload.get("reason")
+        if not isinstance(reason_normalized, str) or not reason_normalized:
+            errors.append("reason は非空文字列である必要があります")
+
         schema_errors = sorted(
             self._vote_validator.iter_errors(normalized_payload),
             key=lambda err: list(err.absolute_path),
         )
         for error in schema_errors:
+            if list(error.absolute_path) == ["reason"] and "non-empty" in error.message:
+                # 手前で同義のメッセージを付与済みなので重複を避ける
+                continue
             errors.append(self._format_error(error))
 
         vote_value = payload.get("vote")
@@ -122,10 +130,6 @@ class SchemaValidator:
 
         if vote_normalized not in self._ALLOWED_VOTES:
             errors.append("vote は APPROVE | DENY | CONDITIONAL のいずれかを指定してください")
-
-        reason = payload.get("reason")
-        if not isinstance(reason, str) or not reason.strip():
-            errors.append("reason は非空文字列である必要があります")
 
         if "conditions" in payload:
             conditions = payload.get("conditions")
