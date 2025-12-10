@@ -57,7 +57,7 @@ def main(args: List[str] | None = None) -> int:
 
     # CLI実行
     cli = MagiCLI(config, output_format=parsed.output_format, plugin=parsed.plugin)
-    return cli.run(parsed.command, parsed.args)
+    return cli.run(parsed.command, parsed.args, options=parsed.options)
 
 
 def _print_help() -> None:

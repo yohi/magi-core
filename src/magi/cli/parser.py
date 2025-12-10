@@ -102,6 +102,12 @@ class ArgumentParser:
                     i += 1
                     continue
 
+            # specレビューオプション
+            if arg == "--review":
+                options["review"] = True
+                i += 1
+                continue
+
             # コマンドまたは引数
             if not command and not arg.startswith("-"):
                 command = arg
