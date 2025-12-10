@@ -3,13 +3,14 @@
 ## 基本技術
 - 言語/ランタイム: Python 3.11+
 - パッケージ管理: uv（ビルドは hatchling）
-- 主要依存: anthropic (LLM API), pyyaml (設定), hypothesis/pytest (テスト)
+- 主要依存: anthropic (LLM API), jsonschema (スキーマ検証), pyyaml (設定), hypothesis/pytest (テスト)
 - 配布形態: `pyproject.toml` の scripts で `magi` を提供
 
 ## アーキテクチャ概要
 - CLI レイヤー（`magi`）→ ConsensusEngine（Thinking/Debate/Voting）→ Agent/LLM/Context 管理 → Output/Plugins
 - Core と Plugin を分離。合議フローは TokenBudgetManager → TemplateLoader → SchemaValidator → QuorumManager → StreamingEmitter でハードニング済み。
 - セキュリティフィルタとプラグインガードで入力サニタイズ・メタ文字検証を実施。
+- spec_sync で `spec.json` と `tasks.md` を原子的に同期し、残タスクとメタ情報を一貫させる。
 
 ## 開発環境
 - uv で依存管理: `uv sync`
@@ -40,7 +41,7 @@ uv run coverage html
 ## 合議ハードニング機能
 - TokenBudgetManager: 言語別トークン推定と重要度圧縮で CONSENSUS_TOKEN_BUDGET を維持。
 - TemplateLoader: YAML/JSON/Jinja2 テンプレートを TTL キャッシュし、force reload/ホットリロード対応。
-- SchemaValidator: ツール呼び出し JSON をスキーマ検証し、再生成リトライとエラーロギングを行う。
+- SchemaValidator: ツール呼び出し JSON を jsonschema で検証し、再生成リトライとエラーロギングを行う。
 - QuorumManager: エージェントごとの失敗/除外を追跡し、クオーラム未達時はフェイルセーフ応答へ遷移。
 - StreamingEmitter: ストリーミング出力と再接続リトライ（MAGI_CLI_STREAM_RETRY_COUNT）を実施。
 - SecurityFilter/PluginGuard: マーカー付与・制御文字エスケープ・禁止パターン検知・署名/ハッシュ検証。
