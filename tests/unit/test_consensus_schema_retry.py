@@ -117,6 +117,46 @@ class TestConsensusSchemaRetry(unittest.TestCase):
         self.assertIn("schema.retry_exhausted", event_types)
         self.assertIn("schema.rejected", event_types)
 
+    def test_schema_range_error_triggers_fail_safe_and_logs(self):
+        """数値範囲違反の検証失敗でフェイルセーフにする"""
+        config = Config(
+            api_key="test",
+            schema_retry_count=0,
+            template_base_path=self.temp_dir.name,
+        )
+        engine = ConsensusEngine(
+            config, schema_validator=self.validator, template_loader=self.template_loader
+        )
+
+        async def invalid_vote(_context):
+            payload = {
+                "vote": Vote.APPROVE.value,
+                "reason": "ok",
+                "confidence": 2.0,
+            }
+            validation = self.validator.validate_vote_payload(payload)
+            if not validation.ok:
+                raise SchemaValidationError(validation.errors)
+            return VoteOutput(
+                persona_type=PersonaType.MELCHIOR,
+                vote=Vote.APPROVE,
+                reason="ok",
+            )
+
+        agent = MagicMock()
+        agent.vote = AsyncMock(side_effect=invalid_vote)
+
+        with patch.object(
+            engine, "_create_agents", return_value={PersonaType.MELCHIOR: agent}
+        ), patch.object(engine, "_build_voting_context", return_value="ctx"):
+            result = asyncio.run(engine._run_voting_phase({}, []))
+
+        self.assertTrue(result["fail_safe"])
+        self.assertTrue(engine.errors)
+        self.assertTrue(
+            any("confidence" in err for err in engine.errors[0]["errors"])
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
