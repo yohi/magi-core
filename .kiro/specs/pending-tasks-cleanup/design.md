@@ -227,21 +227,21 @@ def sync_spec_metadata(tasks: TasksStatus) -> SpecMetaUpdate:
 
 ## Data Models
 - **VotingPayload (jsonschema)**:
-```json
-{
-  "voter": "mage-1",
-  "proposal": "consensus-answer",
-  "justification": "理由テキスト",
-  "score": 0.85,
-  "confidence": 0.72
-}
-```
+  ```json
+  {
+    "voter": "mage-1",
+    "proposal": "consensus-answer",
+    "justification": "理由テキスト",
+    "score": 0.85,
+    "confidence": 0.72
+  }
+  ```
   - `voter`/`proposal`/`justification`: 非空文字列、UTF-8。
   - `score`/`confidence`: float 範囲 0.0〜1.0（例: 0.85、0.72）。
 - **ValidationOutcome**:
-```json
-{ "ok": false, "errors": ["Missing voter field", "Score out of range"], "retries": 2, "fail_safe": true }
-```
+  ```json
+  { "ok": false, "errors": ["Missing voter field", "Score out of range"], "retries": 2, "fail_safe": true }
+  ```
   - `errors`: 検証エラー文字列配列（例: "Missing voter field"）。
   - `retries`: int >= 0（最大3想定）、`fail_safe`: bool。
 - **FailSafeResponse**:
@@ -249,28 +249,28 @@ def sync_spec_metadata(tasks: TasksStatus) -> SpecMetaUpdate:
 { "status": "fail_safe", "reason": "schema_validation_failed", "fallback": "use_previous_answer", "retry_count": 3 }
 ```
 - **ReductionLogEntry**:
-```json
-{ "size_before": 2400, "size_after": 900, "retain_ratio": 0.375, "summary_applied": true, "strategy": "with_summary" }
-```
+  ```json
+  { "size_before": 2400, "size_after": 900, "retain_ratio": 0.375, "summary_applied": true, "strategy": "with_summary" }
+  ```
   - `strategy`: enum ["priority_selection_only", "with_summary"]。
 - **SanitizationLogEntry**:
-```json
-{ "pattern_id": "regex://api-key", "count": 2, "masked_snippet": "[MASKED:UUID]-xxxx" }
-```
+  ```json
+  { "pattern_id": "regex://api-key", "count": 2, "masked_snippet": "[MASKED:UUID]-xxxx" }
+  ```
   - `masked_snippet`: "[MASKED:UUID]" 形式でマスクを明示。
 - **SanitizedResult**:
 ```json
 { "sanitized_text": "masked content", "original_id": "ctx-123", "redaction_map": { "regex://api-key": "[MASKED:UUID]" }, "metadata": { "processed_at": "2025-12-10T12:00:00Z" } }
 ```
 - **TasksStatus**:
-```json
-{ "total_tasks": 10, "completed_tasks": 6, "in_progress_count": 3, "last_updated": "2025-12-10T09:00:00Z" }
-```
+  ```json
+  { "total_tasks": 10, "completed_tasks": 6, "in_progress_count": 3, "last_updated": "2025-12-10T09:00:00Z" }
+  ```
   - 各カウントは 0 以上の整数、last_updated は ISO8601 文字列。
 - **SpecMetaUpdate**:
-```json
-{ "remaining_tasks": 4, "last_synced_at": "2025-12-10T09:05:00Z", "source": "tasks.md", "status_summary": "in_progress" }
-```
+  ```json
+  { "remaining_tasks": 4, "last_synced_at": "2025-12-10T09:05:00Z", "source": "tasks.md", "status_summary": "in_progress" }
+  ```
   - `source`: enum ["tasks.md", "manual_sync"]、`last_synced_at`: ISO8601 文字列、`status_summary`: 例 "in_progress"/"done"/"blocked"。
 
 ## Error Handling
