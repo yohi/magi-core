@@ -155,11 +155,13 @@ def _atomic_write_json(target: Path, content: dict, lock: bool = True) -> None:
             os.remove(temp_path)
 
 
-def _build_status_summary(remaining_tasks: int, in_progress_count: int) -> str:
+def _build_status_summary(
+    remaining_tasks: int, in_progress_count: int, completed_tasks: int
+) -> str:
     """状態を簡潔なサマリーに変換する。"""
     if remaining_tasks == 0:
         return "done"
-    if in_progress_count > 0:
+    if completed_tasks > 0 or in_progress_count > 0:
         return "in_progress"
     return "pending"
 
@@ -202,7 +204,9 @@ def sync_spec_metadata(
         "synced_at": summary.last_updated,
         "generator_version": generator_version,
         "status_summary": _build_status_summary(
-            summary.remaining_tasks, summary.in_progress_count
+            summary.remaining_tasks,
+            summary.in_progress_count,
+            summary.completed_tasks,
         ),
         "in_progress_count": summary.in_progress_count,
         "completion_rate": summary.completion_rate,
