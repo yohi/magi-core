@@ -404,6 +404,7 @@ class ConsensusEngine:
                 "fail_safe": False,
                 "fail_safe_reason": None,
                 "emitted": 0,
+                "dropped": 0,
             }
         )
         stop_streaming = False

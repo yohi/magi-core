@@ -107,14 +107,15 @@ class QueueStreamingEmitter(BaseStreamingEmitter):
                 self._queue.task_done()
             except asyncio.QueueEmpty:
                 dropped = None
-            self._dropped += 1
-            logger.warning(
-                "streaming.emitter.drop persona=%s phase=%s round=%s dropped_persona=%s",
-                persona,
-                phase,
-                round_number,
-                dropped.persona if dropped else None,
-            )
+            if dropped is not None:
+                self._dropped += 1
+                logger.warning(
+                    "streaming.emitter.drop persona=%s phase=%s round=%s dropped_persona=%s",
+                    persona,
+                    phase,
+                    round_number,
+                    dropped.persona,
+                )
 
         try:
             self._queue.put_nowait(stream_chunk)
