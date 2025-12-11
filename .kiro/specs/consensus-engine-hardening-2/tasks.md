@@ -43,8 +43,8 @@
   - ストリーミング OFF 時に既存の一括出力（バルク）経路が変化しないことを確認する
   - _Requirements: 性能/直列性改善_
 
-- [ ] 4. Guardrails 追加とサニタイズ順序の強化
-- [ ] 4.1 Guardrails チェックの挿入とフラグ制御
+- [x] 4. Guardrails 追加とサニタイズ順序の強化
+- [x] 4.1 Guardrails チェックの挿入とフラグ制御
   - Guardrails を SecurityFilter の前段に挿入し、feature flag で有効化/無効化を制御する
   - タイムアウト（config: `guardrails.timeout_seconds`、既定 3s）と失敗時挙動（`guardrails.on_timeout_behavior` = fail-closed/fail-open, `guardrails.on_error_policy`）を設定駆動にし、既定は fail-closed とする
   - Config スキーマ設計: guardrails と StreamingEmitter の timeout キーをまとめて明記する（例）
@@ -67,11 +67,11 @@
     ```
   - 上記スキーマが design.md のガイド（プロバイダ差替え/モデル更新・fail-open/timeout キー）と整合することを確認し、設計側のサンプルと対応付ける
   - _Requirements: セキュリティ/ガード強化_
-- [ ] 4.2 サニタイズ順序と二重防御の整合
+- [x] 4.2 サニタイズ順序と二重防御の整合
   - Guardrails → SecurityFilter → Template/Schema の順序をコードに反映し、二重サニタイズでの副作用がないようにする
   - 失敗・タイムアウト時のログと拒否レスポンスを統一し、`guardrails.timeout_seconds` / `guardrails.on_timeout_behavior` / `guardrails.on_error_policy` の設定値が実装に反映されることを確認する
   - _Requirements: セキュリティ/ガード強化_
-- [ ] 4.3 Guardrails テスト
+- [x] 4.3 Guardrails テスト
   - ブロックケース、タイムアウト、fail-open/closed 切替時の挙動をテストで検証する
   - 難読化や多言語入力が検知されることを確認し、通過時に SecurityFilter へ正しく連携することを確かめる
   - _Requirements: セキュリティ/ガード強化_
