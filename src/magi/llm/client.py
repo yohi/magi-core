@@ -6,6 +6,7 @@ Anthropic APIとの通信を管理するクライアント。
 Requirements: 2.1, 2.2, 2.3, 2.4
 """
 import asyncio
+import random
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Any, Optional
@@ -82,7 +83,12 @@ class LLMClient:
         api_key: str,
         model: str = "claude-sonnet-4-20250514",
         retry_count: int = 3,
-        timeout: int = 60
+        timeout: int = 60,
+        base_delay_seconds: float = 0.5,
+        rate_limit_backoff_cap: float = 60.0,
+        default_backoff_cap: float = 10.0,
+        rate_limit_retry_count: Optional[int] = None,
+        default_retry_count: Optional[int] = None,
     ):
         """LLMClientを初期化
 
@@ -91,11 +97,33 @@ class LLMClient:
             model: 使用するモデル名
             retry_count: リトライ回数
             timeout: タイムアウト秒数
+            base_delay_seconds: バックオフ計算の基準秒数
+            rate_limit_backoff_cap: レート制限時の待機上限秒数
+            default_backoff_cap: その他エラー時の待機上限秒数
+            rate_limit_retry_count: レート制限時の最大試行回数（未指定時は6回以上を保証）
+            default_retry_count: その他エラー時の最大試行回数（未指定時はretry_countを3回上限で使用）
         """
         self.api_key = api_key
         self.model = model
         self.retry_count = retry_count
         self.timeout = timeout
+        self.base_delay_seconds = base_delay_seconds
+        self.rate_limit_backoff_cap = rate_limit_backoff_cap
+        self.default_backoff_cap = default_backoff_cap
+
+        # レート制限時は少なくとも6回まで試行し、その他は最大3回までに制限
+        configured_rate_limit_retry = (
+            rate_limit_retry_count if rate_limit_retry_count is not None else 6
+        )
+        self.rate_limit_retry_count = max(
+            1,
+            min(configured_rate_limit_retry, 6),
+        )
+
+        configured_default_retry = (
+            default_retry_count if default_retry_count is not None else self.retry_count
+        )
+        self.default_retry_count = max(1, min(configured_default_retry, 3))
 
         # Anthropicクライアントを初期化
         self._client = AsyncAnthropic(
@@ -118,7 +146,7 @@ class LLMClient:
         return await self._retry_with_backoff(request)
 
     async def _retry_with_backoff(self, request: LLMRequest) -> LLMResponse:
-        """指数バックオフで再試行
+        """指数バックオフ＋Full Jitterで再試行
 
         Args:
             request: LLMリクエスト
@@ -131,7 +159,8 @@ class LLMClient:
         """
         last_error: Optional[MagiError] = None
 
-        for attempt in range(self.retry_count):
+        attempt = 0
+        while True:
             try:
                 return await self._send_request(request)
             except Exception as e:
@@ -148,18 +177,12 @@ class LLMClient:
                 # last_errorにMagiErrorを保存
                 last_error = magi_error
 
-                # リトライすべきか判定
-                if self._should_retry(error_type, attempt, self.retry_count):
-                    # エラータイプに応じたバックオフ時間を計算
-                    if error_type == APIErrorType.RATE_LIMIT:
-                        # レート制限の場合は長めに待機
-                        wait_time = (2 ** attempt) * 1.0
-                    else:
-                        # その他のエラーは標準的なバックオフ
-                        wait_time = (2 ** attempt) * 0.5
+                max_attempts = self._max_attempts_for(error_type)
+                if self._should_retry(error_type, attempt, max_attempts):
+                    wait_time = self._calculate_backoff(error_type, attempt)
                     await asyncio.sleep(wait_time)
+                    attempt += 1
                 else:
-                    # リトライしない場合はループを抜ける
                     break
 
         # 全てのリトライが失敗した場合、MagiExceptionをraise
@@ -279,3 +302,19 @@ class LLMClient:
             return False
         # 最大試行回数に達していない場合はリトライ
         return attempt < retry_count - 1
+
+    def _max_attempts_for(self, error_type: APIErrorType) -> int:
+        """エラー種別に応じた最大試行回数を返す。"""
+        if error_type == APIErrorType.RATE_LIMIT:
+            return self.rate_limit_retry_count
+        return self.default_retry_count
+
+    def _calculate_backoff(self, error_type: APIErrorType, attempt: int) -> float:
+        """Full Jitter を用いた待機時間を計算する。"""
+        cap = (
+            self.rate_limit_backoff_cap
+            if error_type == APIErrorType.RATE_LIMIT
+            else self.default_backoff_cap
+        )
+        exponential = self.base_delay_seconds * (2 ** attempt)
+        return random.uniform(0, min(cap, exponential))

@@ -20,7 +20,7 @@ import logging
 import sys
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable
 
 from magi.agents.agent import Agent
 from magi.agents.persona import PersonaManager
@@ -68,6 +68,7 @@ class ConsensusEngine:
         config: Config,
         schema_validator: Optional[SchemaValidator] = None,
         template_loader: Optional[TemplateLoader] = None,
+        llm_client_factory: Optional[Callable[[], LLMClient]] = None,
     ):
         """ConsensusEngineを初期化
 
@@ -93,6 +94,14 @@ class ConsensusEngine:
                 event_hook=self._record_event,
             )
         self.security_filter = SecurityFilter()
+        # LLMクライアントのファクトリ（デフォルトは設定値から生成）
+        if llm_client_factory is None:
+            self.llm_client_factory = self._build_default_llm_client_factory()
+        elif callable(llm_client_factory):
+            self.llm_client_factory = llm_client_factory
+        else:
+            # LLMClient インスタンスが渡された場合はラップして再利用する
+            self.llm_client_factory = lambda: llm_client_factory
 
         # エラーログを保持
         self._errors: List[Dict] = []
@@ -124,12 +133,7 @@ class ConsensusEngine:
         Returns:
             ペルソナタイプをキーとするAgentの辞書
         """
-        llm_client = LLMClient(
-            api_key=self.config.api_key,
-            model=self.config.model,
-            retry_count=self.config.retry_count,
-            timeout=self.config.timeout
-        )
+        llm_client = self.llm_client_factory()
 
         agents = {}
         for persona_type in PersonaType:
@@ -143,6 +147,18 @@ class ConsensusEngine:
             )
 
         return agents
+
+    def _build_default_llm_client_factory(self) -> Callable[[], LLMClient]:
+        """設定値に基づくデフォルトLLMクライアントファクトリを構築"""
+        def _factory() -> LLMClient:
+            return LLMClient(
+                api_key=self.config.api_key,
+                model=self.config.model,
+                retry_count=self.config.retry_count,
+                timeout=self.config.timeout,
+            )
+
+        return _factory
 
     async def _run_thinking_phase(self, prompt: str) -> Dict[PersonaType, ThinkingOutput]:
         """Thinking Phaseを実行

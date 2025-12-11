@@ -4,7 +4,7 @@ LLMクライアントの基本機能をテストする。
 """
 import asyncio
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 from dataclasses import dataclass
 
 from magi.llm.client import (
@@ -301,6 +301,104 @@ class TestLLMClientAsync(unittest.TestCase):
                 self.assertFalse(context.exception.error.recoverable)
 
             asyncio.run(run_test())
+
+    def test_retry_with_full_jitter_for_rate_limit(self):
+        """レート制限時にFull Jitterで待機し既定回数までリトライする"""
+        client = LLMClient(
+            api_key="test-key",
+            retry_count=3,
+            rate_limit_retry_count=4,
+            base_delay_seconds=0.1,
+            rate_limit_backoff_cap=1.0,
+        )
+
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="rate-ok")]
+        mock_response.usage.input_tokens = 10
+        mock_response.usage.output_tokens = 5
+        mock_response.model = "model-x"
+
+        call_count = 0
+
+        async def mock_send(request):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 4:
+                from anthropic import RateLimitError
+                import httpx
+
+                mock_httpx_response = MagicMock(spec=httpx.Response)
+                mock_httpx_response.request = MagicMock()
+                mock_httpx_response.status_code = 429
+                mock_httpx_response.headers = MagicMock()
+                mock_httpx_response.headers.get = MagicMock(return_value=None)
+                raise RateLimitError(
+                    "Rate limit",
+                    response=mock_httpx_response,
+                    body=None,
+                )
+            return mock_response
+
+        client._send_request = AsyncMock(side_effect=mock_send)
+
+        jitter_values = [0.01, 0.02, 0.03]
+        request = LLMRequest(system_prompt="s", user_prompt="u")
+        with patch(
+            "magi.llm.client.random.uniform",
+            side_effect=jitter_values,
+        ) as mock_uniform, patch(
+            "magi.llm.client.asyncio.sleep",
+            new_callable=AsyncMock,
+        ) as mock_sleep:
+            asyncio.run(client.send(request))
+
+        # 3回スリープして4回目で成功する
+        self.assertEqual(mock_sleep.await_count, 3)
+        self.assertEqual(call_count, 4)
+        mock_uniform.assert_has_calls(
+            [
+                call(0, 0.1),
+                call(0, 0.2),
+                call(0, 0.4),
+            ]
+        )
+
+    def test_retry_with_full_jitter_for_timeout(self):
+        """タイムアウト時にFull Jitterで3回試行し例外を送出する"""
+        client = LLMClient(
+            api_key="test-key",
+            retry_count=3,
+            base_delay_seconds=0.2,
+            default_backoff_cap=1.0,
+            default_retry_count=3,
+        )
+        client._send_request = AsyncMock(side_effect=asyncio.TimeoutError())
+
+        request = LLMRequest(system_prompt="s", user_prompt="u")
+        jitter_values = [0.05, 0.08]
+
+        with patch(
+            "magi.llm.client.random.uniform",
+            side_effect=jitter_values,
+        ) as mock_uniform, patch(
+            "magi.llm.client.asyncio.sleep",
+            new_callable=AsyncMock,
+        ) as mock_sleep:
+            async def run_test():
+                with self.assertRaises(MagiException):
+                    await client.send(request)
+
+            asyncio.run(run_test())
+
+        # 3回試行し2回スリープしていることを確認
+        self.assertEqual(client._send_request.await_count, 3)
+        self.assertEqual(mock_sleep.await_count, 2)
+        mock_uniform.assert_has_calls(
+            [
+                call(0, 0.2),
+                call(0, 0.4),
+            ]
+        )
 
 
 if __name__ == "__main__":
