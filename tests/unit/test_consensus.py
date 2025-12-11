@@ -279,6 +279,23 @@ class TestConsensusEngineAgentCreation(unittest.TestCase):
                 self.assertIsInstance(agent, Agent)
                 self.assertEqual(agent.persona.type, persona_type)
 
+    def test_create_agents_uses_injected_llm_client_factory(self):
+        """注入されたLLMクライアントファクトリが利用されることを確認"""
+        factory_calls = 0
+        injected_client = MagicMock()
+
+        def factory():
+            nonlocal factory_calls
+            factory_calls += 1
+            return injected_client
+
+        engine = ConsensusEngine(self.config, llm_client_factory=factory)
+        agents = engine._create_agents()
+
+        self.assertEqual(factory_calls, 1)
+        for agent in agents.values():
+            self.assertIs(agent.llm_client, injected_client)
+
 
 class TestConsensusTokenBudget(unittest.TestCase):
     """Voting前のトークン予算管理のテスト"""
