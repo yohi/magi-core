@@ -51,9 +51,9 @@ class PluginLoader:
         """初期化
 
         Args:
-            public_key_path: 署名検証に用いる公開鍵パス（優先度最高）
+            public_key_path: 署名検証に用いる公開鍵パス (優先度最高)
             config: Config または同等のオブジェクト。plugin_public_key_path 属性を参照する
-            signature_validator: 検証用のバリデータ（テスト差し替え用）
+            signature_validator: 検証用のバリデータ (テスト差し替え用)
         """
         self.public_key_path = public_key_path
         self.config = config
