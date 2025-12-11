@@ -18,6 +18,7 @@ import asyncio
 import inspect
 import logging
 import sys
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol
@@ -209,6 +210,11 @@ class ConsensusEngine:
             "fail_safe_reason": None,
             "emitted": 0,
             "dropped": 0,
+            "started_at": None,
+            "first_emit_at": None,
+            "completed_at": None,
+            "ttfb_ms": None,
+            "elapsed_ms": None,
         }
         self._stream_buffer: List[str] = []
         # クオーラム管理
@@ -280,6 +286,12 @@ class ConsensusEngine:
             )
             self._streaming_state["emitted"] += 1
             self._stream_buffer.append(response)
+            if self._streaming_state.get("first_emit_at") is None:
+                now = time.perf_counter()
+                self._streaming_state["first_emit_at"] = now
+                started = self._streaming_state.get("started_at")
+                if started is not None:
+                    self._streaming_state["ttfb_ms"] = (now - started) * 1000
 
             estimated = self.token_budget_manager.estimate_tokens(
                 "".join(self._stream_buffer)
@@ -287,8 +299,15 @@ class ConsensusEngine:
             if estimated > self.token_budget_manager.max_tokens:
                 self._streaming_state["fail_safe"] = True
                 self._streaming_state["fail_safe_reason"] = "token_budget_exceeded"
+                self._streaming_state["completed_at"] = time.perf_counter()
+                started = self._streaming_state.get("started_at")
+                completed = self._streaming_state.get("completed_at")
+                if started is not None and completed is not None:
+                    self._streaming_state["elapsed_ms"] = (completed - started) * 1000
                 self._record_event(
                     "debate.streaming.aborted",
+                    code=ErrorCode.CONSENSUS_STREAMING_ABORTED.value,
+                    phase=ConsensusPhase.DEBATE.value,
                     reason="token_budget_exceeded",
                     round=round_number,
                     estimated_tokens=estimated,
@@ -428,11 +447,18 @@ class ConsensusEngine:
                 "fail_safe_reason": None,
                 "emitted": 0,
                 "dropped": 0,
+                "started_at": None,
+                "first_emit_at": None,
+                "completed_at": None,
+                "ttfb_ms": None,
+                "elapsed_ms": None,
             }
         )
         stop_streaming = False
         agents = self._create_agents()
         debate_rounds: List[DebateRound] = []
+        if self._streaming_enabled:
+            self._streaming_state["started_at"] = time.perf_counter()
 
         try:
             # 設定されたラウンド数だけDebateを実行
@@ -521,6 +547,24 @@ class ConsensusEngine:
                     self._streaming_state["dropped"] = 0
             if self._streaming_enabled:
                 await self.streaming_emitter.aclose()
+
+        if self._streaming_enabled:
+            if self._streaming_state.get("completed_at") is None:
+                self._streaming_state["completed_at"] = time.perf_counter()
+            started = self._streaming_state.get("started_at")
+            completed = self._streaming_state.get("completed_at")
+            if started is not None and completed is not None:
+                self._streaming_state["elapsed_ms"] = (completed - started) * 1000
+            self._record_event(
+                "debate.streaming.summary",
+                phase=ConsensusPhase.DEBATE.value,
+                emitted=self._streaming_state["emitted"],
+                dropped=self._streaming_state.get("dropped", 0),
+                fail_safe=self._streaming_state["fail_safe"],
+                fail_safe_reason=self._streaming_state["fail_safe_reason"],
+                ttfb_ms=self._streaming_state.get("ttfb_ms"),
+                elapsed_ms=self._streaming_state.get("elapsed_ms"),
+            )
 
         # フェーズをVOTINGに遷移
         self._transition_to_phase(ConsensusPhase.VOTING)
@@ -758,6 +802,8 @@ class ConsensusEngine:
             )
             self._record_event(
                 "quorum.fail_safe",
+                code=ErrorCode.CONSENSUS_QUORUM_UNSATISFIED.value,
+                phase=ConsensusPhase.VOTING.value,
                 reason=reason,
                 excluded=sorted(set(failed_personas)),
                 partial_results=partial_results,
@@ -776,6 +822,7 @@ class ConsensusEngine:
                     fallback["summary_applied"] = True
                 self._record_event(
                     "quorum.fallback_legacy",
+                    phase=ConsensusPhase.VOTING.value,
                     used=bool(fallback.get("voting_results")),
                     excluded=sorted(set(failed_personas)),
                 )
@@ -1039,8 +1086,15 @@ class ConsensusEngine:
             event_type = (
                 "guardrails.fail_open" if result.fail_open else "guardrails.blocked"
             )
+            failure_code = (
+                ErrorCode.GUARDRAILS_TIMEOUT.value
+                if result.failure == "timeout"
+                else ErrorCode.GUARDRAILS_ERROR.value
+            )
             self._record_event(
                 event_type,
+                code=failure_code,
+                phase="preflight",
                 provider=provider,
                 failure=result.failure,
                 reason=result.reason,
@@ -1050,14 +1104,9 @@ class ConsensusEngine:
                     "guardrails.fail_open provider=%s failure=%s", provider, result.failure
                 )
                 return
-            error_code = (
-                ErrorCode.GUARDRAILS_TIMEOUT.value
-                if result.failure == "timeout"
-                else ErrorCode.GUARDRAILS_ERROR.value
-            )
             raise MagiException(
                 MagiError(
-                    code=error_code,
+                    code=failure_code,
                     message="Guardrails により処理を中断しました。",
                     details={
                         "provider": provider,
@@ -1071,6 +1120,8 @@ class ConsensusEngine:
         if result.blocked:
             self._record_event(
                 "guardrails.blocked",
+                code=ErrorCode.GUARDRAILS_BLOCKED.value,
+                phase="preflight",
                 provider=provider,
                 reason=result.reason,
                 metadata=result.metadata,
@@ -1091,6 +1142,12 @@ class ConsensusEngine:
         if result.fail_open:
             self._record_event(
                 "guardrails.fail_open",
+                code=(
+                    ErrorCode.GUARDRAILS_TIMEOUT.value
+                    if result.failure == "timeout"
+                    else ErrorCode.GUARDRAILS_ERROR.value
+                ),
+                phase="preflight",
                 provider=provider,
                 failure=result.failure,
             )
