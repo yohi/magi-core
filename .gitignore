@@ -196,3 +196,4 @@ secrets.yml
 .agent/workflows
 .gemini/commands/kiro
 GEMINI.md
+.codex/

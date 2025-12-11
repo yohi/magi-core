@@ -3,12 +3,14 @@
 ## 基本技術
 - 言語/ランタイム: Python 3.11+
 - パッケージ管理: uv（ビルドは hatchling）
-- 主要依存: anthropic (LLM API), jsonschema (スキーマ検証), pyyaml (設定), hypothesis/pytest (テスト)
+- 主要依存: anthropic (LLM API), jsonschema (スキーマ検証), pyyaml (設定), cryptography (署名検証), hypothesis/pytest (テスト)
 - 配布形態: `pyproject.toml` の scripts で `magi` を提供
 
 ## アーキテクチャ概要
 - CLI レイヤー（`magi`）→ ConsensusEngine（Thinking/Debate/Voting）→ Agent/LLM/Context 管理 → Output/Plugins
 - Core と Plugin を分離。合議フローは TokenBudgetManager → TemplateLoader → SchemaValidator → QuorumManager → StreamingEmitter でハードニング済み。
+- GuardrailsAdapter を SecurityFilter 前段に挿入し、fail-open/fail-closed を設定で切替。遮断/失敗はイベントにコード付きで記録。
+- ストリーミングは QueueStreamingEmitter でバッファリングし、ドロップ/TTFB/elapsed を計測しつつ fail-safe にフォールバック。
 - セキュリティフィルタとプラグインガードで入力サニタイズ・メタ文字検証を実施。
 - spec_sync で `spec.json` と `tasks.md` を原子的に同期し、残タスクとメタ情報を一貫させる。
 
@@ -43,8 +45,9 @@ uv run coverage html
 - TemplateLoader: YAML/JSON/Jinja2 テンプレートを TTL キャッシュし、force reload/ホットリロード対応。
 - SchemaValidator: ツール呼び出し JSON を jsonschema で検証し、再生成リトライとエラーロギングを行う。
 - QuorumManager: エージェントごとの失敗/除外を追跡し、クオーラム未達時はフェイルセーフ応答へ遷移。
-- StreamingEmitter: ストリーミング出力と再接続リトライ（MAGI_CLI_STREAM_RETRY_COUNT）を実施。
-- SecurityFilter/PluginGuard: マーカー付与・制御文字エスケープ・禁止パターン検知・署名/ハッシュ検証。
+- StreamingEmitter: ストリーミング出力と再接続リトライ（MAGI_CLI_STREAM_RETRY_COUNT）、ドロップ計測と fail-safe イベント付与を実施。
+- GuardrailsAdapter: 前段でプロンプト難読化や jailbreak を検知し、タイムアウト/例外は fail-open/closed ポリシーで処理。
+- SecurityFilter/PluginGuard/PluginSignatureValidator: マーカー付与・制御文字エスケープ・禁止パターン検知・メタ文字拒否、プラグイン YAML を正規化した上で署名/ハッシュ検証。
 
 ## 環境変数・設定
 - `MAGI_API_KEY` (必須): Anthropic API キー
@@ -61,10 +64,18 @@ uv run coverage html
 - `CONSENSUS_TEMPLATE_BASE_PATH`: テンプレートディレクトリ
 - `CONSENSUS_QUORUM_THRESHOLD`: クオーラム閾値
 - `MAGI_CLI_STREAM_RETRY_COUNT`: ストリーミング再接続回数
+- `CONSENSUS_STREAMING_ENABLED`: ストリーミング出力の有効化
+- `CONSENSUS_STREAMING_QUEUE_SIZE` / `CONSENSUS_STREAMING_EMIT_TIMEOUT`: キュー長と送出タイムアウト
 - `LOG_CONTEXT_REDUCTION_KEY`: 削減ログの出力可否フラグ
 - `CONSENSUS_HARDENED_ENABLED`: ハードニング済みパスを有効化
 - `CONSENSUS_LEGACY_FALLBACK`: フェイルセーフ時に旧実装へフォールバック
+- `CONSENSUS_GUARDRAILS_ENABLED`: Guardrails の有効化
+- `CONSENSUS_GUARDRAILS_TIMEOUT`: Guardrails タイムアウト秒数
+- `CONSENSUS_GUARDRAILS_TIMEOUT_BEHAVIOR` / `CONSENSUS_GUARDRAILS_ERROR_POLICY`: fail-open / fail-closed ポリシー
+- `MAGI_PLUGIN_PUBKEY_PATH`: プラグイン署名検証に用いる公開鍵パス（config > env > plugins/public_key.pem の順で解決）
 - `magi.yaml`: 上記設定をファイルで上書き可能
 
 ## ポート/サービス
 - CLI ツールのため固定ポートなし。外部通信は Anthropic API への HTTPS のみ。
+
+updated_at: 2025-12-11
