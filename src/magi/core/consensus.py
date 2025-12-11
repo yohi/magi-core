@@ -420,13 +420,13 @@ class ConsensusEngine:
         if "used" not in fallback_meta:
             fallback_meta["used"] = fallback_used
         if fallback_meta.get("used"):
-            fallback_meta.setdefault("strategy", "legacy")
-            fallback_meta.setdefault(
-                "reason", result.get("fail_safe_reason") or result.get("reason")
+            fallback_meta["strategy"] = fallback_meta.get("strategy") or "legacy"
+            fallback_meta["reason"] = (
+                result.get("fail_safe_reason") or result.get("reason")
             )
         else:
             fallback_meta.setdefault("strategy", None)
-            fallback_meta.setdefault("reason", None)
+            fallback_meta["reason"] = None
 
         meta.setdefault("excluded_agents", result.get("excluded_agents", []))
         meta.setdefault("partial_results", result.get("partial_results", False))
