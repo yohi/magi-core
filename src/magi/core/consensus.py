@@ -20,7 +20,7 @@ import logging
 import sys
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol
 
 from magi.agents.agent import Agent
 from magi.agents.persona import PersonaManager
@@ -47,6 +47,61 @@ from magi.models import (
 
 # ロガーの設定
 logger = logging.getLogger(__name__)
+
+
+class VotingStrategy(Protocol):
+    """Voting 処理を切り替えるための Strategy インターフェース"""
+
+    name: str
+
+    async def run(
+        self,
+        thinking_results: Dict[PersonaType, ThinkingOutput],
+        debate_results: List[DebateRound],
+    ) -> Dict:
+        """Voting 処理を実行する"""
+
+
+class HardenedVotingStrategy:
+    """ハードニング済み Voting Strategy"""
+
+    name = "hardened"
+
+    def __init__(
+        self,
+        executor: Callable[
+            [Dict[PersonaType, ThinkingOutput], List[DebateRound]], Awaitable[Dict]
+        ],
+    ) -> None:
+        self._executor = executor
+
+    async def run(
+        self,
+        thinking_results: Dict[PersonaType, ThinkingOutput],
+        debate_results: List[DebateRound],
+    ) -> Dict:
+        return await self._executor(thinking_results, debate_results)
+
+
+class LegacyVotingStrategy:
+    """レガシー Voting Strategy"""
+
+    name = "legacy"
+
+    def __init__(
+        self,
+        executor: Callable[
+            [Dict[PersonaType, ThinkingOutput], List[DebateRound]], Awaitable[Dict]
+        ],
+    ) -> None:
+        self._executor = executor
+
+    async def run(
+        self,
+        thinking_results: Dict[PersonaType, ThinkingOutput],
+        debate_results: List[DebateRound],
+    ) -> Dict:
+        return await self._executor(thinking_results, debate_results)
 
 
 class ConsensusEngine:
@@ -341,14 +396,56 @@ class ConsensusEngine:
         thinking_results: Dict[PersonaType, ThinkingOutput],
         debate_results: List[DebateRound],
     ) -> Dict:
-        """Voting Phaseを実行"""
-        from magi.models import VotingTally
+        """Voting Strategy を選択し実行する"""
+        strategy = self._select_voting_strategy()
+        result = await strategy.run(thinking_results, debate_results)
 
-        # フラグ無効なら旧経路を使用
-        if not getattr(self.config, "enable_hardened_consensus", True):
-            return await self._run_voting_phase_legacy(
-                thinking_results, debate_results, mark_fallback=False
+        meta = result.setdefault(
+            "meta",
+            {},
+        )
+        meta.setdefault(
+            "strategy",
+            getattr(strategy, "name", strategy.__class__.__name__.lower()),
+        )
+        fallback_used = bool(result.get("legacy_fallback_used"))
+        fallback_meta = meta.setdefault(
+            "fallback",
+            {
+                "used": fallback_used,
+                "strategy": "legacy" if fallback_used else None,
+                "reason": None,
+            },
+        )
+        if "used" not in fallback_meta:
+            fallback_meta["used"] = fallback_used
+        if fallback_meta.get("used"):
+            fallback_meta.setdefault("strategy", "legacy")
+            fallback_meta.setdefault(
+                "reason", result.get("fail_safe_reason") or result.get("reason")
             )
+        else:
+            fallback_meta.setdefault("strategy", None)
+            fallback_meta.setdefault("reason", None)
+
+        meta.setdefault("excluded_agents", result.get("excluded_agents", []))
+        meta.setdefault("partial_results", result.get("partial_results", False))
+        meta.setdefault("summary_applied", result.get("summary_applied", False))
+        return result
+
+    def _select_voting_strategy(self) -> VotingStrategy:
+        """設定値に応じて Voting Strategy を選択する"""
+        if getattr(self.config, "enable_hardened_consensus", True):
+            return HardenedVotingStrategy(self._run_voting_phase_hardened)
+        return LegacyVotingStrategy(self._run_voting_phase_legacy)
+
+    async def _run_voting_phase_hardened(
+        self,
+        thinking_results: Dict[PersonaType, ThinkingOutput],
+        debate_results: List[DebateRound],
+    ) -> Dict:
+        """ハードニング済み Voting Strategy を実行する"""
+        from magi.models import VotingTally
 
         agents = self._create_agents()
         self.quorum_manager = QuorumManager(
@@ -364,7 +461,7 @@ class ConsensusEngine:
         # 議論コンテキストを構築
         context = self._build_voting_context(thinking_results, debate_results)
 
-        # トークン予算を適用 (新経路のみ)
+        # トークン予算を適用
         budget_result = self.token_budget_manager.enforce(
             context, ConsensusPhase.VOTING
         )
@@ -522,6 +619,7 @@ class ConsensusEngine:
         partial_results = 0 < len(voting_results) < len(agents)
         if len(voting_results) < effective_quorum:
             reason = "quorum 未達によりフェイルセーフ"
+            fail_safe_reason = "quorum_fail_safe"
             self._errors.append(
                 {
                     "code": ErrorCode.CONSENSUS_QUORUM_UNSATISFIED.value,
@@ -553,6 +651,11 @@ class ConsensusEngine:
                     used=bool(fallback.get("voting_results")),
                     excluded=sorted(set(failed_personas)),
                 )
+                fallback["legacy_fallback_used"] = True
+                fallback["fail_safe_reason"] = fail_safe_reason
+                fallback["reason"] = reason
+                fallback.setdefault("excluded_agents", sorted(set(failed_personas)))
+                fallback.setdefault("partial_results", partial_results)
                 return fallback
 
             return {
@@ -564,6 +667,7 @@ class ConsensusEngine:
                 "context": context,
                 "fail_safe": True,
                 "reason": reason,
+                "fail_safe_reason": fail_safe_reason,
                 "excluded_agents": sorted(set(failed_personas)),
                 "partial_results": partial_results,
                 "legacy_fallback_used": False,
