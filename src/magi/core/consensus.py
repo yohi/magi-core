@@ -409,23 +409,15 @@ class ConsensusEngine:
             getattr(strategy, "name", strategy.__class__.__name__.lower()),
         )
         fallback_used = bool(result.get("legacy_fallback_used"))
-        fallback_meta = meta.setdefault(
-            "fallback",
-            {
-                "used": fallback_used,
-                "strategy": "legacy" if fallback_used else None,
-                "reason": None,
-            },
-        )
-        if "used" not in fallback_meta:
-            fallback_meta["used"] = fallback_used
+        fallback_meta = meta.setdefault("fallback", {})
+        fallback_meta["used"] = fallback_used
         if fallback_meta.get("used"):
             fallback_meta["strategy"] = fallback_meta.get("strategy") or "legacy"
             fallback_meta["reason"] = (
                 result.get("fail_safe_reason") or result.get("reason")
             )
         else:
-            fallback_meta.setdefault("strategy", None)
+            fallback_meta["strategy"] = None
             fallback_meta["reason"] = None
 
         meta.setdefault("excluded_agents", result.get("excluded_agents", []))
