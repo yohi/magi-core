@@ -4,7 +4,8 @@
 MAGIシステムで使用されるエラーコードと例外クラス
 """
 
-from dataclasses import dataclass, field
+import logging
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, Optional
 
@@ -45,6 +46,10 @@ class ErrorCode(Enum):
     GUARDRAILS_BLOCKED = "SECURITY_002"
     GUARDRAILS_ERROR = "SECURITY_003"
     SIGNATURE_VERIFICATION_FAILED = "SECURITY_004"
+    GUARDRAILS_FAIL_OPEN = "SECURITY_005"
+
+    # リトライエラー
+    RETRY_EXHAUSTED = "RETRY_001"
 
 
 @dataclass
@@ -61,6 +66,7 @@ class MagiError:
     message: str
     details: Optional[Dict[str, Any]] = None
     recoverable: bool = False
+    log_level: int = logging.ERROR
 
 
 class MagiException(Exception):
@@ -76,7 +82,43 @@ class MagiException(Exception):
             error: MagiErrorインスタンス
         """
         self.error = error
+        self.log_level = error.log_level
         super().__init__(f"[{error.code}] {error.message}")
+
+
+class ValidationException(MagiException):
+    """バリデーション例外（入力/スキーマ関連）"""
+
+
+class SecurityException(MagiException):
+    """セキュリティ例外（Guardrails/署名関連）"""
+
+
+class PluginValidationException(ValidationException):
+    """プラグイン構文や署名の検証エラー"""
+
+
+class RetryableException(MagiException):
+    """一時的なエラーでリトライ可能な例外"""
+
+
+class GuardrailsTimeoutException(SecurityException):
+    """Guardrails のタイムアウト例外"""
+
+
+class GuardrailsModelException(SecurityException):
+    """Guardrails が危険と判定した場合の例外"""
+
+
+ERROR_CODE_LOG_LEVEL: Dict[ErrorCode, int] = {
+    ErrorCode.GUARDRAILS_FAIL_OPEN: logging.CRITICAL,
+    ErrorCode.RETRY_EXHAUSTED: logging.ERROR,
+    ErrorCode.GUARDRAILS_TIMEOUT: logging.ERROR,
+    ErrorCode.GUARDRAILS_BLOCKED: logging.ERROR,
+    ErrorCode.GUARDRAILS_ERROR: logging.ERROR,
+    ErrorCode.SIGNATURE_VERIFICATION_FAILED: logging.ERROR,
+    ErrorCode.PLUGIN_YAML_PARSE_ERROR: logging.ERROR,
+}
 
 
 # よく使用されるエラーのファクトリ関数
@@ -94,7 +136,8 @@ def create_config_error(message: str, details: Optional[Dict[str, Any]] = None) 
         code=ErrorCode.CONFIG_MISSING_API_KEY.value,
         message=message,
         details=details,
-        recoverable=False
+        recoverable=False,
+        log_level=logging.ERROR,
     )
 
 
@@ -102,7 +145,8 @@ def create_api_error(
     code: ErrorCode,
     message: str,
     details: Optional[Dict[str, Any]] = None,
-    recoverable: bool = True
+    recoverable: bool = True,
+    log_level: Optional[int] = None,
 ) -> MagiError:
     """APIエラーを作成
 
@@ -119,14 +163,16 @@ def create_api_error(
         code=code.value,
         message=message,
         details=details,
-        recoverable=recoverable
+        recoverable=recoverable,
+        log_level=log_level or ERROR_CODE_LOG_LEVEL.get(code, logging.ERROR),
     )
 
 
 def create_plugin_error(
     code: ErrorCode,
     message: str,
-    details: Optional[Dict[str, Any]] = None
+    details: Optional[Dict[str, Any]] = None,
+    log_level: Optional[int] = None,
 ) -> MagiError:
     """プラグインエラーを作成
 
@@ -142,13 +188,15 @@ def create_plugin_error(
         code=code.value,
         message=message,
         details=details,
-        recoverable=False
+        recoverable=False,
+        log_level=log_level or ERROR_CODE_LOG_LEVEL.get(code, logging.ERROR),
     )
 
 
 def create_agent_error(
     message: str,
-    details: Optional[Dict[str, Any]] = None
+    details: Optional[Dict[str, Any]] = None,
+    log_level: int = logging.ERROR,
 ) -> MagiError:
     """エージェントエラーを作成
 
@@ -163,5 +211,6 @@ def create_agent_error(
         code=ErrorCode.AGENT_THINKING_FAILED.value,
         message=message,
         details=details,
-        recoverable=True  # 他のエージェントは継続可能
+        recoverable=True,  # 他のエージェントは継続可能
+        log_level=log_level,
     )

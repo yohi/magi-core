@@ -385,6 +385,8 @@ class ConsensusEngine:
             try:
                 return await agent.think(prompt)
             except Exception as e:
+                if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                    raise
                 # エラーを記録
                 error_info = {
                     "phase": ConsensusPhase.THINKING.value,
@@ -392,8 +394,8 @@ class ConsensusEngine:
                     "error": str(e),
                 }
                 self._errors.append(error_info)
-                logger.error(
-                    f"エージェント {persona_type.value} の思考生成に失敗: {e}"
+                logger.exception(
+                    "エージェント %s の思考生成に失敗", persona_type.value
                 )
                 return None
 
@@ -478,6 +480,8 @@ class ConsensusEngine:
                     try:
                         return await agent.debate(others_thoughts, round_number)
                     except Exception as e:
+                        if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                            raise
                         # エラーを記録
                         error_info = {
                             "phase": ConsensusPhase.DEBATE.value,
@@ -486,8 +490,10 @@ class ConsensusEngine:
                             "error": str(e),
                         }
                         self._errors.append(error_info)
-                        logger.error(
-                            f"エージェント {persona_type.value} のDebate（ラウンド{round_number}）に失敗: {e}"
+                        logger.exception(
+                            "エージェント %s のDebate（ラウンド%s）に失敗",
+                            persona_type.value,
+                            round_number,
                         )
                         return None
 
@@ -749,6 +755,8 @@ class ConsensusEngine:
                                 return None
                             continue
                 except Exception as e:  # pragma: no cover - リトライロジックで検証
+                    if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                        raise
                     error_info = {
                         "phase": ConsensusPhase.VOTING.value,
                         "persona_type": persona_type.value,
@@ -762,10 +770,9 @@ class ConsensusEngine:
                         attempt=attempt + 1,
                         message=str(e),
                     )
-                    logger.error(
-                        "エージェント %s の投票に失敗: %s (attempt=%s)",
+                    logger.exception(
+                        "エージェント %s の投票に失敗 (attempt=%s)",
                         persona_type.value,
-                        e,
                         attempt + 1,
                     )
                     if attempt >= self.config.retry_count:
