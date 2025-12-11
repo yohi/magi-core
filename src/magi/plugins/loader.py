@@ -1,15 +1,20 @@
+import logging
+import os
 import re
-import yaml
-from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, List
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from magi.errors import create_plugin_error, ErrorCode, MagiException
+import yaml
+
+from magi.errors import ErrorCode, MagiException, create_plugin_error
 from magi.models import PersonaType
 from magi.plugins.guard import PluginGuard
+from magi.plugins.signature import PluginSignatureValidator
 
 HASH_PATTERN = re.compile(r"^sha256:[0-9a-fA-F]{64}$")
 GUARD = PluginGuard()
+LOGGER = logging.getLogger(__name__)
 
 @dataclass
 class PluginMetadata:
@@ -35,7 +40,25 @@ class Plugin:
 
 class PluginLoader:
     """YAMLプラグイン定義の読み込みとバリデーション"""
-    
+
+    def __init__(
+        self,
+        *,
+        public_key_path: Optional[Path] = None,
+        config: Optional[Any] = None,
+        signature_validator: Optional[PluginSignatureValidator] = None,
+    ) -> None:
+        """初期化
+
+        Args:
+            public_key_path: 署名検証に用いる公開鍵パス (優先度最高)
+            config: Config または同等のオブジェクト。plugin_public_key_path 属性を参照する
+            signature_validator: 検証用のバリデータ (テスト差し替え用)
+        """
+        self.public_key_path = public_key_path
+        self.config = config
+        self.signature_validator = signature_validator or PluginSignatureValidator()
+
     def load(self, path: Path) -> Plugin:
         """YAMLファイルからプラグインを読み込み、パースし、検証する"""
         if not path.exists():
@@ -59,6 +82,8 @@ class PluginLoader:
                 ErrorCode.PLUGIN_YAML_PARSE_ERROR,
                 f"Plugin validation failed for {path}: {', '.join(validation_result.errors)}"
             ))
+
+        self._verify_security(content, plugin_data, path)
 
         metadata = PluginMetadata(
             name=plugin_data["plugin"]["name"],
@@ -155,6 +180,62 @@ class PluginLoader:
     def _parse_yaml(self, content: str) -> Dict:
         """YAML文字列をパース"""
         return yaml.safe_load(content)
+
+    def _verify_security(self, raw_content: str, plugin_data: Dict[str, Any], path: Path) -> None:
+        """署名/ハッシュ検証を実施し、失敗時は例外を送出する。"""
+        plugin_section = plugin_data.get("plugin") or {}
+        signature = plugin_section.get("signature")
+        digest = plugin_section.get("hash")
+
+        if signature:
+            key_path = self._resolve_public_key_path()
+            result = self.signature_validator.verify_signature(raw_content, signature, key_path)
+            if not result.ok:
+                raise MagiException(
+                    create_plugin_error(
+                        ErrorCode.SIGNATURE_VERIFICATION_FAILED,
+                        f"Signature verification failed for {path}: {result.reason or 'invalid'} "
+                        f"(key={result.key_path or 'fallback'})",
+                    )
+                )
+            LOGGER.info("plugin.signature.verified path=%s key=%s", path, result.key_path or "fallback")
+            return
+
+        if digest:
+            LOGGER.info(
+                "plugin.hash.legacy path=%s note=verify-only deprecation_schedule=6m_grace+3m_warn+3m_removal",
+                path,
+            )
+            result = self.signature_validator.verify_hash(raw_content, digest)
+            if not result.ok:
+                LOGGER.warning(
+                    "plugin.hash.mismatch path=%s expected=%s actual=%s legacy=%s",
+                    path,
+                    result.expected,
+                    result.actual,
+                    result.legacy,
+                )
+            else:
+                LOGGER.info("plugin.hash.verified path=%s legacy=%s", path, result.legacy)
+
+    def _resolve_public_key_path(self) -> Optional[Path]:
+        """公開鍵パスを優先順位に基づき解決する。"""
+        if self.public_key_path:
+            return self.public_key_path
+
+        config_path = getattr(self.config, "plugin_public_key_path", None)
+        if config_path:
+            return Path(config_path)
+
+        env_path = os.environ.get("MAGI_PLUGIN_PUBKEY_PATH")
+        if env_path:
+            return Path(env_path)
+
+        default_path = Path.cwd() / "plugins" / "public_key.pem"
+        if default_path.exists():
+            return default_path
+
+        return None
 
 @dataclass
 class ValidationResult:
