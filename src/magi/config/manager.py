@@ -49,9 +49,18 @@ class Config:
     template_base_path: str = "templates"
     quorum_threshold: int = 2
     stream_retry_count: int = 5
+    enable_streaming_output: bool = False
+    streaming_queue_size: int = 100
+    streaming_emit_timeout_seconds: float = 2.0
     log_context_reduction_key: bool = True
     enable_hardened_consensus: bool = True
     legacy_fallback_on_fail_safe: bool = False
+    enable_guardrails: bool = False
+    guardrails_timeout_seconds: float = 3.0
+    guardrails_on_timeout_behavior: str = "fail-closed"
+    guardrails_on_error_policy: str = "fail-closed"
+    guardrails_providers: Dict[str, Any] = field(default_factory=dict)
+    plugin_public_key_path: Optional[str] = None
 
 
 @dataclass
@@ -93,6 +102,14 @@ class ConfigManager:
         "log_context_reduction_key": "LOG_CONTEXT_REDUCTION_KEY",
         "enable_hardened_consensus": "CONSENSUS_HARDENED_ENABLED",
         "legacy_fallback_on_fail_safe": "CONSENSUS_LEGACY_FALLBACK",
+        "enable_streaming_output": "CONSENSUS_STREAMING_ENABLED",
+        "streaming_queue_size": "CONSENSUS_STREAMING_QUEUE_SIZE",
+        "streaming_emit_timeout_seconds": "CONSENSUS_STREAMING_EMIT_TIMEOUT",
+        "enable_guardrails": "CONSENSUS_GUARDRAILS_ENABLED",
+        "guardrails_timeout_seconds": "CONSENSUS_GUARDRAILS_TIMEOUT",
+        "guardrails_on_timeout_behavior": "CONSENSUS_GUARDRAILS_TIMEOUT_BEHAVIOR",
+        "guardrails_on_error_policy": "CONSENSUS_GUARDRAILS_ERROR_POLICY",
+        "plugin_public_key_path": "MAGI_PLUGIN_PUBKEY_PATH",
     }
 
     # 整数型の設定キー
@@ -105,11 +122,15 @@ class ConfigManager:
         "template_ttl_seconds",
         "quorum_threshold",
         "stream_retry_count",
+        "streaming_queue_size",
     )
+    FLOAT_KEYS = ("streaming_emit_timeout_seconds", "guardrails_timeout_seconds")
     BOOL_KEYS = (
         "log_context_reduction_key",
         "enable_hardened_consensus",
         "legacy_fallback_on_fail_safe",
+        "enable_streaming_output",
+        "enable_guardrails",
     )
 
     def __init__(self):
@@ -206,6 +227,11 @@ class ConfigManager:
                         config[key] = int(value)
                     except ValueError:
                         pass  # 無効な値は無視
+                elif key in self.FLOAT_KEYS:
+                    try:
+                        config[key] = float(value)
+                    except ValueError:
+                        pass
                 elif key in self.BOOL_KEYS:
                     config[key] = str(value).lower() not in ("0", "false", "off", "no", "")
                 else:
@@ -254,10 +280,63 @@ class ConfigManager:
                         result[key] = int(value)
                     except (ValueError, TypeError):
                         pass  # 無効な値は無視
+                elif key in self.FLOAT_KEYS:
+                    try:
+                        result[key] = float(value)
+                    except (ValueError, TypeError):
+                        pass
                 elif key in self.BOOL_KEYS:
                     result[key] = bool(value) if isinstance(value, bool) else str(value).lower() not in ("0", "false", "off", "no", "")
                 else:
                     result[key] = value
+
+        guardrails_cfg = data.get("guardrails")
+        if isinstance(guardrails_cfg, dict):
+            if "enabled" in guardrails_cfg:
+                result["enable_guardrails"] = bool(guardrails_cfg.get("enabled"))
+            if "timeout_seconds" in guardrails_cfg:
+                try:
+                    result["guardrails_timeout_seconds"] = float(
+                        guardrails_cfg.get("timeout_seconds")
+                    )
+                except (ValueError, TypeError):
+                    pass
+            if "on_timeout_behavior" in guardrails_cfg:
+                result["guardrails_on_timeout_behavior"] = str(
+                    guardrails_cfg.get("on_timeout_behavior")
+                )
+            if "on_error_policy" in guardrails_cfg:
+                result["guardrails_on_error_policy"] = str(
+                    guardrails_cfg.get("on_error_policy")
+                )
+            if isinstance(guardrails_cfg.get("providers"), dict):
+                result["guardrails_providers"] = guardrails_cfg.get("providers")
+
+        streaming_cfg = data.get("streaming")
+        if isinstance(streaming_cfg, dict):
+            emitter_cfg = streaming_cfg.get("emitter", {})
+            if isinstance(emitter_cfg, dict):
+                if "queue_size" in emitter_cfg:
+                    try:
+                        result["streaming_queue_size"] = int(
+                            emitter_cfg.get("queue_size")
+                        )
+                    except (ValueError, TypeError):
+                        pass
+                if "emit_timeout_seconds" in emitter_cfg:
+                    try:
+                        result["streaming_emit_timeout_seconds"] = float(
+                            emitter_cfg.get("emit_timeout_seconds")
+                        )
+                    except (ValueError, TypeError):
+                        pass
+
+        plugin_cfg = data.get("plugins")
+        if isinstance(plugin_cfg, dict):
+            if "public_key_path" in plugin_cfg:
+                result["plugin_public_key_path"] = str(plugin_cfg.get("public_key_path"))
+        if "plugin_public_key_path" in data:
+            result["plugin_public_key_path"] = str(data.get("plugin_public_key_path"))
 
         return result
 
@@ -332,6 +411,32 @@ class ConfigManager:
         if config.stream_retry_count < 0:
             errors.append(
                 f"stream_retry_count: 0以上の値を指定してください（現在: {config.stream_retry_count}）"
+            )
+        if getattr(config, "streaming_queue_size", 1) <= 0:
+            errors.append(
+                f"streaming_queue_size: 1以上の値を指定してください（現在: {config.streaming_queue_size}）"
+            )
+        if getattr(config, "streaming_emit_timeout_seconds", 0.0) <= 0:
+            errors.append(
+                "streaming_emit_timeout_seconds: 0より大きい値を指定してください"
+            )
+        if getattr(config, "guardrails_timeout_seconds", 0) <= 0:
+            errors.append(
+                "guardrails_timeout_seconds: 0より大きい値を指定してください"
+            )
+        if getattr(config, "guardrails_on_timeout_behavior", "") not in (
+            "fail-open",
+            "fail-closed",
+        ):
+            errors.append(
+                "guardrails_on_timeout_behavior: fail-open または fail-closed を指定してください"
+            )
+        if getattr(config, "guardrails_on_error_policy", "") not in (
+            "fail-open",
+            "fail-closed",
+        ):
+            errors.append(
+                "guardrails_on_error_policy: fail-open または fail-closed を指定してください"
             )
 
         return ValidationResult(

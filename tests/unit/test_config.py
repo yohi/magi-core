@@ -26,6 +26,16 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(config.timeout, 60)
         self.assertEqual(config.retry_count, 3)
         self.assertTrue(config.log_context_reduction_key)
+        self.assertFalse(config.enable_streaming_output)
+        self.assertEqual(config.streaming_queue_size, 100)
+        self.assertEqual(config.streaming_emit_timeout_seconds, 2.0)
+        self.assertFalse(getattr(config, "enable_guardrails"))
+        self.assertEqual(getattr(config, "guardrails_timeout_seconds"), 3)
+        self.assertEqual(
+            getattr(config, "guardrails_on_timeout_behavior"), "fail-closed"
+        )
+        self.assertEqual(getattr(config, "guardrails_on_error_policy"), "fail-closed")
+        self.assertEqual(getattr(config, "guardrails_providers"), {})
 
     def test_config_custom_values(self):
         """カスタム値が正しく設定されることを確認"""
@@ -38,6 +48,14 @@ class TestConfig(unittest.TestCase):
             timeout=120,
             retry_count=5,
             log_context_reduction_key=False,
+            enable_streaming_output=True,
+            streaming_queue_size=50,
+            streaming_emit_timeout_seconds=1.5,
+            enable_guardrails=True,
+            guardrails_timeout_seconds=5,
+            guardrails_on_timeout_behavior="fail-open",
+            guardrails_on_error_policy="fail-open",
+            guardrails_providers={"llama_guard": {"enabled": True}},
         )
 
         self.assertEqual(config.api_key, "custom-api-key")
@@ -48,6 +66,14 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(config.timeout, 120)
         self.assertEqual(config.retry_count, 5)
         self.assertFalse(config.log_context_reduction_key)
+        self.assertTrue(config.enable_streaming_output)
+        self.assertEqual(config.streaming_queue_size, 50)
+        self.assertEqual(config.streaming_emit_timeout_seconds, 1.5)
+        self.assertTrue(config.enable_guardrails)
+        self.assertEqual(config.guardrails_timeout_seconds, 5)
+        self.assertEqual(config.guardrails_on_timeout_behavior, "fail-open")
+        self.assertEqual(config.guardrails_on_error_policy, "fail-open")
+        self.assertEqual(config.guardrails_providers, {"llama_guard": {"enabled": True}})
 
 
 class TestValidationResult(unittest.TestCase):
@@ -337,6 +363,56 @@ class TestConfigManagerValidation(unittest.TestCase):
 
         self.assertFalse(result.is_valid)
         self.assertTrue(any("retry_count" in e for e in result.errors))
+
+    def test_validate_invalid_streaming_queue_size(self):
+        """無効なstreaming_queue_sizeのバリデーション（0以下）"""
+        config = Config(
+            api_key="test-key",
+            streaming_queue_size=0,
+        )
+
+        result = self.manager.validate(config)
+
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("streaming_queue_size" in e for e in result.errors))
+
+    def test_validate_invalid_streaming_emit_timeout(self):
+        """無効なstreaming_emit_timeout_secondsのバリデーション（0以下）"""
+        config = Config(
+            api_key="test-key",
+            streaming_emit_timeout_seconds=0,
+        )
+
+        result = self.manager.validate(config)
+
+        self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("streaming_emit_timeout_seconds" in e for e in result.errors)
+        )
+
+    def test_validate_invalid_guardrails_timeout(self):
+        """ガードレールのタイムアウトが無効な場合のバリデーション"""
+        config = Config(
+            api_key="test-key",
+            guardrails_timeout_seconds=0,
+        )
+
+        result = self.manager.validate(config)
+
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("guardrails_timeout_seconds" in e for e in result.errors))
+
+    def test_validate_invalid_guardrails_policy(self):
+        """ガードレールポリシーが不正な場合に検出されることを確認"""
+        config = Config(
+            api_key="test-key",
+            guardrails_on_timeout_behavior="invalid",
+        )
+
+        result = self.manager.validate(config)
+
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("guardrails_on_timeout_behavior" in e for e in result.errors))
 
     def test_validate_empty_api_key(self):
         """空のAPIキーのバリデーション"""

@@ -18,9 +18,10 @@ import asyncio
 import inspect
 import logging
 import sys
+import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol
 
 from magi.agents.agent import Agent
 from magi.agents.persona import PersonaManager
@@ -30,9 +31,15 @@ from magi.core.quorum import QuorumManager
 from magi.core.schema_validator import SchemaValidationError, SchemaValidator
 from magi.core.template_loader import TemplateLoader
 from magi.core.token_budget import ReductionLog, TokenBudgetManager
-from magi.errors import ErrorCode, MagiException, create_agent_error
+from magi.errors import ErrorCode, MagiError, MagiException, create_agent_error
 from magi.llm.client import LLMClient
+from magi.core.streaming import (
+    NullStreamingEmitter,
+    QueueStreamingEmitter,
+    StreamChunk,
+)
 from magi.security.filter import SecurityFilter
+from magi.security.guardrails import GuardrailsAdapter
 from magi.models import (
     ConsensusPhase,
     ConsensusResult,
@@ -47,6 +54,61 @@ from magi.models import (
 
 # ロガーの設定
 logger = logging.getLogger(__name__)
+
+
+class VotingStrategy(Protocol):
+    """Voting 処理を切り替えるための Strategy インターフェース"""
+
+    name: str
+
+    async def run(
+        self,
+        thinking_results: Dict[PersonaType, ThinkingOutput],
+        debate_results: List[DebateRound],
+    ) -> Dict:
+        """Voting 処理を実行する"""
+
+
+class HardenedVotingStrategy:
+    """ハードニング済み Voting Strategy"""
+
+    name = "hardened"
+
+    def __init__(
+        self,
+        executor: Callable[
+            [Dict[PersonaType, ThinkingOutput], List[DebateRound]], Awaitable[Dict]
+        ],
+    ) -> None:
+        self._executor = executor
+
+    async def run(
+        self,
+        thinking_results: Dict[PersonaType, ThinkingOutput],
+        debate_results: List[DebateRound],
+    ) -> Dict:
+        return await self._executor(thinking_results, debate_results)
+
+
+class LegacyVotingStrategy:
+    """レガシー Voting Strategy"""
+
+    name = "legacy"
+
+    def __init__(
+        self,
+        executor: Callable[
+            [Dict[PersonaType, ThinkingOutput], List[DebateRound]], Awaitable[Dict]
+        ],
+    ) -> None:
+        self._executor = executor
+
+    async def run(
+        self,
+        thinking_results: Dict[PersonaType, ThinkingOutput],
+        debate_results: List[DebateRound],
+    ) -> Dict:
+        return await self._executor(thinking_results, debate_results)
 
 
 class ConsensusEngine:
@@ -68,6 +130,9 @@ class ConsensusEngine:
         config: Config,
         schema_validator: Optional[SchemaValidator] = None,
         template_loader: Optional[TemplateLoader] = None,
+        llm_client_factory: Optional[Callable[[], LLMClient]] = None,
+        guardrails_adapter: Optional[GuardrailsAdapter] = None,
+        streaming_emitter: Optional[Any] = None,
     ):
         """ConsensusEngineを初期化
 
@@ -93,6 +158,35 @@ class ConsensusEngine:
                 event_hook=self._record_event,
             )
         self.security_filter = SecurityFilter()
+        if guardrails_adapter is not None:
+            self.guardrails = guardrails_adapter
+        else:
+            self.guardrails = GuardrailsAdapter(
+                timeout_seconds=getattr(
+                    self.config,
+                    "guardrails_timeout_seconds",
+                    3,
+                ),
+                on_timeout_behavior=getattr(
+                    self.config,
+                    "guardrails_on_timeout_behavior",
+                    "fail-closed",
+                ),
+                on_error_policy=getattr(
+                    self.config,
+                    "guardrails_on_error_policy",
+                    "fail-closed",
+                ),
+                enabled=getattr(self.config, "enable_guardrails", False),
+            )
+        # LLMクライアントのファクトリ（デフォルトは設定値から生成）
+        if llm_client_factory is None:
+            self.llm_client_factory = self._build_default_llm_client_factory()
+        elif callable(llm_client_factory):
+            self.llm_client_factory = llm_client_factory
+        else:
+            # LLMClient インスタンスが渡された場合はラップして再利用する
+            self.llm_client_factory = lambda: llm_client_factory
 
         # エラーログを保持
         self._errors: List[Dict] = []
@@ -102,6 +196,27 @@ class ConsensusEngine:
         self.token_budget_manager = TokenBudgetManager(
             max_tokens=self.config.token_budget
         )
+        # ストリーミング出力設定
+        self._streaming_enabled = getattr(self.config, "enable_streaming_output", False)
+        if streaming_emitter is not None:
+            self.streaming_emitter = streaming_emitter
+        elif self._streaming_enabled:
+            self.streaming_emitter = self._build_default_streaming_emitter()
+        else:
+            self.streaming_emitter = NullStreamingEmitter()
+        self._streaming_state = {
+            "enabled": self._streaming_enabled,
+            "fail_safe": False,
+            "fail_safe_reason": None,
+            "emitted": 0,
+            "dropped": 0,
+            "started_at": None,
+            "first_emit_at": None,
+            "completed_at": None,
+            "ttfb_ms": None,
+            "elapsed_ms": None,
+        }
+        self._stream_buffer: List[str] = []
         # クオーラム管理
         self.quorum_manager = QuorumManager(
             total_agents=len(PersonaType),
@@ -124,12 +239,7 @@ class ConsensusEngine:
         Returns:
             ペルソナタイプをキーとするAgentの辞書
         """
-        llm_client = LLMClient(
-            api_key=self.config.api_key,
-            model=self.config.model,
-            retry_count=self.config.retry_count,
-            timeout=self.config.timeout
-        )
+        llm_client = self.llm_client_factory()
 
         agents = {}
         for persona_type in PersonaType:
@@ -143,6 +253,97 @@ class ConsensusEngine:
             )
 
         return agents
+
+    def _build_default_llm_client_factory(self) -> Callable[[], LLMClient]:
+        """設定値に基づくデフォルトLLMクライアントファクトリを構築"""
+        def _factory() -> LLMClient:
+            return LLMClient(
+                api_key=self.config.api_key,
+                model=self.config.model,
+                retry_count=self.config.retry_count,
+                timeout=self.config.timeout,
+            )
+
+        return _factory
+
+    async def _emit_debate_streaming_output(
+        self,
+        persona_type: PersonaType,
+        output: DebateOutput,
+        round_number: int,
+    ) -> bool:
+        """Debate 出力をストリーミング送出し、トークン予算を監視する。"""
+        if not self._streaming_enabled:
+            return True
+
+        await self.streaming_emitter.start()
+        for response in output.responses.values():
+            await self.streaming_emitter.emit(
+                persona_type.value,
+                response,
+                ConsensusPhase.DEBATE.value,
+                round_number,
+            )
+            self._streaming_state["emitted"] += 1
+            self._stream_buffer.append(response)
+            if self._streaming_state.get("first_emit_at") is None:
+                now = time.perf_counter()
+                self._streaming_state["first_emit_at"] = now
+                started = self._streaming_state.get("started_at")
+                if started is not None:
+                    self._streaming_state["ttfb_ms"] = (now - started) * 1000
+
+            estimated = self.token_budget_manager.estimate_tokens(
+                "".join(self._stream_buffer)
+            )
+            if estimated > self.token_budget_manager.max_tokens:
+                self._streaming_state["fail_safe"] = True
+                self._streaming_state["fail_safe_reason"] = "token_budget_exceeded"
+                self._streaming_state["completed_at"] = time.perf_counter()
+                started = self._streaming_state.get("started_at")
+                completed = self._streaming_state.get("completed_at")
+                if started is not None and completed is not None:
+                    self._streaming_state["elapsed_ms"] = (completed - started) * 1000
+                self._record_event(
+                    "debate.streaming.aborted",
+                    code=ErrorCode.CONSENSUS_STREAMING_ABORTED.value,
+                    phase=ConsensusPhase.DEBATE.value,
+                    reason="token_budget_exceeded",
+                    round=round_number,
+                    estimated_tokens=estimated,
+                    budget=self.token_budget_manager.max_tokens,
+                )
+                self._errors.append(
+                    {
+                        "code": ErrorCode.CONSENSUS_STREAMING_ABORTED.value,
+                        "phase": ConsensusPhase.DEBATE.value,
+                        "reason": "token_budget_exceeded",
+                        "round_number": round_number,
+                        "estimated_tokens": estimated,
+                    }
+                )
+                return False
+        return True
+
+    def _build_default_streaming_emitter(self) -> QueueStreamingEmitter:
+        """設定値ベースのストリーミングエミッタを構築."""
+
+        async def _log_send(chunk: StreamChunk) -> None:
+            logger.info(
+                "consensus.debate.stream persona=%s phase=%s round=%s size=%s",
+                chunk.persona,
+                chunk.phase,
+                chunk.round_number,
+                len(chunk.chunk),
+            )
+
+        return QueueStreamingEmitter(
+            send_func=_log_send,
+            queue_size=getattr(self.config, "streaming_queue_size", 100),
+            emit_timeout_seconds=getattr(
+                self.config, "streaming_emit_timeout_seconds", 2.0
+            ),
+        )
 
     async def _run_thinking_phase(self, prompt: str) -> Dict[PersonaType, ThinkingOutput]:
         """Thinking Phaseを実行
@@ -184,6 +385,8 @@ class ConsensusEngine:
             try:
                 return await agent.think(prompt)
             except Exception as e:
+                if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                    raise
                 # エラーを記録
                 error_info = {
                     "phase": ConsensusPhase.THINKING.value,
@@ -191,8 +394,8 @@ class ConsensusEngine:
                     "error": str(e),
                 }
                 self._errors.append(error_info)
-                logger.error(
-                    f"エージェント {persona_type.value} の思考生成に失敗: {e}"
+                logger.exception(
+                    "エージェント %s の思考生成に失敗", persona_type.value
                 )
                 return None
 
@@ -238,82 +441,136 @@ class ConsensusEngine:
         """
         from datetime import datetime
 
+        self._stream_buffer = []
+        self._streaming_state.update(
+            {
+                "enabled": self._streaming_enabled,
+                "fail_safe": False,
+                "fail_safe_reason": None,
+                "emitted": 0,
+                "dropped": 0,
+                "started_at": None,
+                "first_emit_at": None,
+                "completed_at": None,
+                "ttfb_ms": None,
+                "elapsed_ms": None,
+            }
+        )
+        stop_streaming = False
         agents = self._create_agents()
         debate_rounds: List[DebateRound] = []
+        if self._streaming_enabled:
+            self._streaming_state["started_at"] = time.perf_counter()
 
-        # 設定されたラウンド数だけDebateを実行
-        for round_num in range(1, self.config.debate_rounds + 1):
-            logger.info(f"Debateラウンド {round_num} 開始")
+        try:
+            # 設定されたラウンド数だけDebateを実行
+            for round_num in range(1, self.config.debate_rounds + 1):
+                logger.info(f"Debateラウンド {round_num} 開始")
 
-            # 各ラウンドの結果を収集
-            round_outputs: Dict[PersonaType, DebateOutput] = {}
+                # 各ラウンドの結果を収集
+                round_outputs: Dict[PersonaType, DebateOutput] = {}
 
-            async def debate_with_error_handling(
-                persona_type: PersonaType,
-                agent: Agent,
-                others_thoughts: Dict[PersonaType, str],
-                round_number: int
-            ) -> Optional[DebateOutput]:
-                """エラーハンドリング付きのDebate実行
+                async def debate_with_error_handling(
+                    persona_type: PersonaType,
+                    agent: Agent,
+                    others_thoughts: Dict[PersonaType, str],
+                    round_number: int
+                ) -> Optional[DebateOutput]:
+                    """エラーハンドリング付きのDebate実行"""
+                    try:
+                        return await agent.debate(others_thoughts, round_number)
+                    except Exception as e:
+                        if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                            raise
+                        # エラーを記録
+                        error_info = {
+                            "phase": ConsensusPhase.DEBATE.value,
+                            "persona_type": persona_type.value,
+                            "round_number": round_number,
+                            "error": str(e),
+                        }
+                        self._errors.append(error_info)
+                        logger.exception(
+                            "エージェント %s のDebate（ラウンド%s）に失敗",
+                            persona_type.value,
+                            round_number,
+                        )
+                        return None
 
-                Args:
-                    persona_type: ペルソナタイプ
-                    agent: エージェント
-                    others_thoughts: 他エージェントの思考内容
-                    round_number: ラウンド番号
-
-                Returns:
-                    DebateOutput または失敗時はNone
-                """
-                try:
-                    return await agent.debate(others_thoughts, round_number)
-                except Exception as e:
-                    # エラーを記録
-                    error_info = {
-                        "phase": ConsensusPhase.DEBATE.value,
-                        "persona_type": persona_type.value,
-                        "round_number": round_number,
-                        "error": str(e),
+                # 各エージェントに他のエージェントの思考を提供してDebateを実行
+                tasks = []
+                for persona_type, agent in agents.items():
+                    # 他のエージェントの思考結果を抽出（自分自身は除外）
+                    others_thoughts = {
+                        pt: thinking_results[pt].content
+                        for pt in thinking_results.keys()
+                        if pt != persona_type
                     }
-                    self._errors.append(error_info)
-                    logger.error(
-                        f"エージェント {persona_type.value} のDebate（ラウンド{round_number}）に失敗: {e}"
-                    )
-                    return None
 
-            # 各エージェントに他のエージェントの思考を提供してDebateを実行
-            tasks = []
-            for persona_type, agent in agents.items():
-                # 他のエージェントの思考結果を抽出（自分自身は除外）
-                others_thoughts = {
-                    pt: thinking_results[pt].content
-                    for pt in thinking_results.keys()
-                    if pt != persona_type
-                }
-
-                tasks.append(
-                    debate_with_error_handling(
-                        persona_type, agent, others_thoughts, round_num
+                    tasks.append(
+                        debate_with_error_handling(
+                            persona_type, agent, others_thoughts, round_num
+                        )
                     )
+
+                # 全エージェントのDebateを並列実行
+                debate_outputs = await asyncio.gather(*tasks)
+
+                # 結果を辞書に格納（成功したもののみ）
+                for persona_type, output in zip(agents.keys(), debate_outputs):
+                    if output is not None:
+                        round_outputs[persona_type] = output
+                        if self._streaming_enabled and not stop_streaming:
+                            should_continue = await self._emit_debate_streaming_output(
+                                persona_type,
+                                output,
+                                round_num,
+                            )
+                            if not should_continue:
+                                stop_streaming = True
+                                break
+
+                # ラウンド結果を追加
+                debate_round = DebateRound(
+                    round_number=round_num,
+                    outputs=round_outputs,
+                    timestamp=datetime.now()
                 )
+                debate_rounds.append(debate_round)
 
-            # 全エージェントのDebateを並列実行
-            debate_outputs = await asyncio.gather(*tasks)
+                logger.info(f"Debateラウンド {round_num} 完了")
+                if stop_streaming:
+                    logger.warning(
+                        "Debate ストリーミングを中断しました: reason=%s",
+                        self._streaming_state.get("fail_safe_reason"),
+                    )
+                    break
+        finally:
+            if hasattr(self.streaming_emitter, "dropped"):
+                try:
+                    self._streaming_state["dropped"] = self.streaming_emitter.dropped
+                except Exception:
+                    self._streaming_state["dropped"] = 0
+            if self._streaming_enabled:
+                await self.streaming_emitter.aclose()
 
-            # 結果を辞書に格納（成功したもののみ）
-            for persona_type, output in zip(agents.keys(), debate_outputs):
-                if output is not None:
-                    round_outputs[persona_type] = output
-
-            # ラウンド結果を追加
-            debate_round = DebateRound(
-                round_number=round_num,
-                outputs=round_outputs,
-                timestamp=datetime.now()
+        if self._streaming_enabled:
+            if self._streaming_state.get("completed_at") is None:
+                self._streaming_state["completed_at"] = time.perf_counter()
+            started = self._streaming_state.get("started_at")
+            completed = self._streaming_state.get("completed_at")
+            if started is not None and completed is not None:
+                self._streaming_state["elapsed_ms"] = (completed - started) * 1000
+            self._record_event(
+                "debate.streaming.summary",
+                phase=ConsensusPhase.DEBATE.value,
+                emitted=self._streaming_state["emitted"],
+                dropped=self._streaming_state.get("dropped", 0),
+                fail_safe=self._streaming_state["fail_safe"],
+                fail_safe_reason=self._streaming_state["fail_safe_reason"],
+                ttfb_ms=self._streaming_state.get("ttfb_ms"),
+                elapsed_ms=self._streaming_state.get("elapsed_ms"),
             )
-            debate_rounds.append(debate_round)
-
-            logger.info(f"Debateラウンド {round_num} 完了")
 
         # フェーズをVOTINGに遷移
         self._transition_to_phase(ConsensusPhase.VOTING)
@@ -325,14 +582,48 @@ class ConsensusEngine:
         thinking_results: Dict[PersonaType, ThinkingOutput],
         debate_results: List[DebateRound],
     ) -> Dict:
-        """Voting Phaseを実行"""
-        from magi.models import VotingTally
+        """Voting Strategy を選択し実行する"""
+        strategy = self._select_voting_strategy()
+        result = await strategy.run(thinking_results, debate_results)
 
-        # フラグ無効なら旧経路を使用
-        if not getattr(self.config, "enable_hardened_consensus", True):
-            return await self._run_voting_phase_legacy(
-                thinking_results, debate_results, mark_fallback=False
+        meta = result.setdefault(
+            "meta",
+            {},
+        )
+        meta.setdefault(
+            "strategy",
+            getattr(strategy, "name", strategy.__class__.__name__.lower()),
+        )
+        fallback_used = bool(result.get("legacy_fallback_used"))
+        fallback_meta = meta.setdefault("fallback", {})
+        fallback_meta["used"] = fallback_used
+        if fallback_meta.get("used"):
+            fallback_meta["strategy"] = fallback_meta.get("strategy") or "legacy"
+            fallback_meta["reason"] = (
+                result.get("fail_safe_reason") or result.get("reason")
             )
+        else:
+            fallback_meta["strategy"] = None
+            fallback_meta["reason"] = None
+
+        meta.setdefault("excluded_agents", result.get("excluded_agents", []))
+        meta.setdefault("partial_results", result.get("partial_results", False))
+        meta.setdefault("summary_applied", result.get("summary_applied", False))
+        return result
+
+    def _select_voting_strategy(self) -> VotingStrategy:
+        """設定値に応じて Voting Strategy を選択する"""
+        if getattr(self.config, "enable_hardened_consensus", True):
+            return HardenedVotingStrategy(self._run_voting_phase_hardened)
+        return LegacyVotingStrategy(self._run_voting_phase_legacy)
+
+    async def _run_voting_phase_hardened(
+        self,
+        thinking_results: Dict[PersonaType, ThinkingOutput],
+        debate_results: List[DebateRound],
+    ) -> Dict:
+        """ハードニング済み Voting Strategy を実行する"""
+        from magi.models import VotingTally
 
         agents = self._create_agents()
         self.quorum_manager = QuorumManager(
@@ -348,7 +639,7 @@ class ConsensusEngine:
         # 議論コンテキストを構築
         context = self._build_voting_context(thinking_results, debate_results)
 
-        # トークン予算を適用 (新経路のみ)
+        # トークン予算を適用
         budget_result = self.token_budget_manager.enforce(
             context, ConsensusPhase.VOTING
         )
@@ -464,6 +755,8 @@ class ConsensusEngine:
                                 return None
                             continue
                 except Exception as e:  # pragma: no cover - リトライロジックで検証
+                    if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                        raise
                     error_info = {
                         "phase": ConsensusPhase.VOTING.value,
                         "persona_type": persona_type.value,
@@ -477,10 +770,9 @@ class ConsensusEngine:
                         attempt=attempt + 1,
                         message=str(e),
                     )
-                    logger.error(
-                        "エージェント %s の投票に失敗: %s (attempt=%s)",
+                    logger.exception(
+                        "エージェント %s の投票に失敗 (attempt=%s)",
                         persona_type.value,
-                        e,
                         attempt + 1,
                     )
                     if attempt >= self.config.retry_count:
@@ -506,6 +798,7 @@ class ConsensusEngine:
         partial_results = 0 < len(voting_results) < len(agents)
         if len(voting_results) < effective_quorum:
             reason = "quorum 未達によりフェイルセーフ"
+            fail_safe_reason = "quorum_fail_safe"
             self._errors.append(
                 {
                     "code": ErrorCode.CONSENSUS_QUORUM_UNSATISFIED.value,
@@ -516,6 +809,8 @@ class ConsensusEngine:
             )
             self._record_event(
                 "quorum.fail_safe",
+                code=ErrorCode.CONSENSUS_QUORUM_UNSATISFIED.value,
+                phase=ConsensusPhase.VOTING.value,
                 reason=reason,
                 excluded=sorted(set(failed_personas)),
                 partial_results=partial_results,
@@ -534,9 +829,15 @@ class ConsensusEngine:
                     fallback["summary_applied"] = True
                 self._record_event(
                     "quorum.fallback_legacy",
+                    phase=ConsensusPhase.VOTING.value,
                     used=bool(fallback.get("voting_results")),
                     excluded=sorted(set(failed_personas)),
                 )
+                fallback["legacy_fallback_used"] = True
+                fallback["fail_safe_reason"] = fail_safe_reason
+                fallback["reason"] = reason
+                fallback.setdefault("excluded_agents", sorted(set(failed_personas)))
+                fallback.setdefault("partial_results", partial_results)
                 return fallback
 
             return {
@@ -548,6 +849,7 @@ class ConsensusEngine:
                 "context": context,
                 "fail_safe": True,
                 "reason": reason,
+                "fail_safe_reason": fail_safe_reason,
                 "excluded_agents": sorted(set(failed_personas)),
                 "partial_results": partial_results,
                 "legacy_fallback_used": False,
@@ -779,6 +1081,87 @@ class ConsensusEngine:
         }
         return name_map.get(persona_type, persona_type.value)
 
+    async def _run_guardrails(self, prompt: str) -> None:
+        """Guardrails を SecurityFilter 前段で実行する."""
+        if not getattr(self.config, "enable_guardrails", False):
+            return
+
+        result = await self.guardrails.check(prompt)
+        provider = result.provider or "unknown"
+
+        if result.failure:
+            event_type = (
+                "guardrails.fail_open" if result.fail_open else "guardrails.blocked"
+            )
+            failure_code = (
+                ErrorCode.GUARDRAILS_TIMEOUT.value
+                if result.failure == "timeout"
+                else ErrorCode.GUARDRAILS_ERROR.value
+            )
+            self._record_event(
+                event_type,
+                code=failure_code,
+                phase="preflight",
+                provider=provider,
+                failure=result.failure,
+                reason=result.reason,
+            )
+            if result.fail_open:
+                logger.warning(
+                    "guardrails.fail_open provider=%s failure=%s", provider, result.failure
+                )
+                return
+            raise MagiException(
+                MagiError(
+                    code=failure_code,
+                    message="Guardrails により処理を中断しました。",
+                    details={
+                        "provider": provider,
+                        "failure": result.failure,
+                        "reason": result.reason,
+                    },
+                    recoverable=False,
+                )
+            )
+
+        if result.blocked:
+            self._record_event(
+                "guardrails.blocked",
+                code=ErrorCode.GUARDRAILS_BLOCKED.value,
+                phase="preflight",
+                provider=provider,
+                reason=result.reason,
+                metadata=result.metadata,
+            )
+            raise MagiException(
+                MagiError(
+                    code=ErrorCode.GUARDRAILS_BLOCKED.value,
+                    message="Guardrails により入力が拒否されました。",
+                    details={
+                        "provider": provider,
+                        "reason": result.reason,
+                        "metadata": result.metadata,
+                    },
+                    recoverable=False,
+                )
+            )
+
+        if result.fail_open:
+            self._record_event(
+                "guardrails.fail_open",
+                code=(
+                    ErrorCode.GUARDRAILS_TIMEOUT.value
+                    if result.failure == "timeout"
+                    else ErrorCode.GUARDRAILS_ERROR.value
+                ),
+                phase="preflight",
+                provider=provider,
+                failure=result.failure,
+            )
+            logger.warning(
+                "guardrails.fail_open provider=%s failure=%s", provider, result.failure
+            )
+
     async def execute(
         self,
         prompt: str,
@@ -795,6 +1178,8 @@ class ConsensusEngine:
         Returns:
             ConsensusResult: 合議結果
         """
+        await self._run_guardrails(prompt)
+
         detection = self.security_filter.detect_abuse(prompt)
         if detection.blocked:
             logger.warning(
@@ -855,6 +1240,11 @@ class ConsensusEngine:
     def events(self) -> List[Dict[str, Any]]:
         """イベントログを取得"""
         return self._events.copy()
+
+    @property
+    def streaming_state(self) -> Dict[str, Any]:
+        """ストリーミング状態を取得."""
+        return self._streaming_state.copy()
 
     @property
     def context_reduction_logs(self) -> List[ReductionLog]:

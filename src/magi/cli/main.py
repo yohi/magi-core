@@ -239,7 +239,7 @@ class MagiCLI:
             return 1
 
         try:
-            loader = PluginLoader()
+            loader = PluginLoader(config=self.config)
             plugin = loader.load(plugin_path)
         except MagiException as e:
             print(f"Error loading plugin: {e.error.message}", file=sys.stderr)

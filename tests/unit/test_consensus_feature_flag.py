@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from magi.config.manager import Config
 from magi.core.consensus import ConsensusEngine
 from magi.core.schema_validator import SchemaValidationError
-from magi.models import PersonaType, Vote, VoteOutput
+from magi.models import Decision, PersonaType, Vote, VoteOutput
 
 
 class TestConsensusFeatureFlag(unittest.TestCase):
@@ -168,6 +168,109 @@ class TestConsensusFeatureFlag(unittest.TestCase):
                 ValueError, "投票結果数が不一致: agents=1 outputs=0"
             ):
                 asyncio.run(engine._run_voting_phase_legacy({}, []))
+
+
+class TestVotingStrategySelection(unittest.TestCase):
+    """Voting Strategy の選択とフォールバックメタ情報を検証する"""
+
+    def test_hardened_strategy_is_selected_when_flag_enabled(self):
+        """ハードニング有効時に HardenedVotingStrategy が選択される"""
+        config = Config(api_key="test-api-key", enable_hardened_consensus=True)
+        engine = ConsensusEngine(config)
+
+        with patch("magi.core.consensus.HardenedVotingStrategy") as mock_strategy:
+            strategy_instance = mock_strategy.return_value
+            strategy_instance.name = "hardened"
+            strategy_instance.run = AsyncMock(
+                return_value={
+                    "voting_results": {},
+                    "decision": Decision.DENIED,
+                    "exit_code": 1,
+                    "all_conditions": [],
+                    "summary_applied": False,
+                    "context": "ctx",
+                    "fail_safe": False,
+                    "excluded_agents": [],
+                    "partial_results": False,
+                    "legacy_fallback_used": False,
+                }
+            )
+
+            result = asyncio.run(engine._run_voting_phase({}, []))
+
+        mock_strategy.assert_called_once()
+        strategy_instance.run.assert_awaited_once_with({}, [])
+        self.assertEqual(result["meta"]["strategy"], "hardened")
+        self.assertFalse(result["meta"]["fallback"]["used"])
+
+    def test_legacy_strategy_is_selected_when_flag_disabled(self):
+        """ハードニング無効時に LegacyVotingStrategy が選択される"""
+        config = Config(api_key="test-api-key", enable_hardened_consensus=False)
+        engine = ConsensusEngine(config)
+
+        with patch("magi.core.consensus.LegacyVotingStrategy") as mock_strategy:
+            strategy_instance = mock_strategy.return_value
+            strategy_instance.name = "legacy"
+            strategy_instance.run = AsyncMock(
+                return_value={
+                    "voting_results": {},
+                    "decision": Decision.DENIED,
+                    "exit_code": 1,
+                    "all_conditions": [],
+                    "summary_applied": False,
+                    "context": "ctx",
+                    "fail_safe": False,
+                    "excluded_agents": [],
+                    "partial_results": False,
+                    "legacy_fallback_used": False,
+                }
+            )
+
+            result = asyncio.run(engine._run_voting_phase({}, []))
+
+        mock_strategy.assert_called_once()
+        strategy_instance.run.assert_awaited_once_with({}, [])
+        self.assertEqual(result["meta"]["strategy"], "legacy")
+        self.assertFalse(result["meta"]["fallback"]["used"])
+
+    def test_fallback_meta_is_recorded_on_quorum_fail_safe(self):
+        """クオーラム未達でレガシーへフォールバックした場合にメタが記録される"""
+        config = Config(
+            api_key="test-api-key",
+            quorum_threshold=2,
+            enable_hardened_consensus=True,
+            legacy_fallback_on_fail_safe=True,
+        )
+        engine = ConsensusEngine(config)
+
+        success = MagicMock()
+        success.vote = AsyncMock(
+            return_value=VoteOutput(
+                persona_type=PersonaType.MELCHIOR,
+                vote=Vote.APPROVE,
+                reason="ok",
+            )
+        )
+        failure = MagicMock()
+        failure.vote = AsyncMock(side_effect=Exception("vote failed"))
+
+        with patch.object(
+            engine, "_build_voting_context", return_value="ctx"
+        ), patch.object(
+            engine,
+            "_create_agents",
+            return_value={
+                PersonaType.MELCHIOR: success,
+                PersonaType.BALTHASAR: failure,
+            },
+        ):
+            result = asyncio.run(engine._run_voting_phase({}, []))
+
+        self.assertEqual(result["meta"]["strategy"], "hardened")
+        self.assertTrue(result["meta"]["fallback"]["used"])
+        self.assertEqual(result["meta"]["fallback"]["strategy"], "legacy")
+        self.assertEqual(result["meta"]["fallback"]["reason"], "quorum_fail_safe")
+        self.assertTrue(result["legacy_fallback_used"])
 
 
 if __name__ == "__main__":
