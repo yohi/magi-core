@@ -26,6 +26,7 @@ dependencies = [
     "pyyaml>=6.0.2",
     "hypothesis>=6.115.0",
     "pytest>=8.0.0",
+    "cryptography>=42.0.0",
 ]
 
 [project.scripts]

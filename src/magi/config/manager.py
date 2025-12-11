@@ -60,6 +60,7 @@ class Config:
     guardrails_on_timeout_behavior: str = "fail-closed"
     guardrails_on_error_policy: str = "fail-closed"
     guardrails_providers: Dict[str, Any] = field(default_factory=dict)
+    plugin_public_key_path: Optional[str] = None
 
 
 @dataclass
@@ -108,6 +109,7 @@ class ConfigManager:
         "guardrails_timeout_seconds": "CONSENSUS_GUARDRAILS_TIMEOUT",
         "guardrails_on_timeout_behavior": "CONSENSUS_GUARDRAILS_TIMEOUT_BEHAVIOR",
         "guardrails_on_error_policy": "CONSENSUS_GUARDRAILS_ERROR_POLICY",
+        "plugin_public_key_path": "MAGI_PLUGIN_PUBKEY_PATH",
     }
 
     # 整数型の設定キー
@@ -328,6 +330,13 @@ class ConfigManager:
                         )
                     except (ValueError, TypeError):
                         pass
+
+        plugin_cfg = data.get("plugins")
+        if isinstance(plugin_cfg, dict):
+            if "public_key_path" in plugin_cfg:
+                result["plugin_public_key_path"] = str(plugin_cfg.get("public_key_path"))
+        if "plugin_public_key_path" in data:
+            result["plugin_public_key_path"] = str(data.get("plugin_public_key_path"))
 
         return result
 
