@@ -1143,8 +1143,8 @@ class ConsensusEngine:
             self._record_event(
                 "guardrails.fail_open",
                 code=(
-                    ErrorCode.GUARDRAILS_ERROR.value
-                    if result.failure
+                    ErrorCode.GUARDRAILS_TIMEOUT.value
+                    if result.failure == "timeout"
                     else ErrorCode.GUARDRAILS_ERROR.value
                 ),
                 phase="preflight",
