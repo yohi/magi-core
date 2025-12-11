@@ -30,7 +30,7 @@ from magi.core.quorum import QuorumManager
 from magi.core.schema_validator import SchemaValidationError, SchemaValidator
 from magi.core.template_loader import TemplateLoader
 from magi.core.token_budget import ReductionLog, TokenBudgetManager
-from magi.errors import ErrorCode, MagiException, create_agent_error
+from magi.errors import ErrorCode, MagiError, MagiException, create_agent_error
 from magi.llm.client import LLMClient
 from magi.core.streaming import (
     NullStreamingEmitter,
@@ -38,6 +38,7 @@ from magi.core.streaming import (
     StreamChunk,
 )
 from magi.security.filter import SecurityFilter
+from magi.security.guardrails import GuardrailsAdapter
 from magi.models import (
     ConsensusPhase,
     ConsensusResult,
@@ -129,6 +130,7 @@ class ConsensusEngine:
         schema_validator: Optional[SchemaValidator] = None,
         template_loader: Optional[TemplateLoader] = None,
         llm_client_factory: Optional[Callable[[], LLMClient]] = None,
+        guardrails_adapter: Optional[GuardrailsAdapter] = None,
         streaming_emitter: Optional[Any] = None,
     ):
         """ConsensusEngineを初期化
@@ -155,6 +157,27 @@ class ConsensusEngine:
                 event_hook=self._record_event,
             )
         self.security_filter = SecurityFilter()
+        if guardrails_adapter is not None:
+            self.guardrails = guardrails_adapter
+        else:
+            self.guardrails = GuardrailsAdapter(
+                timeout_seconds=getattr(
+                    self.config,
+                    "guardrails_timeout_seconds",
+                    3,
+                ),
+                on_timeout_behavior=getattr(
+                    self.config,
+                    "guardrails_on_timeout_behavior",
+                    "fail-closed",
+                ),
+                on_error_policy=getattr(
+                    self.config,
+                    "guardrails_on_error_policy",
+                    "fail-closed",
+                ),
+                enabled=getattr(self.config, "enable_guardrails", False),
+            )
         # LLMクライアントのファクトリ（デフォルトは設定値から生成）
         if llm_client_factory is None:
             self.llm_client_factory = self._build_default_llm_client_factory()
@@ -1004,6 +1027,77 @@ class ConsensusEngine:
         }
         return name_map.get(persona_type, persona_type.value)
 
+    async def _run_guardrails(self, prompt: str) -> None:
+        """Guardrails を SecurityFilter 前段で実行する."""
+        if not getattr(self.config, "enable_guardrails", False):
+            return
+
+        result = await self.guardrails.check(prompt)
+        provider = result.provider or "unknown"
+
+        if result.failure:
+            event_type = (
+                "guardrails.fail_open" if result.fail_open else "guardrails.blocked"
+            )
+            self._record_event(
+                event_type,
+                provider=provider,
+                failure=result.failure,
+                reason=result.reason,
+            )
+            if result.fail_open:
+                logger.warning(
+                    "guardrails.fail_open provider=%s failure=%s", provider, result.failure
+                )
+                return
+            error_code = (
+                ErrorCode.GUARDRAILS_TIMEOUT.value
+                if result.failure == "timeout"
+                else ErrorCode.GUARDRAILS_ERROR.value
+            )
+            raise MagiException(
+                MagiError(
+                    code=error_code,
+                    message="Guardrails により処理を中断しました。",
+                    details={
+                        "provider": provider,
+                        "failure": result.failure,
+                        "reason": result.reason,
+                    },
+                    recoverable=False,
+                )
+            )
+
+        if result.blocked:
+            self._record_event(
+                "guardrails.blocked",
+                provider=provider,
+                reason=result.reason,
+                metadata=result.metadata,
+            )
+            raise MagiException(
+                MagiError(
+                    code=ErrorCode.GUARDRAILS_BLOCKED.value,
+                    message="Guardrails により入力が拒否されました。",
+                    details={
+                        "provider": provider,
+                        "reason": result.reason,
+                        "metadata": result.metadata,
+                    },
+                    recoverable=False,
+                )
+            )
+
+        if result.fail_open:
+            self._record_event(
+                "guardrails.fail_open",
+                provider=provider,
+                failure=result.failure,
+            )
+            logger.warning(
+                "guardrails.fail_open provider=%s failure=%s", provider, result.failure
+            )
+
     async def execute(
         self,
         prompt: str,
@@ -1020,6 +1114,8 @@ class ConsensusEngine:
         Returns:
             ConsensusResult: 合議結果
         """
+        await self._run_guardrails(prompt)
+
         detection = self.security_filter.detect_abuse(prompt)
         if detection.blocked:
             logger.warning(
