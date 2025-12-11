@@ -49,6 +49,9 @@ class Config:
     template_base_path: str = "templates"
     quorum_threshold: int = 2
     stream_retry_count: int = 5
+    enable_streaming_output: bool = False
+    streaming_queue_size: int = 100
+    streaming_emit_timeout_seconds: float = 2.0
     log_context_reduction_key: bool = True
     enable_hardened_consensus: bool = True
     legacy_fallback_on_fail_safe: bool = False
@@ -93,6 +96,9 @@ class ConfigManager:
         "log_context_reduction_key": "LOG_CONTEXT_REDUCTION_KEY",
         "enable_hardened_consensus": "CONSENSUS_HARDENED_ENABLED",
         "legacy_fallback_on_fail_safe": "CONSENSUS_LEGACY_FALLBACK",
+        "enable_streaming_output": "CONSENSUS_STREAMING_ENABLED",
+        "streaming_queue_size": "CONSENSUS_STREAMING_QUEUE_SIZE",
+        "streaming_emit_timeout_seconds": "CONSENSUS_STREAMING_EMIT_TIMEOUT",
     }
 
     # 整数型の設定キー
@@ -105,11 +111,14 @@ class ConfigManager:
         "template_ttl_seconds",
         "quorum_threshold",
         "stream_retry_count",
+        "streaming_queue_size",
     )
+    FLOAT_KEYS = ("streaming_emit_timeout_seconds",)
     BOOL_KEYS = (
         "log_context_reduction_key",
         "enable_hardened_consensus",
         "legacy_fallback_on_fail_safe",
+        "enable_streaming_output",
     )
 
     def __init__(self):
@@ -206,6 +215,11 @@ class ConfigManager:
                         config[key] = int(value)
                     except ValueError:
                         pass  # 無効な値は無視
+                elif key in self.FLOAT_KEYS:
+                    try:
+                        config[key] = float(value)
+                    except ValueError:
+                        pass
                 elif key in self.BOOL_KEYS:
                     config[key] = str(value).lower() not in ("0", "false", "off", "no", "")
                 else:
@@ -254,6 +268,11 @@ class ConfigManager:
                         result[key] = int(value)
                     except (ValueError, TypeError):
                         pass  # 無効な値は無視
+                elif key in self.FLOAT_KEYS:
+                    try:
+                        result[key] = float(value)
+                    except (ValueError, TypeError):
+                        pass
                 elif key in self.BOOL_KEYS:
                     result[key] = bool(value) if isinstance(value, bool) else str(value).lower() not in ("0", "false", "off", "no", "")
                 else:
@@ -332,6 +351,14 @@ class ConfigManager:
         if config.stream_retry_count < 0:
             errors.append(
                 f"stream_retry_count: 0以上の値を指定してください（現在: {config.stream_retry_count}）"
+            )
+        if getattr(config, "streaming_queue_size", 1) <= 0:
+            errors.append(
+                f"streaming_queue_size: 1以上の値を指定してください（現在: {config.streaming_queue_size}）"
+            )
+        if getattr(config, "streaming_emit_timeout_seconds", 0.0) <= 0:
+            errors.append(
+                "streaming_emit_timeout_seconds: 0より大きい値を指定してください"
             )
 
         return ValidationResult(

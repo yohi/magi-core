@@ -32,6 +32,11 @@ from magi.core.template_loader import TemplateLoader
 from magi.core.token_budget import ReductionLog, TokenBudgetManager
 from magi.errors import ErrorCode, MagiException, create_agent_error
 from magi.llm.client import LLMClient
+from magi.core.streaming import (
+    NullStreamingEmitter,
+    QueueStreamingEmitter,
+    StreamChunk,
+)
 from magi.security.filter import SecurityFilter
 from magi.models import (
     ConsensusPhase,
@@ -124,6 +129,7 @@ class ConsensusEngine:
         schema_validator: Optional[SchemaValidator] = None,
         template_loader: Optional[TemplateLoader] = None,
         llm_client_factory: Optional[Callable[[], LLMClient]] = None,
+        streaming_emitter: Optional[Any] = None,
     ):
         """ConsensusEngineを初期化
 
@@ -166,6 +172,22 @@ class ConsensusEngine:
         self.token_budget_manager = TokenBudgetManager(
             max_tokens=self.config.token_budget
         )
+        # ストリーミング出力設定
+        self._streaming_enabled = getattr(self.config, "enable_streaming_output", False)
+        if streaming_emitter is not None:
+            self.streaming_emitter = streaming_emitter
+        elif self._streaming_enabled:
+            self.streaming_emitter = self._build_default_streaming_emitter()
+        else:
+            self.streaming_emitter = NullStreamingEmitter()
+        self._streaming_state = {
+            "enabled": self._streaming_enabled,
+            "fail_safe": False,
+            "fail_safe_reason": None,
+            "emitted": 0,
+            "dropped": 0,
+        }
+        self._stream_buffer: List[str] = []
         # クオーラム管理
         self.quorum_manager = QuorumManager(
             total_agents=len(PersonaType),
@@ -214,6 +236,72 @@ class ConsensusEngine:
             )
 
         return _factory
+
+    async def _emit_debate_streaming_output(
+        self,
+        persona_type: PersonaType,
+        output: DebateOutput,
+        round_number: int,
+    ) -> bool:
+        """Debate 出力をストリーミング送出し、トークン予算を監視する。"""
+        if not self._streaming_enabled:
+            return True
+
+        await self.streaming_emitter.start()
+        for response in output.responses.values():
+            await self.streaming_emitter.emit(
+                persona_type.value,
+                response,
+                ConsensusPhase.DEBATE.value,
+                round_number,
+            )
+            self._streaming_state["emitted"] += 1
+            self._stream_buffer.append(response)
+
+            estimated = self.token_budget_manager.estimate_tokens(
+                "".join(self._stream_buffer)
+            )
+            if estimated > self.token_budget_manager.max_tokens:
+                self._streaming_state["fail_safe"] = True
+                self._streaming_state["fail_safe_reason"] = "token_budget_exceeded"
+                self._record_event(
+                    "debate.streaming.aborted",
+                    reason="token_budget_exceeded",
+                    round=round_number,
+                    estimated_tokens=estimated,
+                    budget=self.token_budget_manager.max_tokens,
+                )
+                self._errors.append(
+                    {
+                        "code": ErrorCode.CONSENSUS_STREAMING_ABORTED.value,
+                        "phase": ConsensusPhase.DEBATE.value,
+                        "reason": "token_budget_exceeded",
+                        "round_number": round_number,
+                        "estimated_tokens": estimated,
+                    }
+                )
+                return False
+        return True
+
+    def _build_default_streaming_emitter(self) -> QueueStreamingEmitter:
+        """設定値ベースのストリーミングエミッタを構築."""
+
+        async def _log_send(chunk: StreamChunk) -> None:
+            logger.info(
+                "consensus.debate.stream persona=%s phase=%s round=%s size=%s",
+                chunk.persona,
+                chunk.phase,
+                chunk.round_number,
+                len(chunk.chunk),
+            )
+
+        return QueueStreamingEmitter(
+            send_func=_log_send,
+            queue_size=getattr(self.config, "streaming_queue_size", 100),
+            emit_timeout_seconds=getattr(
+                self.config, "streaming_emit_timeout_seconds", 2.0
+            ),
+        )
 
     async def _run_thinking_phase(self, prompt: str) -> Dict[PersonaType, ThinkingOutput]:
         """Thinking Phaseを実行
@@ -309,82 +397,107 @@ class ConsensusEngine:
         """
         from datetime import datetime
 
+        self._stream_buffer = []
+        self._streaming_state.update(
+            {
+                "enabled": self._streaming_enabled,
+                "fail_safe": False,
+                "fail_safe_reason": None,
+                "emitted": 0,
+                "dropped": 0,
+            }
+        )
+        stop_streaming = False
         agents = self._create_agents()
         debate_rounds: List[DebateRound] = []
 
-        # 設定されたラウンド数だけDebateを実行
-        for round_num in range(1, self.config.debate_rounds + 1):
-            logger.info(f"Debateラウンド {round_num} 開始")
+        try:
+            # 設定されたラウンド数だけDebateを実行
+            for round_num in range(1, self.config.debate_rounds + 1):
+                logger.info(f"Debateラウンド {round_num} 開始")
 
-            # 各ラウンドの結果を収集
-            round_outputs: Dict[PersonaType, DebateOutput] = {}
+                # 各ラウンドの結果を収集
+                round_outputs: Dict[PersonaType, DebateOutput] = {}
 
-            async def debate_with_error_handling(
-                persona_type: PersonaType,
-                agent: Agent,
-                others_thoughts: Dict[PersonaType, str],
-                round_number: int
-            ) -> Optional[DebateOutput]:
-                """エラーハンドリング付きのDebate実行
+                async def debate_with_error_handling(
+                    persona_type: PersonaType,
+                    agent: Agent,
+                    others_thoughts: Dict[PersonaType, str],
+                    round_number: int
+                ) -> Optional[DebateOutput]:
+                    """エラーハンドリング付きのDebate実行"""
+                    try:
+                        return await agent.debate(others_thoughts, round_number)
+                    except Exception as e:
+                        # エラーを記録
+                        error_info = {
+                            "phase": ConsensusPhase.DEBATE.value,
+                            "persona_type": persona_type.value,
+                            "round_number": round_number,
+                            "error": str(e),
+                        }
+                        self._errors.append(error_info)
+                        logger.error(
+                            f"エージェント {persona_type.value} のDebate（ラウンド{round_number}）に失敗: {e}"
+                        )
+                        return None
 
-                Args:
-                    persona_type: ペルソナタイプ
-                    agent: エージェント
-                    others_thoughts: 他エージェントの思考内容
-                    round_number: ラウンド番号
-
-                Returns:
-                    DebateOutput または失敗時はNone
-                """
-                try:
-                    return await agent.debate(others_thoughts, round_number)
-                except Exception as e:
-                    # エラーを記録
-                    error_info = {
-                        "phase": ConsensusPhase.DEBATE.value,
-                        "persona_type": persona_type.value,
-                        "round_number": round_number,
-                        "error": str(e),
+                # 各エージェントに他のエージェントの思考を提供してDebateを実行
+                tasks = []
+                for persona_type, agent in agents.items():
+                    # 他のエージェントの思考結果を抽出（自分自身は除外）
+                    others_thoughts = {
+                        pt: thinking_results[pt].content
+                        for pt in thinking_results.keys()
+                        if pt != persona_type
                     }
-                    self._errors.append(error_info)
-                    logger.error(
-                        f"エージェント {persona_type.value} のDebate（ラウンド{round_number}）に失敗: {e}"
-                    )
-                    return None
 
-            # 各エージェントに他のエージェントの思考を提供してDebateを実行
-            tasks = []
-            for persona_type, agent in agents.items():
-                # 他のエージェントの思考結果を抽出（自分自身は除外）
-                others_thoughts = {
-                    pt: thinking_results[pt].content
-                    for pt in thinking_results.keys()
-                    if pt != persona_type
-                }
-
-                tasks.append(
-                    debate_with_error_handling(
-                        persona_type, agent, others_thoughts, round_num
+                    tasks.append(
+                        debate_with_error_handling(
+                            persona_type, agent, others_thoughts, round_num
+                        )
                     )
+
+                # 全エージェントのDebateを並列実行
+                debate_outputs = await asyncio.gather(*tasks)
+
+                # 結果を辞書に格納（成功したもののみ）
+                for persona_type, output in zip(agents.keys(), debate_outputs):
+                    if output is not None:
+                        round_outputs[persona_type] = output
+                        if self._streaming_enabled and not stop_streaming:
+                            should_continue = await self._emit_debate_streaming_output(
+                                persona_type,
+                                output,
+                                round_num,
+                            )
+                            if not should_continue:
+                                stop_streaming = True
+                                break
+
+                # ラウンド結果を追加
+                debate_round = DebateRound(
+                    round_number=round_num,
+                    outputs=round_outputs,
+                    timestamp=datetime.now()
                 )
+                debate_rounds.append(debate_round)
 
-            # 全エージェントのDebateを並列実行
-            debate_outputs = await asyncio.gather(*tasks)
-
-            # 結果を辞書に格納（成功したもののみ）
-            for persona_type, output in zip(agents.keys(), debate_outputs):
-                if output is not None:
-                    round_outputs[persona_type] = output
-
-            # ラウンド結果を追加
-            debate_round = DebateRound(
-                round_number=round_num,
-                outputs=round_outputs,
-                timestamp=datetime.now()
-            )
-            debate_rounds.append(debate_round)
-
-            logger.info(f"Debateラウンド {round_num} 完了")
+                logger.info(f"Debateラウンド {round_num} 完了")
+                if stop_streaming:
+                    logger.warning(
+                        "Debate ストリーミングを中断しました: reason=%s",
+                        self._streaming_state.get("fail_safe_reason"),
+                    )
+                    break
+        finally:
+            if hasattr(self.streaming_emitter, "dropped"):
+                try:
+                    self._streaming_state["dropped"] = self.streaming_emitter.dropped
+                except Exception:
+                    self._streaming_state["dropped"] = 0
+            if self._streaming_enabled:
+                await self.streaming_emitter.aclose()
 
         # フェーズをVOTINGに遷移
         self._transition_to_phase(ConsensusPhase.VOTING)
@@ -967,6 +1080,11 @@ class ConsensusEngine:
     def events(self) -> List[Dict[str, Any]]:
         """イベントログを取得"""
         return self._events.copy()
+
+    @property
+    def streaming_state(self) -> Dict[str, Any]:
+        """ストリーミング状態を取得."""
+        return self._streaming_state.copy()
 
     @property
     def context_reduction_logs(self) -> List[ReductionLog]:
