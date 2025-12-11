@@ -18,6 +18,7 @@ magi-core/
 - `core/`: 合議エンジン、コンテキスト管理
   - `consensus.py`: 合議フロー制御
   - `context.py`: コンテキスト/ログ管理
+  - `streaming.py`: QueueStreamingEmitter でストリーミングをバッファリングし、TTFB/ドロップを記録した上で fail-safe にフォールバック
   - `token_budget.py`: TokenBudgetManager（要約・圧縮・削減ログ）
   - `template_loader.py`: テンプレート外部化・TTLキャッシュ・ホットリロード
   - `schema_validator.py`: ツール呼び出し JSON スキーマ検証
@@ -25,10 +26,13 @@ magi-core/
   - `spec_sync.py`: `spec.json` と `tasks.md` の整合同期（バックアップ+atomic write）
 - `cli/`: 引数パーサーと CLI 起動
 - `config/`: ConfigManager
+- `config/manager.py`: env/config マッピングに Guardrails/Streaming/署名キーのフラグを含め、fail-open/closed を設定単位で制御
 - `llm/`: LLM クライアント
 - `output/`: フォーマッタ/ストリーミング出力
 - `plugins/`: PluginLoader/CommandExecutor/PluginGuard（`loader.py` / `executor.py` / `guard.py`）
+- `plugins/signature.py`: YAML を正規化して RSA/ECDSA 署名または sha256 ハッシュを検証（公開鍵は public_key_path > config.plugin_public_key_path > `MAGI_PLUGIN_PUBKEY_PATH` > `plugins/public_key.pem` の順で解決）
 - `security/`: SecurityFilter（`filter.py` でサニタイズ・禁止パターン検知）
+- `security/guardrails.py`: GuardrailsAdapter で前段チェックし、タイムアウト/例外はポリシーに応じて fail-open/closed かイベント記録
 - 共通モデル・エラーはルート直下の `models.py` / `errors.py`
 
 ## .kiro 配下
@@ -42,3 +46,5 @@ magi-core/
 
 ## 補足
 - プロジェクト設定や追加仕様は README と `.kiro/specs/` を参照。
+
+updated_at: 2025-12-11
