@@ -241,19 +241,19 @@ class GeminiAdapter:
         self._owns_client = http_client is None
         self._client = http_client or self._httpx.AsyncClient(timeout=timeout)
         self._validate_required_fields(["api_key", "model"])
-
-    async def send(self, request: LLMRequest) -> LLMResponse:
-        """Gemini generateContent API を呼び出す"""
+        # endpoint は必須フィールドとして初期化時に検証
         if not self.endpoint:
             raise MagiException(
                 MagiError(
                     code=ErrorCode.CONFIG_INVALID_VALUE.value,
-                    message="Gemini endpoint is required.",
+                    message=f"Provider '{self.provider_id}' is missing required fields: endpoint",
                     details={"provider": self.provider_id, "missing_fields": ["endpoint"]},
                     recoverable=False,
                 )
             )
 
+    async def send(self, request: LLMRequest) -> LLMResponse:
+        """Gemini generateContent API を呼び出す"""
         url = f"{self.endpoint}/v1beta/models/{self.model}:generateContent"
         payload = {
             "contents": [
