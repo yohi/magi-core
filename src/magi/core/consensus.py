@@ -133,6 +133,7 @@ class ConsensusEngine:
         llm_client_factory: Optional[Callable[[], LLMClient]] = None,
         guardrails_adapter: Optional[GuardrailsAdapter] = None,
         streaming_emitter: Optional[Any] = None,
+        event_context: Optional[Dict[str, Any]] = None,
     ):
         """ConsensusEngineを初期化
 
@@ -145,6 +146,7 @@ class ConsensusEngine:
         self.current_phase = ConsensusPhase.THINKING
         self.schema_validator = schema_validator or SchemaValidator()
         self._events: List[Dict[str, Any]] = []
+        self._event_context = self._sanitize_event_context(event_context)
         if template_loader is not None:
             self.template_loader = template_loader
             # 既存インスタンスでもイベントを収集できるようにフックを差し込む
@@ -1233,8 +1235,26 @@ class ConsensusEngine:
 
     def _record_event(self, event_type: str, **payload: Any) -> None:
         """構造化イベントを記録する"""
-        event = {"type": event_type, **payload}
+        context = dict(self._event_context)
+        event = {**context, "type": event_type, **payload}
         self._events.append(event)
+
+    def set_event_context(
+        self,
+        *,
+        provider: Optional[str] = None,
+        missing_fields: Optional[Any] = None,
+        auth_error: Optional[Any] = None,
+    ) -> None:
+        """イベントに付与するコンテキストを更新"""
+        updates = {
+            "provider": provider,
+            "missing_fields": missing_fields,
+            "auth_error": auth_error,
+        }
+        self._event_context.update(
+            self._sanitize_event_context({k: v for k, v in updates.items() if v is not None})
+        )
 
     @property
     def events(self) -> List[Dict[str, Any]]:
@@ -1250,3 +1270,12 @@ class ConsensusEngine:
     def context_reduction_logs(self) -> List[ReductionLog]:
         """コンテキスト削減ログを取得."""
         return self._reduction_logs.copy()
+
+    def _sanitize_event_context(
+        self, context: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """イベントに付与するコンテキストをフィルタ"""
+        if not context:
+            return {}
+        allowed_keys = {"provider", "missing_fields", "auth_error"}
+        return {k: v for k, v in context.items() if k in allowed_keys}

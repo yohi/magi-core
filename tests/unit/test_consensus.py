@@ -93,6 +93,44 @@ class TestConsensusEnginePhaseTransition(unittest.TestCase):
         self.assertEqual(self.engine.current_phase, ConsensusPhase.COMPLETED)
 
 
+class TestConsensusEventContext(unittest.TestCase):
+    """イベントにプロバイダ情報を含めるテスト"""
+
+    def test_record_event_includes_provider_context(self):
+        """event_context がイベントにマージされる"""
+        config = Config(api_key="test")
+        engine = ConsensusEngine(
+            config,
+            event_context={
+                "provider": "openai",
+                "missing_fields": ["api_key"],
+                "auth_error": "invalid",
+            },
+        )
+
+        engine._record_event("unit.test", foo="bar")
+
+        event = engine.events[-1]
+        self.assertEqual(event["type"], "unit.test")
+        self.assertEqual(event["provider"], "openai")
+        self.assertEqual(event["missing_fields"], ["api_key"])
+        self.assertEqual(event["auth_error"], "invalid")
+        self.assertEqual(event["foo"], "bar")
+
+    def test_payload_overrides_context(self):
+        """payload の provider が event_context より優先される"""
+        config = Config(api_key="test")
+        engine = ConsensusEngine(
+            config,
+            event_context={"provider": "default"},
+        )
+
+        engine._record_event("unit.override", provider="override")
+
+        event = engine.events[-1]
+        self.assertEqual(event["provider"], "override")
+
+
 class TestThinkingPhase(unittest.TestCase):
     """Thinking Phaseのテスト"""
 
@@ -395,4 +433,3 @@ class TestConsensusSecurityFilter(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-
