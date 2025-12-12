@@ -116,14 +116,30 @@ class OpenAIAdapter:
         self._client = http_client or self._httpx.AsyncClient(timeout=timeout)
         self._validate_required_fields(["api_key", "model"])
 
+    def _validate_prompts(self, request: LLMRequest) -> None:
+        """プロンプトが非空文字列であることを検証"""
+        if not request.system_prompt or not isinstance(request.system_prompt, str) or not request.system_prompt.strip():
+            raise MagiException(
+                MagiError(
+                    code=ErrorCode.CONFIG_INVALID_VALUE.value,
+                    message="system_prompt must be a non-empty string",
+                    details={"provider": self.provider_id, "value": request.system_prompt},
+                    recoverable=False,
+                )
+            )
+        if not request.user_prompt or not isinstance(request.user_prompt, str) or not request.user_prompt.strip():
+            raise MagiException(
+                MagiError(
+                    code=ErrorCode.CONFIG_INVALID_VALUE.value,
+                    message="user_prompt must be a non-empty string",
+                    details={"provider": self.provider_id, "value": request.user_prompt},
+                    recoverable=False,
+                )
+            )
+
     async def send(self, request: LLMRequest) -> LLMResponse:
         """Chat Completions エンドポイントへ送信"""
-        # 入力検証: system_prompt と user_prompt が有効な文字列であることを確認
-        if not request.system_prompt or not isinstance(request.system_prompt, str) or not request.system_prompt.strip():
-            raise ValueError("system_prompt must be a non-empty string")
-        if not request.user_prompt or not isinstance(request.user_prompt, str) or not request.user_prompt.strip():
-            raise ValueError("user_prompt must be a non-empty string")
-
+        self._validate_prompts(request)
         payload = {
             "model": self.model,
             "messages": [
@@ -135,12 +151,31 @@ class OpenAIAdapter:
         }
 
         url = f"{self.endpoint}/v1/chat/completions"
-        response = await self._client.post(
-            url,
-            headers=self._auth_headers(),
-            json=payload,
-            timeout=self._timeout,
-        )
+        try:
+            response = await self._client.post(
+                url,
+                headers=self._auth_headers(),
+                json=payload,
+                timeout=self._timeout,
+            )
+        except self._httpx.TimeoutException as exc:
+            raise MagiException(
+                create_api_error(
+                    code=ErrorCode.API_TIMEOUT,
+                    message="OpenAI API リクエストがタイムアウトしました。",
+                    details={"provider": self.provider_id},
+                    recoverable=True,
+                )
+            ) from exc
+        except self._httpx.HTTPError as exc:
+            raise MagiException(
+                create_api_error(
+                    code=ErrorCode.API_ERROR,
+                    message="OpenAI API 呼び出しでエラーが発生しました。",
+                    details={"provider": self.provider_id},
+                    recoverable=True,
+                )
+            ) from exc
         self._raise_for_status(response)
         data = response.json()
 
@@ -260,20 +295,28 @@ class GeminiAdapter:
         # http_client が提供されない場合のみ、内部で httpx.AsyncClient を作成
         self._owns_client = http_client is None
         self._client = http_client or self._httpx.AsyncClient(timeout=timeout)
-        self._validate_required_fields(["api_key", "model"])
-        # endpoint は必須フィールドとして初期化時に検証
-        if not self.endpoint:
-            raise MagiException(
-                MagiError(
-                    code=ErrorCode.CONFIG_INVALID_VALUE.value,
-                    message=f"Provider '{self.provider_id}' is missing required fields: endpoint",
-                    details={"provider": self.provider_id, "missing_fields": ["endpoint"]},
-                    recoverable=False,
-                )
-            )
+        self._validate_required_fields(["api_key", "model", "endpoint"])
 
     async def send(self, request: LLMRequest) -> LLMResponse:
         """Gemini generateContent API を呼び出す"""
+        if not request.system_prompt or not isinstance(request.system_prompt, str) or not request.system_prompt.strip():
+            raise MagiException(
+                MagiError(
+                    code=ErrorCode.CONFIG_INVALID_VALUE.value,
+                    message="system_prompt must be a non-empty string",
+                    details={"provider": self.provider_id, "value": request.system_prompt},
+                    recoverable=False,
+                )
+            )
+        if not request.user_prompt or not isinstance(request.user_prompt, str) or not request.user_prompt.strip():
+            raise MagiException(
+                MagiError(
+                    code=ErrorCode.CONFIG_INVALID_VALUE.value,
+                    message="user_prompt must be a non-empty string",
+                    details={"provider": self.provider_id, "value": request.user_prompt},
+                    recoverable=False,
+                )
+            )
         url = f"{self.endpoint}/v1beta/models/{self.model}:generateContent"
         payload = {
             "contents": [
@@ -290,12 +333,31 @@ class GeminiAdapter:
             },
         }
 
-        response = await self._client.post(
-            url,
-            params={"key": self.context.api_key},
-            json=payload,
-            timeout=self._timeout,
-        )
+        try:
+            response = await self._client.post(
+                url,
+                params={"key": self.context.api_key},
+                json=payload,
+                timeout=self._timeout,
+            )
+        except self._httpx.TimeoutException as exc:
+            raise MagiException(
+                create_api_error(
+                    code=ErrorCode.API_TIMEOUT,
+                    message="Gemini API リクエストがタイムアウトしました。",
+                    details={"provider": self.provider_id},
+                    recoverable=True,
+                )
+            ) from exc
+        except self._httpx.HTTPError as exc:
+            raise MagiException(
+                create_api_error(
+                    code=ErrorCode.API_ERROR,
+                    message="Gemini API 呼び出しでエラーが発生しました。",
+                    details={"provider": self.provider_id},
+                    recoverable=True,
+                )
+            ) from exc
         self._raise_for_status(response)
         data = response.json()
 

@@ -150,6 +150,48 @@ class TestOpenAIAdapter(unittest.TestCase):
         self.assertEqual(result.usage["output_tokens"], 3)
         self.assertEqual(result.model, "gpt-4o")
 
+    def test_openai_prompt_validation_raises_magi_exception(self):
+        """空プロンプトでMagiException(CONFIG_INVALID_VALUE)を返す"""
+        ctx = ProviderContext(
+            provider_id="openai",
+            api_key="openai-key",
+            model="gpt-4o",
+        )
+        adapter = OpenAIAdapter(ctx, http_client=AsyncMock())
+        request = LLMRequest(system_prompt=" ", user_prompt="hello")
+
+        with self.assertRaises(MagiException) as exc:
+            asyncio.run(adapter.send(request))
+
+        self.assertEqual(exc.exception.error.code, ErrorCode.CONFIG_INVALID_VALUE.value)
+
+    def test_openai_timeout_maps_to_api_timeout(self):
+        """httpx Timeout を API_TIMEOUT に正規化する"""
+        ctx = ProviderContext(
+            provider_id="openai",
+            api_key="openai-key",
+            model="gpt-4o",
+        )
+
+        class DummyHttpx:
+            class TimeoutException(Exception):
+                pass
+
+            class HTTPError(Exception):
+                pass
+
+        http_client = AsyncMock()
+        http_client.post.side_effect = DummyHttpx.TimeoutException("timeout")
+
+        with patch("magi.llm.providers._require_httpx", return_value=DummyHttpx()):
+            adapter = OpenAIAdapter(ctx, http_client=http_client)
+
+        request = LLMRequest(system_prompt="sys", user_prompt="u")
+        with self.assertRaises(MagiException) as exc:
+            asyncio.run(adapter.send(request))
+
+        self.assertEqual(exc.exception.error.code, ErrorCode.API_TIMEOUT.value)
+
     def test_openai_adapter_closes_owned_client(self):
         """内部生成したクライアントのみをcloseする"""
         ctx = ProviderContext(
@@ -190,13 +232,55 @@ class TestGeminiAdapter(unittest.TestCase):
             model="gemini-1.5",
             endpoint=None,
         )
-        adapter = GeminiAdapter(ctx)
-
         with self.assertRaises(MagiException) as exc:
-            asyncio.run(adapter.send(LLMRequest(system_prompt="s", user_prompt="u")))
+            GeminiAdapter(ctx)
 
         details = exc.exception.error.details or {}
         self.assertIn("endpoint", details.get("missing_fields", []))
+
+    def test_gemini_prompt_validation_raises_magi_exception(self):
+        """空プロンプトでMagiException(CONFIG_INVALID_VALUE)を返す"""
+        ctx = ProviderContext(
+            provider_id="gemini",
+            api_key="gem-key",
+            model="gemini-1.5",
+            endpoint="https://example.com",
+        )
+        adapter = GeminiAdapter(ctx, http_client=AsyncMock())
+        request = LLMRequest(system_prompt="", user_prompt="hi")
+
+        with self.assertRaises(MagiException) as exc:
+            asyncio.run(adapter.send(request))
+
+        self.assertEqual(exc.exception.error.code, ErrorCode.CONFIG_INVALID_VALUE.value)
+
+    def test_gemini_timeout_maps_to_api_timeout(self):
+        """httpx Timeout を API_TIMEOUT に正規化する"""
+        ctx = ProviderContext(
+            provider_id="gemini",
+            api_key="gem-key",
+            model="gemini-1.5",
+            endpoint="https://example.com",
+        )
+
+        class DummyHttpx:
+            class TimeoutException(Exception):
+                pass
+
+            class HTTPError(Exception):
+                pass
+
+        http_client = AsyncMock()
+        http_client.post.side_effect = DummyHttpx.TimeoutException("timeout")
+
+        with patch("magi.llm.providers._require_httpx", return_value=DummyHttpx()):
+            adapter = GeminiAdapter(ctx, http_client=http_client)
+
+        request = LLMRequest(system_prompt="sys", user_prompt="u")
+        with self.assertRaises(MagiException) as exc:
+            asyncio.run(adapter.send(request))
+
+        self.assertEqual(exc.exception.error.code, ErrorCode.API_TIMEOUT.value)
 
     def test_health_is_skipped_by_default(self):
         """課金回避のためヘルスチェックは既定でスキップする"""
