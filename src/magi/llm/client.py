@@ -318,3 +318,14 @@ class LLMClient:
         )
         exponential = self.base_delay_seconds * (2 ** attempt)
         return random.uniform(0, min(cap, exponential))
+
+    async def close(self) -> None:
+        """AsyncAnthropic クライアントをクリーンアップ"""
+        if self._client is not None:
+            await self._client.close()
+
+    async def __aenter__(self) -> "LLMClient":
+        return self
+
+    async def __aexit__(self, *_exc: Any) -> None:
+        await self.close()

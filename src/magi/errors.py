@@ -27,6 +27,7 @@ class ErrorCode(Enum):
     API_TIMEOUT = "API_001"
     API_RATE_LIMIT = "API_002"
     API_AUTH_ERROR = "API_003"
+    API_ERROR = "API_004"
 
     # プラグインエラー
     PLUGIN_YAML_PARSE_ERROR = "PLUGIN_001"
