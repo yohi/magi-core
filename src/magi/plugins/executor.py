@@ -68,6 +68,9 @@ class CommandExecutor:
         """
         if args is None:
             args = []
+        merged_env = dict(os.environ)
+        if env:
+            merged_env.update(env)
         
         start_time = time.time()
         
@@ -76,7 +79,7 @@ class CommandExecutor:
             process = await asyncio.create_subprocess_exec(
                 command,
                 *args,
-                env=env,
+                env=merged_env,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )

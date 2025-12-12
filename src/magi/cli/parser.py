@@ -104,13 +104,12 @@ class ArgumentParser:
 
             # プロバイダオプション
             if arg == "--provider":
-                if i + 1 < len(argv):
+                if i + 1 < len(argv) and not argv[i + 1].startswith("-"):
                     options["provider"] = argv[i + 1].lower()
                     i += 2
                     continue
-                else:
-                    i += 1
-                    continue
+                i += 1
+                continue
 
             # specレビューオプション
             if arg == "--review":

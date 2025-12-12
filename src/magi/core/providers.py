@@ -64,7 +64,11 @@ class ProviderRegistry:
 
     def list(self) -> Iterable[str]:
         """利用可能なプロバイダ一覧"""
-        return [p for p in self._providers.keys() if p in self._supported]
+        return [
+            key
+            for key in self._providers.keys()
+            if key.lower() in self._supported
+        ]
 
     def resolve(self, provider_id: str) -> ProviderConfig:
         """プロバイダIDから設定を解決する"""

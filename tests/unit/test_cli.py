@@ -456,6 +456,7 @@ class TestMagiCLI(unittest.TestCase):
 
             async def execute(self, prompt: str, plugin=None):
                 # 未使用パラメータを参照してARG002を回避
+                _ = prompt
                 _ = plugin
                 return result
 

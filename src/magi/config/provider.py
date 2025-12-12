@@ -231,7 +231,11 @@ class ProviderConfigLoader:
         config_default: Optional[str],
         env_default: Optional[str],
     ) -> str:
-        """デフォルトプロバイダを解決(flag > config > env > built-in のうち config/env/builtin を担当)"""
+        """デフォルトプロバイダを解決する（config > env > built-in を担当）
+
+        CLIフラグによる上書きは CLI 層で行われるため、本メソッドは
+        設定ファイル・環境変数・ビルトイン既定の優先度のみを扱う。
+        """
         if config_default:
             return config_default
         if env_default:
