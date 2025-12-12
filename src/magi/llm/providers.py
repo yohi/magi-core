@@ -200,11 +200,30 @@ class OpenAIAdapter:
     async def health(self) -> HealthStatus:
         """非課金の /v1/models で疎通確認"""
         url = f"{self.endpoint}/v1/models"
-        response = await self._client.get(
-            url,
-            headers=self._auth_headers(),
-            timeout=self._timeout,
-        )
+        try:
+            response = await self._client.get(
+                url,
+                headers=self._auth_headers(),
+                timeout=self._timeout,
+            )
+        except self._httpx.TimeoutException as exc:
+            raise MagiException(
+                create_api_error(
+                    code=ErrorCode.API_TIMEOUT,
+                    message="OpenAI API リクエストがタイムアウトしました。",
+                    details={"provider": self.provider_id},
+                    recoverable=True,
+                )
+            ) from exc
+        except self._httpx.HTTPError as exc:
+            raise MagiException(
+                create_api_error(
+                    code=ErrorCode.API_ERROR,
+                    message="OpenAI API 呼び出しでエラーが発生しました。",
+                    details={"provider": self.provider_id},
+                    recoverable=True,
+                )
+            ) from exc
         self._raise_for_status(response)
         data = response.json() if hasattr(response, "json") else {}
         models = []

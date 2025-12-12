@@ -191,6 +191,7 @@ class TestOpenAIAdapter(unittest.TestCase):
             asyncio.run(adapter.send(request))
 
         self.assertEqual(exc.exception.error.code, ErrorCode.API_TIMEOUT.value)
+        self.assertEqual(http_client.post.await_count, 1)
 
     def test_openai_adapter_closes_owned_client(self):
         """内部生成したクライアントのみをcloseする"""
@@ -219,6 +220,60 @@ class TestOpenAIAdapter(unittest.TestCase):
         adapter2 = OpenAIAdapter(ctx, http_client=injected)
         asyncio.run(adapter2.close())
         injected.aclose.assert_not_called()
+
+    def test_openai_health_timeout_maps_to_api_timeout(self):
+        """health() での Timeout を API_TIMEOUT に正規化する"""
+        ctx = ProviderContext(
+            provider_id="openai",
+            api_key="openai-key",
+            model="gpt-4o",
+        )
+
+        class DummyHttpx:
+            class TimeoutException(Exception):
+                pass
+
+            class HTTPError(Exception):
+                pass
+
+        http_client = AsyncMock()
+        http_client.get.side_effect = DummyHttpx.TimeoutException("timeout")
+
+        with patch("magi.llm.providers._require_httpx", return_value=DummyHttpx()):
+            adapter = OpenAIAdapter(ctx, http_client=http_client)
+
+        with self.assertRaises(MagiException) as exc:
+            asyncio.run(adapter.health())
+
+        self.assertEqual(exc.exception.error.code, ErrorCode.API_TIMEOUT.value)
+        self.assertEqual(http_client.get.await_count, 1)
+
+    def test_openai_health_http_error_maps_to_api_error(self):
+        """health() での HTTPError を API_ERROR に正規化する"""
+        ctx = ProviderContext(
+            provider_id="openai",
+            api_key="openai-key",
+            model="gpt-4o",
+        )
+
+        class DummyHttpx:
+            class TimeoutException(Exception):
+                pass
+
+            class HTTPError(Exception):
+                pass
+
+        http_client = AsyncMock()
+        http_client.get.side_effect = DummyHttpx.HTTPError("conn failed")
+
+        with patch("magi.llm.providers._require_httpx", return_value=DummyHttpx()):
+            adapter = OpenAIAdapter(ctx, http_client=http_client)
+
+        with self.assertRaises(MagiException) as exc:
+            asyncio.run(adapter.health())
+
+        self.assertEqual(exc.exception.error.code, ErrorCode.API_ERROR.value)
+        self.assertEqual(http_client.get.await_count, 1)
 
 
 class TestGeminiAdapter(unittest.TestCase):
