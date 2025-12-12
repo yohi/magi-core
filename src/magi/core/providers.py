@@ -122,7 +122,10 @@ class ProviderSelector:
         default_provider: Optional[str] = None,
     ) -> None:
         self.registry = registry
-        self.default_provider = (default_provider or registry.default_provider).lower()
+        resolved_default = default_provider or getattr(registry, "default_provider", None)
+        if not resolved_default:
+            resolved_default = DEFAULT_PROVIDER_ID
+        self.default_provider = resolved_default.lower()
 
     def select(self, provider_id: Optional[str] = None) -> ProviderContext:
         """プロバイダを選択し、コンテキストを返す"""

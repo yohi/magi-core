@@ -5,6 +5,7 @@ ProviderAdapter 実装のユニットテスト
 import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import patch
 
 from magi.core.providers import ProviderContext
 from magi.errors import ErrorCode, MagiException
@@ -148,6 +149,34 @@ class TestOpenAIAdapter(unittest.TestCase):
         self.assertEqual(result.usage["input_tokens"], 5)
         self.assertEqual(result.usage["output_tokens"], 3)
         self.assertEqual(result.model, "gpt-4o")
+
+    def test_openai_adapter_closes_owned_client(self):
+        """内部生成したクライアントのみをcloseする"""
+        ctx = ProviderContext(
+            provider_id="openai",
+            api_key="openai-key",
+            model="gpt-4o",
+        )
+
+        owned_client = AsyncMock()
+
+        class DummyHttpx:
+            def __init__(self, client):
+                self.client = client
+
+            def AsyncClient(self, *_, **__):
+                return self.client
+
+        with patch("magi.llm.providers._require_httpx", return_value=DummyHttpx(owned_client)):
+            adapter = OpenAIAdapter(ctx)
+        asyncio.run(adapter.close())
+
+        owned_client.aclose.assert_awaited_once()
+
+        injected = AsyncMock()
+        adapter2 = OpenAIAdapter(ctx, http_client=injected)
+        asyncio.run(adapter2.close())
+        injected.aclose.assert_not_called()
 
 
 class TestGeminiAdapter(unittest.TestCase):

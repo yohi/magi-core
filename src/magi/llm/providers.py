@@ -7,13 +7,25 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Protocol
 
-import httpx
-
 from magi.errors import ErrorCode, MagiError, MagiException, create_api_error, create_config_error
 from magi.llm.client import LLMClient, LLMRequest, LLMResponse
 
 if TYPE_CHECKING:
     from magi.core.providers import ProviderContext
+
+
+def _require_httpx():
+    """httpx が必要な場合のみ遅延インポート"""
+    try:
+        import httpx as _httpx
+    except ImportError as exc:
+        raise MagiException(
+            create_config_error(
+                "httpx が見つかりません。OpenAI/Gemini プロバイダを使用するには httpx をインストールしてください。",
+                details={"dependency": "httpx"},
+            )
+        ) from exc
+    return _httpx
 
 
 @dataclass
@@ -75,7 +87,7 @@ class OpenAIAdapter:
         self,
         context: ProviderContext,
         *,
-        http_client: Optional[httpx.AsyncClient] = None,
+        http_client: Optional[Any] = None,
         timeout: float = 30.0,
     ) -> None:
         self.context = context
@@ -83,7 +95,9 @@ class OpenAIAdapter:
         self.model = context.model
         self.endpoint = (context.endpoint or "https://api.openai.com").rstrip("/")
         self._timeout = timeout
-        self._client = http_client or httpx.AsyncClient(timeout=timeout)
+        self._httpx = _require_httpx()
+        self._owns_client = http_client is None
+        self._client = http_client or self._httpx.AsyncClient(timeout=timeout)
         self._validate_required_fields(["api_key", "model"])
 
     async def send(self, request: LLMRequest) -> LLMResponse:
@@ -160,7 +174,7 @@ class OpenAIAdapter:
                 )
             )
 
-    def _raise_for_status(self, response: httpx.Response) -> None:
+    def _raise_for_status(self, response: Any) -> None:
         if response.status_code in (401, 403):
             raise MagiException(
                 create_api_error(
@@ -179,7 +193,7 @@ class OpenAIAdapter:
 
         raise MagiException(
             create_api_error(
-                code=ErrorCode.API_TIMEOUT,
+                code=ErrorCode.API_ERROR,
                 message="OpenAI API 呼び出しでエラーが発生しました。",
                 details={
                     "provider": self.provider_id,
@@ -190,6 +204,17 @@ class OpenAIAdapter:
             )
         )
 
+    async def close(self) -> None:
+        """生成した httpx クライアントをクリーンアップ"""
+        if self._owns_client and self._client is not None:
+            await self._client.aclose()
+
+    async def __aenter__(self) -> "OpenAIAdapter":
+        return self
+
+    async def __aexit__(self, *_exc: Any) -> None:
+        await self.close()
+
 
 class GeminiAdapter:
     """Gemini 向けアダプタ"""
@@ -198,7 +223,7 @@ class GeminiAdapter:
         self,
         context: ProviderContext,
         *,
-        http_client: Optional[httpx.AsyncClient] = None,
+        http_client: Optional[Any] = None,
         timeout: float = 30.0,
     ) -> None:
         self.context = context
@@ -206,7 +231,11 @@ class GeminiAdapter:
         self.model = context.model
         self.endpoint = (context.endpoint or "").rstrip("/")
         self._timeout = timeout
-        self._client = http_client or httpx.AsyncClient(timeout=timeout)
+        self._httpx = _require_httpx()
+        # リソースリークを防ぐため、所有権を追跡
+        # http_client が提供されない場合のみ、内部で httpx.AsyncClient を作成
+        self._owns_client = http_client is None
+        self._client = http_client or self._httpx.AsyncClient(timeout=timeout)
         self._validate_required_fields(["api_key", "model"])
 
     async def send(self, request: LLMRequest) -> LLMResponse:
@@ -292,7 +321,7 @@ class GeminiAdapter:
                 )
             )
 
-    def _raise_for_status(self, response: httpx.Response) -> None:
+    def _raise_for_status(self, response: Any) -> None:
         if response.status_code in (401, 403):
             raise MagiException(
                 create_api_error(
@@ -310,7 +339,7 @@ class GeminiAdapter:
             return
         raise MagiException(
             create_api_error(
-                code=ErrorCode.API_TIMEOUT,
+                code=ErrorCode.API_ERROR,
                 message="Gemini API 呼び出しでエラーが発生しました。",
                 details={
                     "provider": self.provider_id,
@@ -320,3 +349,14 @@ class GeminiAdapter:
                 recoverable=True,
             )
         )
+
+    async def close(self) -> None:
+        """生成した httpx クライアントをクリーンアップ"""
+        if self._owns_client and self._client is not None:
+            await self._client.aclose()
+
+    async def __aenter__(self) -> "GeminiAdapter":
+        return self
+
+    async def __aexit__(self, *_exc: Any) -> None:
+        await self.close()

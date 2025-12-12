@@ -48,7 +48,11 @@ class BridgeAdapter:
             )
 
         safe_args = self.guard.validate(command, args)
-        env = os.environ.copy()
+        # 最低限（PATH）は残しつつ、ホスト側のシークレットを外部CLIへ渡さない
+        env: dict[str, str] = {"PATH": os.environ.get("PATH", "")}
+        if extra_env:
+            env.update({str(k): str(v) for k, v in extra_env.items()})
+        # provider 由来の値は上書きされないよう最後に入れる
         env.update(
             {
                 "MAGI_PROVIDER": provider.provider_id,
@@ -58,8 +62,6 @@ class BridgeAdapter:
         )
         if provider.endpoint:
             env["MAGI_PROVIDER_ENDPOINT"] = provider.endpoint
-        if extra_env:
-            env.update(extra_env)
 
         result = await self.executor.execute(command, safe_args, env=env)
 

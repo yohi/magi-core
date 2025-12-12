@@ -448,10 +448,15 @@ class TestMagiCLI(unittest.TestCase):
 
         class DummyEngine:
             def __init__(self, *_args, **_kwargs):
+                # 未使用パラメータを参照してARG002を回避
+                _ = _args
+                _ = _kwargs
                 self.events: List[Dict[str, Any]] = []
                 self.errors: List[Dict[str, Any]] = []
 
             async def execute(self, prompt: str, plugin=None):
+                # 未使用パラメータを参照してARG002を回避
+                _ = plugin
                 return result
 
         context = ProviderContext(
