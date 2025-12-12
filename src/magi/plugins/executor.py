@@ -6,6 +6,7 @@ CommandExecutor - 外部コマンドの実行
 
 import asyncio
 import time
+import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 

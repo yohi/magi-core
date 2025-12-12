@@ -85,8 +85,13 @@ class BridgeAdapter:
             )
 
         safe_args = self.guard.validate(command, args)
-        # 最低限 (PATH) は残しつつ、ホスト側のシークレットを外部CLIへ渡さない
-        env: dict[str, str] = dict(os.environ)
+        # 最低限のホスト環境のみ許可する（シークレット漏洩防止）
+        allowlist = ("PATH", "LANG", "LC_ALL", "TERM", "SHELL")
+        env: dict[str, str] = {
+            key: os.environ[key]
+            for key in allowlist
+            if key in os.environ
+        }
         if extra_env:
             env.update({str(k): str(v) for k, v in extra_env.items()})
         # provider 由来の値は上書きされないよう最後に入れる
