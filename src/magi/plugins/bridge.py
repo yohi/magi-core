@@ -85,7 +85,7 @@ class BridgeAdapter:
             )
 
         safe_args = self.guard.validate(command, args)
-        # 最低限のホスト環境のみ許可する（シークレット漏洩防止）
+        # 最低限のホスト環境のみ許可する (シークレット漏洩防止)
         allowlist = ("PATH", "LANG", "LC_ALL", "TERM", "SHELL")
         env: dict[str, str] = {
             key: os.environ[key]
