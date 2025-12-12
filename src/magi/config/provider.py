@@ -51,15 +51,25 @@ class ProviderConfig:
             "api_key": self.masked_api_key,
             "model": self.model,
             "endpoint": self.endpoint,
-            "options": self.options,
+            "options": self._masked_options(),
         }
 
     def __repr__(self) -> str:
         return (
             f"ProviderConfig(provider_id={self.provider_id}, "
             f"api_key={self.masked_api_key}, model={self.model}, "
-            f"endpoint={self.endpoint}, options={self.options})"
+            f"endpoint={self.endpoint}, options=<redacted>)"
         )
+
+    def _masked_options(self) -> Dict[str, Any]:
+        """options 内の値をマスクした辞書"""
+        masked: Dict[str, Any] = {}
+        for key, value in self.options.items():
+            if isinstance(value, str):
+                masked[key] = mask_secret(value)
+            else:
+                masked[key] = value
+        return masked
 
 
 @dataclass
@@ -71,7 +81,7 @@ class ProviderConfigs:
 
 
 class ProviderConfigLoader:
-    """プロバイダ設定ローダー（env/yaml + キャッシュ + バリデーション）"""
+    """プロバイダ設定ローダー(env/yaml + キャッシュ + バリデーション)"""
 
     def __init__(self) -> None:
         self._cache: Optional[ProviderConfigs] = None
@@ -109,12 +119,20 @@ class ProviderConfigLoader:
         try:
             with resolved_path.open("r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
-        except yaml.YAMLError as e:
+        except (yaml.YAMLError, OSError) as e:
             logger.error(
-                "Failed to parse provider config file: path=%s error=%s",
+                "Failed to load provider config file: path=%s error=%s",
                 resolved_path,
                 e,
                 exc_info=True,
+            )
+            return {}, None
+
+        if not isinstance(data, dict):
+            logger.error(
+                "Invalid provider config structure: expected mapping but got %s at %s",
+                type(data).__name__,
+                resolved_path,
             )
             return {}, None
 
@@ -213,7 +231,7 @@ class ProviderConfigLoader:
         config_default: Optional[str],
         env_default: Optional[str],
     ) -> str:
-        """デフォルトプロバイダを解決（flag > config > env > built-in のうち config/env/builtin を担当）"""
+        """デフォルトプロバイダを解決(flag > config > env > built-in のうち config/env/builtin を担当)"""
         if config_default:
             return config_default
         if env_default:
@@ -226,6 +244,21 @@ class ProviderConfigLoader:
         default_provider: str,
     ) -> None:
         """必須フィールドとデフォルト設定の検証"""
+        if not providers:
+            message = "プロバイダ設定が存在しません。少なくともデフォルトプロバイダを設定してください。"
+            raise MagiException(
+                MagiError(
+                    code=ErrorCode.CONFIG_MISSING_API_KEY.value,
+                    message=message,
+                    details={
+                        "providers": {},
+                        "missing_fields": {"default_provider": ["api_key", "model"]},
+                        "expected_default": default_provider,
+                    },
+                    recoverable=False,
+                )
+            )
+
         errors = []
         for provider_id, cfg in providers.items():
             missing_fields = [
@@ -243,10 +276,13 @@ class ProviderConfigLoader:
 
         if errors:
             providers_with_error = ", ".join([e["provider"] for e in errors])
+            aggregated_missing = {
+                entry["provider"]: entry["missing_fields"] for entry in errors
+            }
             message = f"プロバイダ設定が不足しています: {providers_with_error}"
             detail = {
                 "providers": errors,
-                "missing_fields": errors[0]["missing_fields"],
+                "missing_fields": aggregated_missing,
             }
             raise MagiException(
                 MagiError(
@@ -263,7 +299,7 @@ class ProviderConfigLoader:
             )
             raise MagiException(
                 MagiError(
-                    code=ErrorCode.CONFIG_INVALID_VALUE.value,
+                    code=ErrorCode.CONFIG_MISSING_API_KEY.value,
                     message=message,
                     details={
                         "default_provider": default_provider,
