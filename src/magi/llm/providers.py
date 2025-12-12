@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Protocol
 
-from magi.errors import ErrorCode, MagiError, MagiException, create_api_error, create_config_error
+from magi.errors import ErrorCode, MagiError, MagiException, create_api_error
 from magi.llm.client import LLMClient, LLMRequest, LLMResponse
 
 if TYPE_CHECKING:
@@ -20,9 +20,11 @@ def _require_httpx():
         import httpx as _httpx
     except ImportError as exc:
         raise MagiException(
-            create_config_error(
-                "httpx が見つかりません。OpenAI/Gemini プロバイダを使用するには httpx をインストールしてください。",
+            MagiError(
+                code=ErrorCode.CONFIG_INVALID_VALUE.value,
+                message="httpx が見つかりません。OpenAI/Gemini プロバイダを使用するには httpx をインストールしてください。",
                 details={"dependency": "httpx"},
+                recoverable=False,
             )
         ) from exc
     return _httpx
@@ -168,9 +170,11 @@ class OpenAIAdapter:
         missing = [field for field in fields if not getattr(self.context, field)]
         if missing:
             raise MagiException(
-                create_config_error(
-                    f"Provider '{self.provider_id}' is missing required fields: {', '.join(missing)}",
+                MagiError(
+                    code=ErrorCode.CONFIG_INVALID_VALUE.value,
+                    message=f"Provider '{self.provider_id}' is missing required fields: {', '.join(missing)}",
                     details={"provider": self.provider_id, "missing_fields": missing},
+                    recoverable=False,
                 )
             )
 
@@ -242,9 +246,11 @@ class GeminiAdapter:
         """Gemini generateContent API を呼び出す"""
         if not self.endpoint:
             raise MagiException(
-                create_config_error(
-                    "Gemini endpoint is required.",
+                MagiError(
+                    code=ErrorCode.CONFIG_INVALID_VALUE.value,
+                    message="Gemini endpoint is required.",
                     details={"provider": self.provider_id, "missing_fields": ["endpoint"]},
+                    recoverable=False,
                 )
             )
 
@@ -315,9 +321,11 @@ class GeminiAdapter:
         missing = [field for field in fields if not getattr(self.context, field)]
         if missing:
             raise MagiException(
-                create_config_error(
-                    f"Provider '{self.provider_id}' is missing required fields: {', '.join(missing)}",
+                MagiError(
+                    code=ErrorCode.CONFIG_INVALID_VALUE.value,
+                    message=f"Provider '{self.provider_id}' is missing required fields: {', '.join(missing)}",
                     details={"provider": self.provider_id, "missing_fields": missing},
+                    recoverable=False,
                 )
             )
 
