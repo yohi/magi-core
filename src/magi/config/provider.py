@@ -3,6 +3,7 @@
 """
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +16,8 @@ from magi.errors import ErrorCode, MagiError, MagiException
 # デフォルトおよびサポートするプロバイダ
 DEFAULT_PROVIDER_ID = "anthropic"
 SUPPORTED_PROVIDERS = ("anthropic", "openai", "gemini")
+
+logger = logging.getLogger(__name__)
 
 
 def mask_secret(value: str) -> str:
@@ -106,7 +109,13 @@ class ProviderConfigLoader:
         try:
             with resolved_path.open("r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
-        except yaml.YAMLError:
+        except yaml.YAMLError as e:
+            logger.error(
+                "Failed to parse provider config file: path=%s error=%s",
+                resolved_path,
+                e,
+                exc_info=True,
+            )
             return {}, None
 
         providers: Dict[str, ProviderConfig] = {}
@@ -301,6 +310,22 @@ class ProviderConfigLoader:
             return {}
         try:
             parsed = json.loads(raw)
-            return parsed if isinstance(parsed, dict) else {}
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            snippet = raw if len(raw) <= 200 else f"{raw[:200]}...<truncated>"
+            logger.error(
+                "Failed to parse provider options JSON: raw=%s error=%s",
+                snippet,
+                e,
+                exc_info=True,
+            )
             return {}
+
+        if not isinstance(parsed, dict):
+            logger.warning(
+                "Provider options is not a JSON object: type=%s value=%s",
+                type(parsed).__name__,
+                parsed,
+            )
+            return {}
+
+        return parsed
