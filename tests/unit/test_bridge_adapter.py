@@ -105,10 +105,19 @@ class TestBridgeAdapter(unittest.TestCase):
 
         self.assertEqual(exc.exception.error.code, ErrorCode.PLUGIN_COMMAND_FAILED.value)
         self.assertIn("authentication", exc.exception.error.message.lower())
-        self.assertEqual(
-            exc.exception.error.details.get("provider"),
-            "openai",
-        )
+        # providerは安全な辞書形式で返される
+        provider_dict = exc.exception.error.details.get("provider")
+        self.assertIsInstance(provider_dict, dict)
+        self.assertEqual(provider_dict.get("provider_id"), "openai")
+        self.assertEqual(provider_dict.get("model"), "gpt-4o")
+        self.assertEqual(provider_dict.get("endpoint"), "https://api.openai.com")
+        # APIキーはマスクされている
+        self.assertNotEqual(provider_dict.get("api_key"), "secret-key")
+        self.assertIn("***", provider_dict.get("api_key", ""))
+        # stderrはサニタイズされている
+        stderr = exc.exception.error.details.get("stderr")
+        self.assertIsNotNone(stderr)
+        self.assertEqual(stderr, "authentication failed")  # このケースではマスク不要
 
 
 if __name__ == "__main__":
