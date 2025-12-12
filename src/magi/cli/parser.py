@@ -102,6 +102,16 @@ class ArgumentParser:
                     i += 1
                     continue
 
+            # プロバイダオプション
+            if arg == "--provider":
+                if i + 1 < len(argv):
+                    options["provider"] = argv[i + 1].lower()
+                    i += 2
+                    continue
+                else:
+                    i += 1
+                    continue
+
             # specレビューオプション
             if arg == "--review":
                 options["review"] = True

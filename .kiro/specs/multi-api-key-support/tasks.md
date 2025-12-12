@@ -12,14 +12,14 @@
   - Guardrails/SecurityFilter 実行前に provider 存在と鍵有無をチェックし、コンテキストを ConsensusEngine/Bridge に伝搬する。
   - _Requirements: 1.2, 1.3, 2.1, 2.2, 2.3, 2.5, 4.3, 4.5_
 
-- [ ] 3. プロバイダアダプタ群を用意し、共通インターフェースで LLM 呼び出しを行う
+- [x] 3. プロバイダアダプタ群を用意し、共通インターフェースで LLM 呼び出しを行う
   - 共通 ProviderAdapter インターフェースで send/health/error 正規化を定義し、認証失敗は再試行しないポリシーにまとめる。
   - AnthropicAdapter を実装し、課金前提のためヘルスチェックはデフォルトスキップ/オプトインにする。
   - OpenAIAdapter を実装し、`/v1/models` の非課金ヘルスチェックとモデル/パラメータ検証を行う。
   - GeminiAdapter を実装し、課金前提でヘルスチェックはデフォルトスキップ/オプトインにし、モデル/エンドポイント必須を検証する。
   - _Requirements: 1.2, 2.3, 2.4, 4.2, 4.4_
 
-- [ ] 4. CLI/Bridge で provider コンテキストを扱い、安全に外部 CLI を起動する
+- [x] 4. CLI/Bridge で provider コンテキストを扱い、安全に外部 CLI を起動する
   - CLI パーサーに `--provider` を追加し、選択結果を出力に明示する。未知/未設定時は actionable エラーを返す。
   - BridgeAdapter で provider ID と必要な鍵のみを env/stdin で渡し、PluginGuard 再検証後に外部 CLI を実行する。
   - 未対応プロバイダのブリッジ呼び出しは事前に拒否し、認証エラーは provider 文脈付きで返す。

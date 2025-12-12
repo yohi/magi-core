@@ -1,0 +1,190 @@
+"""
+ProviderAdapter 実装のユニットテスト
+"""
+
+import asyncio
+import unittest
+from unittest.mock import AsyncMock, MagicMock
+
+from magi.core.providers import ProviderContext
+from magi.errors import ErrorCode, MagiException
+from magi.llm.client import LLMRequest, LLMResponse
+from magi.llm.providers import (
+    AnthropicAdapter,
+    GeminiAdapter,
+    HealthStatus,
+    OpenAIAdapter,
+)
+
+
+class DummyLLMClient:
+    """sendのみを持つ簡易モック"""
+
+    def __init__(self, response: LLMResponse):
+        self.response = response
+        self.calls = []
+
+    async def send(self, request: LLMRequest) -> LLMResponse:
+        self.calls.append(request)
+        return self.response
+
+
+class TestAnthropicAdapter(unittest.TestCase):
+    """AnthropicAdapterのテスト"""
+
+    def test_health_is_skipped_by_default(self):
+        """課金回避のためヘルスチェックは既定でスキップする"""
+        ctx = ProviderContext(
+            provider_id="anthropic",
+            api_key="key",
+            model="claude-3",
+        )
+        adapter = AnthropicAdapter(ctx, llm_client=DummyLLMClient(LLMResponse("ok", {"input_tokens": 1, "output_tokens": 1}, "claude-3")))
+
+        status = asyncio.run(adapter.health())
+
+        self.assertIsInstance(status, HealthStatus)
+        self.assertTrue(status.skipped)
+        self.assertFalse(status.ok)
+        self.assertEqual(status.provider, "anthropic")
+
+    def test_send_delegates_to_llm_client(self):
+        """LLMClientへの委譲でレスポンスを返す"""
+        ctx = ProviderContext(
+            provider_id="anthropic",
+            api_key="key",
+            model="claude-3",
+        )
+        response = LLMResponse(
+            content="delegated",
+            usage={"input_tokens": 10, "output_tokens": 5},
+            model="claude-3",
+        )
+        llm_client = DummyLLMClient(response)
+        adapter = AnthropicAdapter(ctx, llm_client=llm_client)
+        request = LLMRequest(system_prompt="sys", user_prompt="hello", max_tokens=32, temperature=0.1)
+
+        result = asyncio.run(adapter.send(request))
+
+        self.assertEqual(result.content, "delegated")
+        self.assertEqual(llm_client.calls[0].user_prompt, "hello")
+        self.assertEqual(llm_client.calls[0].max_tokens, 32)
+
+
+class TestOpenAIAdapter(unittest.TestCase):
+    """OpenAIAdapterのテスト"""
+
+    def test_health_calls_models_endpoint(self):
+        """非課金の/v1/modelsでヘルスチェックする"""
+        ctx = ProviderContext(
+            provider_id="openai",
+            api_key="openai-key",
+            model="gpt-4o",
+        )
+        http_client = AsyncMock()
+        response = MagicMock()
+        response.status_code = 200
+        response.json.return_value = {"data": [{"id": "gpt-4o"}]}
+        http_client.get.return_value = response
+        adapter = OpenAIAdapter(ctx, http_client=http_client)
+
+        status = asyncio.run(adapter.health())
+
+        http_client.get.assert_awaited_once()
+        self.assertTrue(status.ok)
+        self.assertFalse(status.skipped)
+        self.assertEqual(status.provider, "openai")
+        self.assertIn("gpt-4o", status.details.get("models", []))
+
+    def test_health_raises_on_auth_error_without_retry(self):
+        """認証失敗はリトライせずMagiExceptionを返す"""
+        ctx = ProviderContext(
+            provider_id="openai",
+            api_key="invalid",
+            model="gpt-4o-mini",
+        )
+        http_client = AsyncMock()
+        response = MagicMock()
+        response.status_code = 401
+        response.text = "Unauthorized"
+        http_client.get.return_value = response
+        adapter = OpenAIAdapter(ctx, http_client=http_client)
+
+        with self.assertRaises(MagiException) as exc:
+            asyncio.run(adapter.health())
+
+        self.assertEqual(http_client.get.await_count, 1)
+        self.assertEqual(exc.exception.error.code, ErrorCode.API_AUTH_ERROR.value)
+        self.assertFalse(exc.exception.error.recoverable)
+
+    def test_send_builds_chat_completion_payload(self):
+        """Chat Completions経由でレスポンスを正規化する"""
+        ctx = ProviderContext(
+            provider_id="openai",
+            api_key="openai-key",
+            model="gpt-4o",
+        )
+        http_client = AsyncMock()
+        response = MagicMock()
+        response.status_code = 200
+        response.json.return_value = {
+            "choices": [{"message": {"content": "hello"}}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 3},
+            "model": "gpt-4o",
+        }
+        http_client.post.return_value = response
+        adapter = OpenAIAdapter(ctx, http_client=http_client)
+        request = LLMRequest(
+            system_prompt="sys",
+            user_prompt="hi",
+            max_tokens=64,
+            temperature=0.2,
+        )
+
+        result = asyncio.run(adapter.send(request))
+
+        http_client.post.assert_awaited_once()
+        self.assertEqual(result.content, "hello")
+        self.assertEqual(result.usage["input_tokens"], 5)
+        self.assertEqual(result.usage["output_tokens"], 3)
+        self.assertEqual(result.model, "gpt-4o")
+
+
+class TestGeminiAdapter(unittest.TestCase):
+    """GeminiAdapterのテスト"""
+
+    def test_missing_endpoint_is_reported(self):
+        """エンドポイントが未指定なら明示エラー"""
+        ctx = ProviderContext(
+            provider_id="gemini",
+            api_key="gem-key",
+            model="gemini-1.5",
+            endpoint=None,
+        )
+        adapter = GeminiAdapter(ctx)
+
+        with self.assertRaises(MagiException) as exc:
+            asyncio.run(adapter.send(LLMRequest(system_prompt="s", user_prompt="u")))
+
+        details = exc.exception.error.details or {}
+        self.assertIn("endpoint", details.get("missing_fields", []))
+
+    def test_health_is_skipped_by_default(self):
+        """課金回避のためヘルスチェックは既定でスキップする"""
+        ctx = ProviderContext(
+            provider_id="gemini",
+            api_key="gem-key",
+            model="gemini-1.5",
+            endpoint="https://generativelanguage.googleapis.com",
+        )
+        adapter = GeminiAdapter(ctx)
+
+        status = asyncio.run(adapter.health())
+
+        self.assertTrue(status.skipped)
+        self.assertFalse(status.ok)
+        self.assertEqual(status.provider, "gemini")
+
+
+if __name__ == "__main__":
+    unittest.main()
