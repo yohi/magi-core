@@ -7,7 +7,7 @@ CommandExecutor - 外部コマンドの実行
 import asyncio
 import time
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from magi.errors import create_plugin_error, ErrorCode, MagiException
 
@@ -49,13 +49,15 @@ class CommandExecutor:
     async def execute(
         self, 
         command: str, 
-        args: Optional[List[str]] = None
+        args: Optional[List[str]] = None,
+        env: Optional[Dict[str, str]] = None,
     ) -> CommandResult:
         """コマンドを実行し結果を返す
         
         Args:
             command: 実行するコマンド
             args: コマンドの引数リスト
+            env: 子プロセスに渡す環境変数
             
         Returns:
             CommandResult: コマンドの実行結果
@@ -74,6 +76,7 @@ class CommandExecutor:
             process = await asyncio.create_subprocess_exec(
                 command,
                 *args,
+                env=env,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )

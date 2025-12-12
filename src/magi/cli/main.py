@@ -4,23 +4,31 @@ MagiCLIメインモジュール
 MAGIシステムのエントリーポイントとコマンドハンドラーの統合
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
 import sys
 import time
 from pathlib import Path
-from typing import Any, ClassVar, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional
 
 from magi import __version__
 from magi.cli.parser import ArgumentParser, ParsedCommand, VALID_COMMANDS
 from magi.config.manager import Config
+from magi.config.provider import DEFAULT_PROVIDER_ID, SUPPORTED_PROVIDERS
 from magi.core.consensus import ConsensusEngine
-from magi.errors import MagiException, ErrorCode
+from magi.core.providers import ProviderAdapterFactory, ProviderContext, ProviderSelector
+from magi.errors import MagiError, MagiException, ErrorCode
+from magi.llm.client import LLMClient
 from magi.output.formatter import OutputFormat, OutputFormatter
+from magi.plugins.bridge import BridgeAdapter
 from magi.plugins.executor import CommandExecutor, CommandResult
 from magi.plugins.guard import PluginGuard
-from magi.plugins.loader import PluginLoader, Plugin
+
+if TYPE_CHECKING:
+    from magi.plugins.loader import Plugin
 
 
 class MagiCLI:
@@ -38,7 +46,9 @@ class MagiCLI:
         self,
         config: Config,
         output_format: OutputFormat = OutputFormat.MARKDOWN,
-        plugin: Optional[str] = None
+        plugin: Optional[str] = None,
+        provider_selector: Optional[ProviderSelector] = None,
+        provider_factory: Optional[ProviderAdapterFactory] = None,
     ):
         """初期化
 
@@ -51,6 +61,8 @@ class MagiCLI:
         self.parser = ArgumentParser()
         self.output_format = output_format
         self.plugin = plugin
+        self.provider_selector = provider_selector
+        self.provider_factory = provider_factory or ProviderAdapterFactory()
 
     def run(self, command: str, args: List[str], options: Dict[str, Any] | None = None) -> int:
         """コマンドを実行し、Exit Codeを返す
@@ -87,7 +99,7 @@ class MagiCLI:
 
         # askコマンド
         if command == "ask":
-            return self._run_ask_command(args)
+            return self._run_ask_command(args, options)
 
         # specコマンド
         if command == "spec":
@@ -97,7 +109,11 @@ class MagiCLI:
         print(f"Command '{command}' is not yet implemented.", file=sys.stderr)
         return 1
 
-    def _run_ask_command(self, args: List[str]) -> int:
+    def _run_ask_command(
+        self,
+        args: List[str],
+        options: Optional[Dict[str, Any]] = None,
+    ) -> int:
         """askコマンドの実行
 
         Args:
@@ -106,6 +122,7 @@ class MagiCLI:
         Returns:
             int: 終了コード
         """
+        options = options or {}
         if not args:
             print("Usage: magi ask <question>", file=sys.stderr)
             return 1
@@ -114,6 +131,21 @@ class MagiCLI:
         if not question:
             print("Usage: magi ask <question>", file=sys.stderr)
             return 1
+
+        try:
+            provider = self._select_provider(options)
+            llm_client = self._build_llm_client(provider)
+        except MagiException as exc:
+            print(f"プロバイダ選択エラー: {exc.error.message}", file=sys.stderr)
+            return 1
+        except Exception as exc:  # pragma: no cover - 想定外の例外
+            print(f"プロバイダ選択エラー: {exc}", file=sys.stderr)
+            return 1
+
+        # コンフィグのモデル/APIキーを選択結果に合わせて更新（監査ログ用）
+        self.config.api_key = provider.api_key
+        self.config.model = provider.model
+        self._print_provider_selection(provider)
 
         audit_logger = logging.getLogger("magi.audit.ask")
         logging_configured = self._has_logging_destination(audit_logger)
@@ -124,12 +156,17 @@ class MagiCLI:
             extra={
                 "stage": "ask",
                 "model": self.config.model,
+                "provider": provider.provider_id,
+                "used_default_provider": provider.used_default,
                 "question_preview": question[:80],
                 "output_format": self.output_format.value,
             },
         )
 
-        engine = ConsensusEngine(self.config)
+        engine = ConsensusEngine(
+            self.config,
+            llm_client_factory=lambda: llm_client,
+        )
         formatter = OutputFormatter()
 
         try:
@@ -141,6 +178,7 @@ class MagiCLI:
                 extra={
                     "stage": "ask",
                     "model": self.config.model,
+                    "provider": provider.provider_id,
                     "duration_seconds": round(duration, 3),
                     "error": str(exc),
                 },
@@ -159,6 +197,7 @@ class MagiCLI:
                 extra={
                     "stage": "ask",
                     "model": self.config.model,
+                    "provider": provider.provider_id,
                     "duration_seconds": round(duration, 3),
                 },
             )
@@ -222,6 +261,7 @@ class MagiCLI:
             int: 終了コード
         """
         options = options or {}
+        from magi.plugins.loader import PluginLoader
         review_requested, normalized_args = self._split_spec_args(args, options)
 
         if not normalized_args:
@@ -248,15 +288,28 @@ class MagiCLI:
             print(f"Error loading plugin: {e}", file=sys.stderr)
             return 1
 
+        try:
+            provider = self._select_provider(options)
+        except MagiException as exc:
+            print(f"プロバイダ選択エラー: {exc.error.message}", file=sys.stderr)
+            return 1
+        except Exception as exc:  # pragma: no cover - 想定外の例外
+            print(f"プロバイダ選択エラー: {exc}", file=sys.stderr)
+            return 1
+
+        self.config.api_key = provider.api_key
+        self.config.model = provider.model
+        self._print_provider_selection(provider)
+
         print(f"Loaded plugin: {plugin.metadata.name} v{plugin.metadata.version}")
         print(f"Description: {plugin.metadata.description}")
         print()
 
         if review_requested:
-            return self._run_spec_with_review(plugin, request)
+            return self._run_spec_with_review(plugin, request, provider)
 
         try:
-            result = self._execute_cc_sdd(plugin, request)
+            result = self._execute_cc_sdd(plugin, request, provider_context=provider)
         except MagiException as e:
             if e.error.code == ErrorCode.PLUGIN_COMMAND_FAILED:
                 print(f"Error: {e.error.message}", file=sys.stderr)
@@ -290,7 +343,12 @@ class MagiCLI:
 
         return 0
 
-    def _run_spec_with_review(self, plugin: Plugin, request: str) -> int:
+    def _run_spec_with_review(
+        self,
+        plugin: Plugin,
+        request: str,
+        provider_context: ProviderContext,
+    ) -> int:
         """`magi spec --review` フローの実行"""
         review_config = dict(self.REVIEW_RETRY_DEFAULTS)
         print(
@@ -320,6 +378,7 @@ class MagiCLI:
                     request,
                     extra_args=["--review", "--format", "json"],
                     timeout=review_config["per_attempt_timeout"],
+                    provider_context=provider_context,
                 )
             except MagiException as exc:
                 last_errors.append(exc.error.message if hasattr(exc, "error") else str(exc))
@@ -510,6 +569,7 @@ class MagiCLI:
         *,
         extra_args: Optional[List[str]] = None,
         timeout: Optional[int] = None,
+        provider_context: Optional[ProviderContext] = None,
     ) -> CommandResult:
         """cc-sddコマンドを実行
 
@@ -518,25 +578,89 @@ class MagiCLI:
             request: 仕様書作成のリクエスト
             extra_args: 追加の引数
             timeout: 実行タイムアウト（秒）
+            provider_context: 選択済みプロバイダ
 
         Returns:
             CommandResult: コマンド実行結果
         """
+        if provider_context is None:
+            raise MagiException(
+                MagiError(
+                    code=ErrorCode.CONFIG_MISSING_API_KEY.value,
+                    message="プロバイダが選択されていません。",
+                    recoverable=False,
+                )
+            )
+
         executor = CommandExecutor(timeout=timeout or plugin.bridge.timeout)
         guard = PluginGuard()
+        bridge = BridgeAdapter(
+            guard=guard,
+            executor=executor,
+        )
         args = [request]
         if extra_args:
             args.extend(extra_args)
-        safe_args = guard.validate(plugin.bridge.command, args)
 
         # 非同期実行
-        return asyncio.run(executor.execute(plugin.bridge.command, safe_args))
+        return asyncio.run(
+            bridge.invoke(
+                plugin.bridge.command,
+                args,
+                provider_context,
+            )
+        )
 
     def _has_logging_destination(self, logger: logging.Logger) -> bool:
         """ログ出力先が設定されているかを判定する"""
         if logger.handlers:
             return True
         return logger.hasHandlers()
+
+    def _select_provider(self, options: Dict[str, Any]) -> ProviderContext:
+        """ProviderSelectorがあればそれを使い、なければConfigから組み立てる"""
+        provider_flag = options.get("provider")
+        if self.provider_selector:
+            return self.provider_selector.select(provider_flag)
+
+        if provider_flag and provider_flag.lower() not in SUPPORTED_PROVIDERS:
+            raise MagiException(
+                MagiError(
+                    code=ErrorCode.CONFIG_INVALID_VALUE.value,
+                    message=f"Unknown provider '{provider_flag}'.",
+                    details={"provider": provider_flag},
+                    recoverable=False,
+                )
+            )
+
+        target = (provider_flag or DEFAULT_PROVIDER_ID).lower()
+        return ProviderContext(
+            provider_id=target,
+            api_key=self.config.api_key,
+            model=self.config.model,
+            endpoint=None,
+            options={},
+            used_default=provider_flag is None,
+        )
+
+    def _build_llm_client(self, provider: ProviderContext):
+        """選択されたプロバイダに応じたLLMクライアント/アダプタを構築する"""
+        if self.provider_factory:
+            return self.provider_factory.build(provider)
+        return LLMClient(
+            api_key=provider.api_key,
+            model=provider.model,
+            retry_count=self.config.retry_count,
+            timeout=self.config.timeout,
+        )
+
+    def _print_provider_selection(self, provider: ProviderContext) -> None:
+        """選択されたプロバイダをstderrに明示する"""
+        origin = "default" if provider.used_default else "flag"
+        print(
+            f"[provider] using {provider.provider_id} ({origin}) model={provider.model}",
+            file=sys.stderr,
+        )
 
     def _extract_fail_safe_summary(self, engine: ConsensusEngine) -> Optional[Dict[str, Any]]:
         """合議処理で発生したフェイルセーフの概要を抽出する"""

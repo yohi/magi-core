@@ -3,7 +3,7 @@
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, Optional, Set
+from typing import Any, Dict, Iterable, Optional, Set, Type
 
 from magi.config.provider import (
     DEFAULT_PROVIDER_ID,
@@ -13,6 +13,7 @@ from magi.config.provider import (
     mask_secret,
 )
 from magi.errors import ErrorCode, MagiError, MagiException
+from magi.llm.providers import AnthropicAdapter, GeminiAdapter, OpenAIAdapter, ProviderAdapter
 
 
 @dataclass
@@ -121,7 +122,10 @@ class ProviderSelector:
         default_provider: Optional[str] = None,
     ) -> None:
         self.registry = registry
-        self.default_provider = (default_provider or registry.default_provider).lower()
+        resolved_default = default_provider or getattr(registry, "default_provider", None)
+        if not resolved_default:
+            resolved_default = DEFAULT_PROVIDER_ID
+        self.default_provider = resolved_default.lower()
 
     def select(self, provider_id: Optional[str] = None) -> ProviderContext:
         """プロバイダを選択し、コンテキストを返す"""
@@ -137,3 +141,32 @@ class ProviderSelector:
             options=config.options,
             used_default=used_default,
         )
+
+
+class ProviderAdapterFactory:
+    """ProviderContextに基づいてアダプタを構築するファクトリ"""
+
+    def __init__(
+        self,
+        adapter_mapping: Optional[Dict[str, Type[ProviderAdapter]]] = None,
+    ) -> None:
+        self._adapter_mapping: Dict[str, Type[ProviderAdapter]] = adapter_mapping or {
+            "anthropic": AnthropicAdapter,
+            "openai": OpenAIAdapter,
+            "gemini": GeminiAdapter,
+        }
+
+    def build(self, context: ProviderContext) -> ProviderAdapter:
+        """Contextに対応するアダプタを生成"""
+        key = context.provider_id.lower()
+        adapter_cls = self._adapter_mapping.get(key)
+        if adapter_cls is None:
+            raise MagiException(
+                MagiError(
+                    code=ErrorCode.CONFIG_INVALID_VALUE.value,
+                    message=f"Provider '{context.provider_id}' is not supported.",
+                    details={"provider": context.provider_id},
+                    recoverable=False,
+                )
+            )
+        return adapter_cls(context)

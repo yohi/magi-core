@@ -93,6 +93,12 @@ class TestArgumentParser(unittest.TestCase):
         self.assertEqual(result.plugin, "magi-cc-sdd-plugin")
         self.assertEqual(result.command, "spec")
 
+    def test_parse_provider_option(self):
+        """プロバイダオプションのパース"""
+        result = self.parser.parse(["--provider", "openai", "ask"])
+        self.assertEqual(result.command, "ask")
+        self.assertEqual(result.options.get("provider"), "openai")
+
     def test_parse_spec_review_flag(self):
         """specコマンドの--reviewオプションのパース"""
         result = self.parser.parse(["spec", "--review", "レビューして"])
@@ -407,6 +413,82 @@ class TestMagiCLI(unittest.TestCase):
                         cli._run_ask_command(["question"])
 
         self.assertIn("ログ出力先が設定されていません", mock_stderr.getvalue())
+
+    def test_run_ask_prints_selected_provider(self):
+        """選択されたプロバイダを明示的に表示する"""
+        from magi.cli.main import MagiCLI
+        from magi.config.manager import Config
+        from magi.core.providers import ProviderContext
+
+        result = ConsensusResult(
+            thinking_results={},
+            debate_results=[],
+            voting_results={},
+            final_decision=Decision.APPROVED,
+            exit_code=0,
+            all_conditions=[],
+        )
+
+        class DummySelector:
+            def __init__(self, context: ProviderContext):
+                self.context = context
+                self.calls: List[str | None] = []
+
+            def select(self, provider_id: str | None = None) -> ProviderContext:
+                self.calls.append(provider_id)
+                return self.context
+
+        class DummyFactory:
+            def __init__(self):
+                self.calls: List[ProviderContext] = []
+
+            def build(self, context: ProviderContext):
+                self.calls.append(context)
+                return object()
+
+        class DummyEngine:
+            def __init__(self, *_args, **_kwargs):
+                # 未使用パラメータを参照してARG002を回避
+                _ = _args
+                _ = _kwargs
+                self.events: List[Dict[str, Any]] = []
+                self.errors: List[Dict[str, Any]] = []
+
+            async def execute(self, prompt: str, plugin=None):
+                # 未使用パラメータを参照してARG002を回避
+                _ = plugin
+                return result
+
+        context = ProviderContext(
+            provider_id="openai",
+            api_key="k",
+            model="gpt-4o",
+            used_default=False,
+        )
+        selector = DummySelector(context)
+        factory = DummyFactory()
+
+        config = Config(api_key="test-key")
+        cli = MagiCLI(
+            config,
+            output_format=OutputFormat.JSON,
+            provider_selector=selector,
+            provider_factory=factory,
+        )
+
+        with patch("magi.cli.main.ConsensusEngine", return_value=DummyEngine()):
+            with patch.object(cli, "_has_logging_destination", return_value=True):
+                with patch("sys.stderr", new_callable=StringIO) as mock_stderr:
+                    with patch("sys.stdout", new_callable=StringIO):
+                        exit_code = cli._run_ask_command(
+                            ["hello"],
+                            options={"provider": "openai"},
+                        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(selector.calls, ["openai"])
+        self.assertEqual(factory.calls[0].provider_id, "openai")
+        self.assertIn("openai", mock_stderr.getvalue().lower())
 
     def test_run_spec_review_outputs_status_and_progress(self):
         """spec --reviewがレビュー結果を整形表示し部分失敗を許容する"""

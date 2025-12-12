@@ -7,6 +7,9 @@ from magi import __version__
 from magi.cli.parser import ArgumentParser
 from magi.cli.main import MagiCLI
 from magi.config.manager import Config, ConfigManager
+from magi.config.provider import ProviderConfigLoader
+from magi.core.providers import ProviderAdapterFactory, ProviderRegistry, ProviderSelector
+from magi.errors import MagiException
 
 
 def main(args: List[str] | None = None) -> int:
@@ -43,6 +46,21 @@ def main(args: List[str] | None = None) -> int:
             print(error, file=sys.stderr)
         return 1
 
+    # プロバイダ設定の読み込み
+    provider_selector = None
+    provider_factory = ProviderAdapterFactory()
+    try:
+        provider_configs = ProviderConfigLoader().load()
+        registry = ProviderRegistry(provider_configs)
+        provider_selector = ProviderSelector(
+            registry,
+            default_provider=provider_configs.default_provider,
+        )
+    except MagiException as exc:
+        if parsed.command not in ("help", "version"):
+            print(f"Provider configuration error: {exc.error.message}", file=sys.stderr)
+            return 1
+
     # 設定読み込み
     try:
         config_manager = ConfigManager()
@@ -51,12 +69,25 @@ def main(args: List[str] | None = None) -> int:
         # API keyがなくてもヘルプ系コマンドは動作させる
         if parsed.command in ("help", "version"):
             config = Config(api_key="")
+        elif provider_selector is not None:
+            try:
+                provider_ctx = provider_selector.select(parsed.options.get("provider"))
+            except MagiException as exc:
+                print(f"Provider selection error: {exc.error.message}", file=sys.stderr)
+                return 1
+            config = Config(api_key=provider_ctx.api_key, model=provider_ctx.model)
         else:
             print(f"Configuration error: {e}", file=sys.stderr)
             return 1
 
     # CLI実行
-    cli = MagiCLI(config, output_format=parsed.output_format, plugin=parsed.plugin)
+    cli = MagiCLI(
+        config,
+        output_format=parsed.output_format,
+        plugin=parsed.plugin,
+        provider_selector=provider_selector,
+        provider_factory=provider_factory,
+    )
     return cli.run(parsed.command, parsed.args, options=parsed.options)
 
 
@@ -91,4 +122,3 @@ Examples:
 
 if __name__ == "__main__":
     sys.exit(main())
-
