@@ -86,7 +86,9 @@ providers:
             error = ctx.exception.error
             self.assertIn("CONFIG", error.code)
             self.assertIn("openai", error.message)
-            self.assertIn("api_key", error.details.get("missing_fields", []))
+            missing_fields = error.details.get("missing_fields", {})
+            self.assertIn("openai", missing_fields)
+            self.assertIn("api_key", missing_fields.get("openai", []))
         finally:
             config_path.unlink()
 
