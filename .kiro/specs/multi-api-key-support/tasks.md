@@ -1,12 +1,12 @@
 # Implementation Plan
 
-- [ ] 1. Config でプロバイダ別設定/鍵をロード・検証する
+- [x] 1. Config でプロバイダ別設定/鍵をロード・検証する
   - env/yaml から provider ごとの api_key/model/endpoint/options を読み込み、デフォルト値と必須フィールドを正規化する。
   - 鍵をログ/イベントに出さないマスキング方針を適用し、部分的欠落時は明示エラーを返す。
   - リロード（reload）でプロバイダ構成を再読込できるようにし、デフォルト解決順（flag > config > env > built-in）に合わせる。
   - _Requirements: 1.1, 1.3, 1.5, 2.4, 2.5, 4.5_
 
-- [ ] 2. ProviderRegistry/Selector を実装し、プロバイダ選択と検証を行う
+- [x] 2. ProviderRegistry/Selector を実装し、プロバイダ選択と検証を行う
   - サポートする ProviderId を登録し、未登録や必須パラメータ不足時に fail-fast するレジストリを用意する。
   - ProviderSelector で CLI/config から選択された provider を検証し、デフォルト選択を出力に明示する。
   - Guardrails/SecurityFilter 実行前に provider 存在と鍵有無をチェックし、コンテキストを ConsensusEngine/Bridge に伝搬する。
