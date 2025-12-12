@@ -63,6 +63,9 @@ class AnthropicAdapter:
         self.context = context
         self.provider_id = context.provider_id
         self.model = context.model
+        # リソースリークを防ぐため、所有権を追跡
+        # llm_client が提供されない場合のみ、内部で LLMClient を作成
+        self._owns_client = llm_client is None
         self._llm_client = llm_client or LLMClient(
             api_key=context.api_key,
             model=context.model,
@@ -80,6 +83,17 @@ class AnthropicAdapter:
             skipped=True,
             reason="healthcheck is opt-in for anthropic",
         )
+
+    async def close(self) -> None:
+        """生成した LLMClient をクリーンアップ"""
+        if self._owns_client and self._llm_client is not None:
+            await self._llm_client.close()
+
+    async def __aenter__(self) -> "AnthropicAdapter":
+        return self
+
+    async def __aexit__(self, *_exc: Any) -> None:
+        await self.close()
 
 
 class OpenAIAdapter:
@@ -104,6 +118,12 @@ class OpenAIAdapter:
 
     async def send(self, request: LLMRequest) -> LLMResponse:
         """Chat Completions エンドポイントへ送信"""
+        # 入力検証: system_prompt と user_prompt が有効な文字列であることを確認
+        if not request.system_prompt or not isinstance(request.system_prompt, str) or not request.system_prompt.strip():
+            raise ValueError("system_prompt must be a non-empty string")
+        if not request.user_prompt or not isinstance(request.user_prompt, str) or not request.user_prompt.strip():
+            raise ValueError("user_prompt must be a non-empty string")
+
         payload = {
             "model": self.model,
             "messages": [
