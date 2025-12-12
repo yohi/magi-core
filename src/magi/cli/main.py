@@ -166,6 +166,7 @@ class MagiCLI:
         engine = ConsensusEngine(
             self.config,
             llm_client_factory=lambda: llm_client,
+            event_context={"provider": provider.provider_id},
         )
         formatter = OutputFormatter()
 

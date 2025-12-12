@@ -25,12 +25,12 @@
   - 未対応プロバイダのブリッジ呼び出しは事前に拒否し、認証エラーは provider 文脈付きで返す。
   - _Requirements: 2.1, 2.5, 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 5. 監査イベントとロギングを拡張し、鍵を守りつつプロバイダ情報を記録する
+- [x] 5. 監査イベントとロギングを拡張し、鍵を守りつつプロバイダ情報を記録する
   - consensus イベントに provider/missing_fields/auth_error を任意フィールドとして追加し、後方互換を維持する。
   - ログ/イベントで鍵をマスクし、Guardrails/SecurityFilter イベントと統合しやすい形式にそろえる。
   - _Requirements: 1.4, 4.1, 4.5_
 
-- [ ] 6. テスト: Registry/Selector/Adapters/CLI/Bridge の動作を検証する
+- [x] 6. テスト: Registry/Selector/Adapters/CLI/Bridge の動作を検証する
   - Unit: ConfigLoader/Registry/Selector のデフォルト解決、未登録/欠落エラー、Adapter のエラー正規化。
   - Integration: ConsensusEngine 経由で provider ルーティングと fail-fast を確認。BridgeAdapter が未対応 provider を拒否し、PluginGuard を通過することを検証。
   - E2E (CLI): `magi ask --provider openai` で選択表示と正常系、未設定/未知 provider のエラーメッセージを確認。
