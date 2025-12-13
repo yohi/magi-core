@@ -712,6 +712,16 @@ class ConsensusEngineFactory:
 from typing import Protocol, Optional, Literal
 import asyncio
 
+class StreamingTimeoutError(Exception):
+    """
+    バックプレッシャモードでキュー空き待ちがタイムアウトした場合に発生する例外。
+    
+    Semantics:
+        - 指定されたタイムアウト時間内にキューの空きスロットを確保できなかったことを示す。
+        - 呼び出し元はこれを捕捉し、フォールバック（ログ記録、エラー送出など）を行う必要がある。
+    """
+    pass
+
 class StreamingEmitterService(Protocol):
     """ストリーミング出力インターフェース"""
     
@@ -732,10 +742,25 @@ class StreamingEmitterService(Protocol):
         Raises:
             StreamingTimeoutError: バックプレッシャモードでタイムアウト発生時
         
-        Note:
-            - バックプレッシャモード時、キューが一杯の場合は待機する（非同期）
-            - ドロップモード時、キューが一杯の場合は即座にドロップしてログ記録
-            - priority="critical" のイベントは常にバックプレッシャを適用
+        Implementation Notes:
+            1. Priority Enforcement:
+               - 内部的に有界なクリティカルキュー、または優先度付きキューを使用し、クリティカルイベントを常に優先する。
+               - Atomic enqueue操作により、クリティカルイベント挿入時の整合性を保証する。
+            
+            2. Overflow Behavior:
+               - Mode 'backpressure':
+                 - キュー満杯時、`streaming_emit_timeout` 秒間ブロック（await）する。
+                 - タイムアウト時、非クリティカルイベントであれば `StreamingTimeoutError` を送出する。
+                 - 非クリティカルイベントを追い出し（eviction）、クリティカルイベント用のスペースを作るフォールバックも検討する。
+               - Mode 'drop':
+                 - キュー満杯時、最も優先度の低い、または最も古い非クリティカルイベントを即座にドロップし、ログに記録する。
+                 - クリティカルイベントは決してドロップせず、必要なら容量を一時的に超過させるか、非クリティカルを削除して挿入する。
+            
+            3. Memory Safety:
+               - `streaming_queue_size` による厳格なバッファ制限（Bounded buffers）。
+               - クリティカルイベント用の一時的なソフトリミット（Soft limits）。
+               - バックグラウンドでの古いイベントのクリーンアップポリシー。
+               - 閾値到達時のメトリクス記録とアラート発報。
         """
         ...
     
