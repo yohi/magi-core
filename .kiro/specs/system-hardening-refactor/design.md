@@ -528,7 +528,8 @@ class PluginPermissionGuardService(Protocol):
 - Inbound: ConsensusEngine, LLMClient — 同時実行制御 (P0)
 - Outbound: MagiSettings — 上限値参照 (P1)
 
-**ライフサイクル管理**
+##### ライフサイクル管理
+
 - `MagiCLI` またはアプリケーションルートで初期化され、全ての `ConsensusEngine` インスタンスに注入される
 - `ConsensusEngineFactory` のデフォルト引数は **テスト専用** であり、本番環境では明示的な注入が必須
 
