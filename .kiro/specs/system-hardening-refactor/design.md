@@ -630,9 +630,23 @@ class ContextManagerProtocol(Protocol):
     def get_context(self) -> Context: ...
 
 class TokenBudgetManagerProtocol(Protocol):
-    """トークン予算管理インターフェース（モック用）"""
-    def check_budget(self, estimated_tokens: int) -> bool: ...
-    def consume(self, actual_tokens: int) -> None: ...
+    """
+    Intent: LLM API呼び出しのトークン使用量を追跡し、予算を強制する。
+    Note: Noneは予算管理なし/無制限を意味する。
+    """
+    def check_budget(self, estimated_tokens: int) -> bool:
+        """
+        推定トークン数が予算内であるかをチェックする。
+        Trueを返した場合、続行可能（予算内）を意味する。
+        Falseを返した場合、続行不可（予算超過）を意味する。
+        """
+        ...
+    def consume(self, actual_tokens: int) -> None:
+        """
+        実際に消費されたトークン数を記録する。
+        実装は過剰消費時に例外を発生させるべきではなく、黙って記録する。
+        """
+        ...
 
 class ConsensusEngineFactory:
     """DI 対応 ConsensusEngine ファクトリ"""
