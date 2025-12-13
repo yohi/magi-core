@@ -189,6 +189,7 @@ sequenceDiagram
 | 2.3 | レート制限時の再試行抑制 | LLMClient | - | - |
 | 2.4 | クオーラム未達まで継続 | ConsensusEngine | - | - |
 | 2.5 | 同時実行数監視ログ | ConcurrencyController | - | - |
+| 2.6 | トークン予算の管理・制御 | TokenBudgetManager | TokenBudgetManagerProtocol | - |
 | 3.1 | バッファ上限とポリシー設定 | StreamingEmitter | StreamingConfig | - |
 | 3.2 | バックプレッシャ/ドロップ処理 | StreamingEmitter | - | - |
 | 3.3 | 欠落ログ | StreamingEmitter | - | - |
@@ -229,6 +230,7 @@ sequenceDiagram
 | ConcurrencyController | Core | LLM 同時実行数制御 | 2.1-2.5 | - | Service |
 | ConsensusEngine | Core | 合議フロー（DI 拡張） | 4.1-4.4 | ConcurrencyController (P0), LLMClient (P0) | Service |
 | StreamingEmitter | Core | バックプレッシャ対応ストリーミング | 3.1-3.5 | MagiSettings (P1) | Service, State |
+| TokenBudgetManager | Core | トークン消費の追跡と予算制御 | 2.6 | ConsensusEngineFactory (P0) | Service |
 | GuardrailsAdapter | Security | マルチプロバイダ Guardrails | 7.1-7.4 | MagiSettings (P1) | Service |
 | LLMClient | LLM | API 通信（レート制限対応） | 2.3 | ConcurrencyController (P0) | Service |
 
@@ -731,6 +733,8 @@ class StreamingEmitterService(Protocol):
 - Invariants: `priority="critical"` のイベントは決してドロップされない
 
 ##### State Management
+
+`StreamingState`は、`MagiSettings`で定義されるストリーミング関連の設定（例: `streaming_enabled`, `streaming_queue_size`, `streaming_overflow_policy`）に基づいて初期化され、`StreamingEmitter`の現在の動作状態を反映します。
 
 ```python
 from dataclasses import dataclass
