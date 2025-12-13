@@ -515,13 +515,18 @@ class PluginPermissionGuardService(Protocol):
 | Requirements | 2.1, 2.2, 2.5 |
 
 **責務と制約**
-- グローバルまたはエンジン単位のセマフォ管理
+- **プロセス全体で単一インスタンス（シングルトン）として管理** (要件 2.1 のプロセス全体の上限を保証)
+- グローバルセマフォによる同時実行数制御
 - 待機数と待機時間の記録
 - タイムアウト時の拒否
 
 **依存関係**
 - Inbound: ConsensusEngine, LLMClient — 同時実行制御 (P0)
 - Outbound: MagiSettings — 上限値参照 (P1)
+
+**ライフサイクル管理**
+- `MagiCLI` またはアプリケーションルートで初期化され、全ての `ConsensusEngine` インスタンスに注入される
+- `ConsensusEngineFactory` のデフォルト引数は **テスト専用** であり、本番環境では明示的な注入が必須
 
 **コントラクト**: Service [x]
 
@@ -620,6 +625,11 @@ class ContextManagerProtocol(Protocol):
     """コンテキストマネージャインターフェース（モック用）"""
     def get_context(self) -> Context: ...
 
+class TokenBudgetManagerProtocol(Protocol):
+    """トークン予算管理インターフェース（モック用）"""
+    def check_budget(self, estimated_tokens: int) -> bool: ...
+    def consume(self, actual_tokens: int) -> None: ...
+
 class ConsensusEngineFactory:
     """DI 対応 ConsensusEngine ファクトリ"""
     
@@ -633,6 +643,7 @@ class ConsensusEngineFactory:
         concurrency_controller: Optional[ConcurrencyController] = None,
         streaming_emitter: Optional[StreamingEmitter] = None,
         guardrails_adapter: Optional[GuardrailsAdapter] = None,
+        token_budget_manager: Optional[TokenBudgetManagerProtocol] = None,
     ) -> ConsensusEngine:
         """
         依存を注入して ConsensusEngine を生成する。
@@ -642,12 +653,17 @@ class ConsensusEngineFactory:
             persona_manager: ペルソナマネージャ（None の場合はデフォルト）
             context_manager: コンテキストマネージャ（None の場合はデフォルト）
             llm_client_factory: LLMClient 生成関数（None の場合はデフォルト）
-            concurrency_controller: 同時実行制御（None の場合はデフォルト）
+            concurrency_controller: 同時実行制御（None の場合はデフォルト、テスト用）
             streaming_emitter: ストリーミングエミッタ（None の場合はデフォルト）
             guardrails_adapter: Guardrails アダプタ（None の場合はデフォルト）
+            token_budget_manager: トークン予算管理（None の場合はデフォルト）
         
         Returns:
             設定済み ConsensusEngine
+        
+        Note:
+            本番環境では concurrency_controller を明示的に注入すること。
+            デフォルト値（None）はテスト専用であり、プロセス全体の同時実行制御を保証しない。
         """
         ...
 ```
@@ -671,6 +687,48 @@ class ConsensusEngineFactory:
 - Outbound: MagiSettings — 設定参照 (P1)
 
 **コントラクト**: Service [x] / State [x]
+
+##### Service Interface
+
+```python
+from typing import Protocol, Optional, Literal
+import asyncio
+
+class StreamingEmitterService(Protocol):
+    """ストリーミング出力インターフェース"""
+    
+    async def emit(
+        self,
+        event_type: str,
+        content: str,
+        priority: Literal["normal", "critical"] = "normal",
+    ) -> None:
+        """
+        イベントを非同期で出力する。
+        
+        Args:
+            event_type: イベント種別（例: "thinking", "debate", "result"）
+            content: 出力内容
+            priority: 優先度。"critical" は最終結果など欠落を許容しないイベント。
+        
+        Raises:
+            StreamingTimeoutError: バックプレッシャモードでタイムアウト発生時
+        
+        Note:
+            - バックプレッシャモード時、キューが一杯の場合は待機する（非同期）
+            - ドロップモード時、キューが一杯の場合は即座にドロップしてログ記録
+            - priority="critical" のイベントは常にバックプレッシャを適用
+        """
+        ...
+    
+    def get_state(self) -> "StreamingState":
+        """現在のストリーミング状態を取得する"""
+        ...
+```
+
+- Preconditions: `enabled=True` の場合のみ出力を実行
+- Postconditions: イベントがキューに追加されるか、ドロップがログ記録される
+- Invariants: `priority="critical"` のイベントは決してドロップされない
 
 ##### State Management
 
