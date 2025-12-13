@@ -4,10 +4,12 @@
 - 言語/ランタイム: Python 3.11+
 - パッケージ管理: uv（ビルドは hatchling）
 - 主要依存: anthropic (LLM API), jsonschema (スキーマ検証), pyyaml (設定), cryptography (署名検証), hypothesis/pytest (テスト)
+- オプション依存: httpx (OpenAI/Gemini プロバイダ利用時に必要)
 - 配布形態: `pyproject.toml` の scripts で `magi` を提供
 
 ## アーキテクチャ概要
 - CLI レイヤー（`magi`）→ ConsensusEngine（Thinking/Debate/Voting）→ Agent/LLM/Context 管理 → Output/Plugins
+- マルチプロバイダ対応 (ProviderConfigLoader): Anthropic, OpenAI, Gemini を抽象化し、設定ファイル/環境変数からロード。
 - Core と Plugin を分離。合議フローは TokenBudgetManager → TemplateLoader → SchemaValidator → QuorumManager → StreamingEmitter でハードニング済み。
 - GuardrailsAdapter を SecurityFilter 前段に挿入し、fail-open/fail-closed を設定で切替。遮断/失敗はイベントにコード付きで記録。
 - ストリーミングは QueueStreamingEmitter でバッファリングし、ドロップ/TTFB/elapsed を計測しつつ fail-safe にフォールバック。
@@ -50,8 +52,17 @@ uv run coverage html
 - SecurityFilter/PluginGuard/PluginSignatureValidator: マーカー付与・制御文字エスケープ・禁止パターン検知・メタ文字拒否、プラグイン YAML を正規化した上で署名/ハッシュ検証。
 
 ## 環境変数・設定
-- `MAGI_API_KEY` (必須): Anthropic API キー
-- `MAGI_MODEL`: 使用モデル（既定 `claude-sonnet-4-20250514`）
+
+### マルチプロバイダ設定
+プロバイダ ID (anthropic, openai, gemini) ごとに設定可能。
+- `MAGI_<PROVIDER>_API_KEY`: API キー (例: `MAGI_OPENAI_API_KEY`)
+- `MAGI_<PROVIDER>_MODEL`: 使用モデル
+- `MAGI_<PROVIDER>_ENDPOINT`: API エンドポイント (OpenAI 互換 API などで使用)
+- `MAGI_<PROVIDER>_OPTIONS`: プロバイダ固有オプション (JSON 文字列)
+- `MAGI_DEFAULT_PROVIDER`: デフォルトで使用するプロバイダ ID (既定: `anthropic`)
+- 従来互換: `MAGI_API_KEY`, `MAGI_MODEL` は `MAGI_DEFAULT_PROVIDER` (Anthropic) の設定として読み込まれます。
+
+### 一般設定
 - `MAGI_DEBATE_ROUNDS`: Debate ラウンド数（既定 1）
 - `MAGI_VOTING_THRESHOLD`: `majority` / `unanimous`
 - `MAGI_OUTPUT_FORMAT`: `json` / `markdown`
@@ -73,9 +84,9 @@ uv run coverage html
 - `CONSENSUS_GUARDRAILS_TIMEOUT`: Guardrails タイムアウト秒数
 - `CONSENSUS_GUARDRAILS_TIMEOUT_BEHAVIOR` / `CONSENSUS_GUARDRAILS_ERROR_POLICY`: fail-open / fail-closed ポリシー
 - `MAGI_PLUGIN_PUBKEY_PATH`: プラグイン署名検証に用いる公開鍵パス（config > env > plugins/public_key.pem の順で解決）
-- `magi.yaml`: 上記設定をファイルで上書き可能
+- `magi.yaml`: 上記設定をファイルで上書き可能。`providers` セクションで複数プロバイダを記述可能。
 
 ## ポート/サービス
-- CLI ツールのため固定ポートなし。外部通信は Anthropic API への HTTPS のみ。
+- CLI ツールのため固定ポートなし。外部通信は設定された LLM プロバイダへの HTTPS のみ。
 
-updated_at: 2025-12-11
+updated_at: 2025-12-13

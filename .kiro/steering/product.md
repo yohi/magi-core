@@ -5,6 +5,7 @@ MAGI System は 3 賢者（MELCHIOR/BALTHASAR/CASPER）の合議プロセスで�
 ## コア機能
 - 合議エンジン（Thinking/Debate/Voting フェーズ）による判定
 - 3 ペルソナの思考テンプレートによる多視点分析
+- マルチプロバイダ対応 (Anthropic, OpenAI, Gemini)
 - CLI からの質問・仕様生成・レビュー実行（`magi ask` / `magi spec` などのサブコマンド）
 - プラグイン拡張（例: `magi-cc-sdd-plugin` で仕様書駆動開発を支援）
 - 合議ハードニング: トークン予算管理、構造化出力、クオーラム・ストリーミング制御、サニタイズ/ガード
@@ -16,16 +17,18 @@ MAGI System は 3 賢者（MELCHIOR/BALTHASAR/CASPER）の合議プロセスで�
 - コードレビューや設計レビューを多視点で迅速に実施したい開発チーム
 - リスク/倫理/実利のバランスを取りたい意思決定プロセス
 - 仕様書作成やチェックを自動化したい AI 開発フロー
+- 複数の LLM プロバイダを使い分けたい開発環境
 
 ## 価値/差別化
 - Core/Plugin 分離により保守性と拡張性を確保
 - 3 賢者モデルで論理・倫理・実利の観点を明示
+- 特定プロバイダに依存しない柔軟な構成（マルチプロバイダ対応）
 - CLI ベースで既存ワークフローへ容易に統合
 - 合議パイプラインを外部テンプレート/スキーマで管理し、フェイルセーフ時も監査可能なログを提供
 
 ## 参考情報
 - 必須環境: Python 3.11+, uv
-- 主要依存: anthropic, jsonschema, pyyaml, cryptography, hypothesis, pytest
+- 主要依存: anthropic, jsonschema, pyyaml, cryptography, hypothesis, pytest, httpx (OpenAI/Gemini 利用時)
 - エントリーポイント: `magi`（`pyproject.toml` の scripts 定義）
 
-updated_at: 2025-12-11
+updated_at: 2025-12-13
