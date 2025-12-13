@@ -5,24 +5,24 @@
 既存のコードベース（`magi-core`）を調査し、要件に対する現状の実装状況と課題を特定しました。
 
 ### ドメイン資産と構造
-*   **PluginLoader (`src/magi/plugins/loader.py`)**:
-    *   `path.read_text` による同期的なファイル読み込みが行われており、非同期イベントループをブロックするリスクがあります。
-    *   バリデーションは `isinstance` を多用した手動チェックで実装されており、保守性が低く脆弱です。
-    *   署名検証 (`_verify_security`) も同期的に実行されており、計算コストの高い処理がメインスレッドを占有します。
-    *   公開鍵パスの解決にカレントディレクトリ (`CWD/plugins/public_key.pem`) を含んでおり、本番環境でのセキュリティリスクがあります。
-*   **ConsensusEngine (`src/magi/core/consensus.py`)**:
-    *   コンストラクタ内で `PersonaManager`, `ContextManager` を直接インスタンス化しており、DI（依存性注入）が不完全で単体テストが困難です。
-    *   `_run_thinking_phase` および `_run_debate_phase` にて `asyncio.gather` を使用していますが、同時実行数の制限（セマフォ）がなく、APIレート制限に抵触するリスクがあります。
-*   **ConfigManager (`src/magi/config/manager.py`)**:
-    *   `dataclass` と手動のバリデーションロジックで実装されています。Pydantic 等の宣言的なバリデーションは使用されていません。
-    *   環境変数のマッピングと型変換が手動で行われており、拡張時にミスが発生しやすい構造です。
-*   **LLMClient (`src/magi/llm/client.py`)**:
-    *   モデル名やタイムアウトのデフォルト値がコード内にハードコードされています。
-    *   グローバルな同時実行数制御（Rate Limit以外）の仕組みを持っていません。
-*   **StreamingEmitter (`src/magi/core/streaming.py`)**:
-    *   `QueueStreamingEmitter` はバッファ溢れ時に `put_nowait` で例外をキャッチしてドロップする挙動となっており、バックプレッシャー（待機）制御が不十分です。
-*   **Guardrails (`src/magi/security/guardrails.py`)**:
-    *   正規表現ベースの簡易な検知のみが実装されており、拡張のためのインターフェースはあるものの、高度な解析を行うプロバイダは未実装です。
+* **PluginLoader (`src/magi/plugins/loader.py`)**:
+  * `path.read_text` による同期的なファイル読み込みが行われており、非同期イベントループをブロックするリスクがあります。
+  * バリデーションは `isinstance` を多用した手動チェックで実装されており、保守性が低く脆弱です。
+  * 署名検証 (`_verify_security`) も同期的に実行されており、計算コストの高い処理がメインスレッドを占有します。
+  * 公開鍵パスの解決にカレントディレクトリ (`CWD/plugins/public_key.pem`) を含んでおり、本番環境でのセキュリティリスクがあります。
+* **ConsensusEngine (`src/magi/core/consensus.py`)**:
+  * コンストラクタ内で `PersonaManager`, `ContextManager` を直接インスタンス化しており、DI（依存性注入）が不完全で単体テストが困難です。
+  * `_run_thinking_phase` および `_run_debate_phase` にて `asyncio.gather` を使用していますが、同時実行数の制限（セマフォ）がなく、APIレート制限に抵触するリスクがあります。
+* **ConfigManager (`src/magi/config/manager.py`)**:
+  * `dataclass` と手動のバリデーションロジックで実装されています。Pydantic 等の宣言的なバリデーションは使用されていません。
+  * 環境変数のマッピングと型変換が手動で行われており、拡張時にミスが発生しやすい構造です。
+* **LLMClient (`src/magi/llm/client.py`)**:
+  * モデル名やタイムアウトのデフォルト値がコード内にハードコードされています。
+  * グローバルな同時実行数制御（Rate Limit以外）の仕組みを持っていません。
+* **StreamingEmitter (`src/magi/core/streaming.py`)**:
+  * `QueueStreamingEmitter` はバッファ溢れ時に `put_nowait` で例外をキャッチしてドロップする挙動となっており、バックプレッシャー（待機）制御が不十分です。
+* **Guardrails (`src/magi/security/guardrails.py`)**:
+  * 正規表現ベースの簡易な検知のみが実装されており、拡張のためのインターフェースはあるものの、高度な解析を行うプロバイダは未実装です。
 
 ### 統合ポイント
 *   **設定**: 環境変数とYAMLファイルからのロード。`magi.yaml` が中心。
@@ -54,20 +54,20 @@
 ### Option A: 既存コンポーネントの段階的リファクタリング (推奨)
 既存のクラス構造を維持しつつ、内部実装を要件に合わせて強化するアプローチです。
 
-*   **概要**:
-    *   **Config**: `Config` クラスを Pydantic の `BaseModel` に置き換え、`ConfigManager` を簡素化。
-    *   **PluginLoader**: `load` を `async def load` に変更し、内部で `aiofiles` と `run_in_executor` を使用。
-    *   **ConsensusEngine**: コンストラクタ引数を追加し、デフォルト引数で従来のインスタンス生成を行う（後方互換性維持）。
-    *   **LLMClient**: `asyncio.Semaphore` を導入して同時実行数を制御。
-*   **メリット**:
-    *   既存の統合テストや利用コードへの影響を最小限に抑えられる。
-    *   段階的な適用が可能。
-*   **デメリット**:
-    *   `dataclass` から Pydantic への移行で、型チェック等の挙動が変わり、一時的にテストが壊れる可能性がある。
-*   **トレードオフ**:
-    *   ✅ 既存パターンの活用
-    *   ✅ ファイル数の増加を抑制
-    *   ❌ リファクタリング中の回帰テスト負荷が高い
+* **概要**:
+  * **Config**: `Config` クラスを Pydantic の `BaseModel` に置き換え、`ConfigManager` を簡素化。
+  * **PluginLoader**: `load` を `async def load` に変更し、内部で `aiofiles` と `run_in_executor` を使用。
+  * **ConsensusEngine**: コンストラクタ引数を追加し、デフォルト引数で従来のインスタンス生成を行う（後方互換性維持）。
+  * **LLMClient**: `asyncio.Semaphore` を導入して同時実行数を制御。
+* **メリット**:
+  * 既存の統合テストや利用コードへの影響を最小限に抑えられる。
+  * 段階的な適用が可能。
+* **デメリット**:
+  * `dataclass` から Pydantic への移行で、型チェック等の挙動が変わり、一時的にテストが壊れる可能性がある。
+* **トレードオフ**:
+  * ✅ 既存パターンの活用
+  * ✅ ファイル数の増加を抑制
+  * ❌ リファクタリング中の回帰テスト負荷が高い
 
 ### Option B: 新規ハードニングコンポーネントの作成と置換
 新しい要件を満たすクラス（例: `HardenedPluginLoader`, `SecureConsensusEngine`）を新規作成し、入れ替えるアプローチです。
@@ -90,10 +90,10 @@
 **Option A（段階的リファクタリング）** を推奨します。現状のコードベースは比較的小規模であり、完全に分離するよりも、既存コンポーネントを成熟させる方が長期的な保守性の観点で望ましいためです。
 
 ### 複雑性とリスク
-*   **Effort**: **L (1-2 weeks)**
-    *   Pydantic への移行と非同期化は、多くのファイルに波及する変更です。
-*   **Risk**: **Medium**
-    *   並行処理の変更（非同期I/O化、セマフォ導入）は、デッドロックやレースコンディションの新たな原因となる可能性があります。
+* **Effort**: **L (1-2 weeks)**
+  * Pydantic への移行と非同期化は、多くのファイルに波及する変更です。
+* **Risk**: **Medium**
+  * 並行処理の変更（非同期I/O化、セマフォ導入）は、デッドロックやレースコンディションの新たな原因となる可能性があります。
 
 ### Designフェーズへの申し送り事項
 1.  **Pydantic モデル設計**: 設定 (`Config`)、プラグイン定義 (`Plugin`)、API リクエスト/レスポンス構造を Pydantic モデルとして再定義する詳細設計が必要です。

@@ -86,11 +86,13 @@ graph TB
 | レイヤー | 選択/バージョン | 機能における役割 | 備考 |
 |---------|----------------|-----------------|------|
 | Backend / Services | Python 3.11+ | ランタイム、asyncio 並行処理 | 既存維持 |
-| Data Validation | Pydantic V2 ^2.0 | 設定・入力の宣言的バリデーション | **新規追加** |
+| Data Validation | Pydantic 2.12.5 | 設定・入力の宣言的バリデーション | **新規追加** (Lockfile準拠) |
 | Async I/O | asyncio.to_thread | ブロッキング I/O のオフロード | 標準ライブラリ使用 |
 | Concurrency | asyncio.Semaphore | LLM 同時実行数制御 | 標準ライブラリ使用 |
 | Messaging / Events | QueueStreamingEmitter | ストリーミング出力のバッファリング | 既存拡張 |
-| Security | cryptography ^42.0 | プラグイン署名検証 | 既存維持 |
+| Security | cryptography 42.0.0 | プラグイン署名検証 | 既存維持 (Repo準拠) |
+
+> **Note**: 上記のバージョンは `uv.lock` および `pyproject.toml` と同期し、更新時には実態に合わせて修正してください。
 
 ## システムフロー
 
@@ -362,10 +364,14 @@ class MagiSettings(BaseSettings):
 ##### Service Interface
 
 ```python
-from typing import Protocol, Optional
+from typing import Protocol, Optional, Literal, Any
 from pathlib import Path
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import asyncio
+
+# 型定義のプレースホルダー
+Plugin = Any
+PluginLoadResult = Any
 
 class PluginMetadataModel(BaseModel):
     """プラグインメタデータの Pydantic モデル"""
@@ -456,8 +462,12 @@ class PluginLoaderService(Protocol):
 ##### Service Interface
 
 ```python
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional, Protocol, Any
 from enum import Enum
+
+# 型定義のプレースホルダー
+Plugin = Any
 
 class OverrideScope(Enum):
     """プロンプト変更の範囲"""
@@ -519,7 +529,8 @@ class PluginPermissionGuardService(Protocol):
 
 ```python
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional, Protocol
+from dataclasses import dataclass
 
 @dataclass
 class ConcurrencyMetrics:
@@ -588,7 +599,18 @@ class ConcurrencyControllerService(Protocol):
 ##### Service Interface
 
 ```python
-from typing import Optional, Callable, Protocol
+from typing import Optional, Callable, Protocol, Any
+
+# 型定義のプレースホルダー
+PersonaType = Any
+Persona = Any
+Context = Any
+MagiSettings = Any
+LLMClient = Any
+ConcurrencyController = Any
+StreamingEmitter = Any
+GuardrailsAdapter = Any
+ConsensusEngine = Any
 
 class PersonaManagerProtocol(Protocol):
     """ペルソナマネージャインターフェース（モック用）"""
@@ -653,6 +675,9 @@ class ConsensusEngineFactory:
 ##### State Management
 
 ```python
+from dataclasses import dataclass
+from typing import Literal, Optional
+
 @dataclass
 class StreamingState:
     """ストリーミング状態"""
@@ -692,6 +717,11 @@ class StreamingState:
 ##### Service Interface
 
 ```python
+from typing import Protocol, Any
+
+# 型定義のプレースホルダー
+GuardrailsDecision = Any
+
 class GuardrailsProviderProtocol(Protocol):
     """カスタム Guardrails プロバイダインターフェース"""
     name: str

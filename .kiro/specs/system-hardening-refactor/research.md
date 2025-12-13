@@ -5,9 +5,9 @@
 ---
 
 ## サマリー
-- **機能名**: `system-hardening-refactor`
-- **ディスカバリースコープ**: 複合インテグレーション（既存システムの大規模リファクタリング）
-- **主要な知見**:
+* **機能名**: `system-hardening-refactor`
+* **ディスカバリースコープ**: 複合インテグレーション（既存システムの大規模リファクタリング）
+* **主要な知見**:
   1. Pydantic は既に使用されておらず、新規導入が必要
   2. `asyncio.Semaphore` および `run_in_executor` は未使用であり、並行処理制御の追加が必要
   3. 既存の `dataclass` ベースの設定モデルを Pydantic V2 へ移行するには、型ヒントの調整が必要
@@ -15,45 +15,45 @@
 ## 調査ログ
 
 ### Pydantic V2 の導入方針
-- **コンテキスト**: 要件 5（設定値の一元管理）および要件 6（宣言的バリデーション）を満たすための技術選定。
-- **参照した情報源**:
-  - Pydantic 公式ドキュメント: https://docs.pydantic.dev/latest/
-  - `pyproject.toml` の依存関係（現在 Pydantic は未導入）
-- **知見**:
-  - Pydantic V2 は `BaseSettings` を通じて環境変数・ファイルからの設定ロードと型バリデーションを一体化できる。
-  - `field_validator` や `model_validator` を用いて、複雑なクロスフィールドバリデーションを宣言的に記述可能。
-  - Python 3.11+ であれば性能面も問題なし。
-- **影響**: `Config` を `pydantic.BaseModel` に、`ConfigManager.load` を `Settings.model_validate` に置き換える。既存の `dataclass` は削除し、Pydantic モデルに統一する。
+* **コンテキスト**: 要件 5（設定値の一元管理）および要件 6（宣言的バリデーション）を満たすための技術選定。
+* **参照した情報源**:
+  * Pydantic 公式ドキュメント: https://docs.pydantic.dev/latest/
+  * `pyproject.toml` の依存関係（現在 Pydantic は未導入）
+* **知見**:
+  * Pydantic V2 は `BaseSettings` を通じて環境変数・ファイルからの設定ロードと型バリデーションを一体化できる。
+  * `field_validator` や `model_validator` を用いて、複雑なクロスフィールドバリデーションを宣言的に記述可能。
+  * Python 3.11+ であれば性能面も問題なし。
+* **影響**: `Config` を `pydantic.BaseModel` に、`ConfigManager.load` を `Settings.model_validate` に置き換える。既存の `dataclass` は削除し、Pydantic モデルに統一する。
 
 ### 非同期 I/O 戦略
-- **コンテキスト**: 要件 1（プラグインロードの安定性）において、`PluginLoader.load` が同期的なファイル I/O を実行している。
-- **参照した情報源**:
-  - Python asyncio ドキュメント: https://docs.python.org/3/library/asyncio-task.html#running-in-threads
-  - `aiofiles` ライブラリ: https://github.com/Tinche/aiofiles
-- **知見**:
-  - `asyncio.to_thread` (Python 3.9+) を使えば、追加の依存なしに同期ブロッキング I/O をスレッドプールにオフロード可能。
-  - `aiofiles` は追加依存となるため、依存を増やしたくない場合は `to_thread` が推奨。
-- **影響**: `PluginLoader.load` を `async def load` に変更し、ファイル読み込み (`Path.read_text`) と署名検証 (`_verify_security`) を `to_thread` でラップする。
+* **コンテキスト**: 要件 1（プラグインロードの安定性）において、`PluginLoader.load` が同期的なファイル I/O を実行している。
+* **参照した情報源**:
+  * Python asyncio ドキュメント: https://docs.python.org/3/library/asyncio-task.html#running-in-threads
+  * `aiofiles` ライブラリ: https://github.com/Tinche/aiofiles
+* **知見**:
+  * `asyncio.to_thread` (Python 3.9+) を使えば、追加の依存なしに同期ブロッキング I/O をスレッドプールにオフロード可能。
+  * `aiofiles` は追加依存となるため、依存を増やしたくない場合は `to_thread` が推奨。
+* **影響**: `PluginLoader.load` を `async def load` に変更し、ファイル読み込み (`Path.read_text`) と署名検証 (`_verify_security`) を `to_thread` でラップする。
 
 ### LLM 同時実行数制御
-- **コンテキスト**: 要件 2（LLM 呼び出しの同時実行制御と過負荷耐性）において、`ConsensusEngine` が無制限に `asyncio.gather` を呼び出している。
-- **参照した情報源**:
-  - Python asyncio Semaphore: https://docs.python.org/3/library/asyncio-sync.html#semaphore
-  - Anthropic API Rate Limits
-- **知見**:
-  - `asyncio.Semaphore` をグローバルまたはエンジン単位で導入し、`send` 呼び出し前に `acquire` することで同時実行数を制御可能。
-  - セマフォのカウントは設定可能にし、`MAGI_LLM_CONCURRENCY_LIMIT` などの環境変数で調整可能にする。
-- **影響**: `LLMClient` または新規の `ConcurrencyController` クラスにセマフォを導入する。
+* **コンテキスト**: 要件 2（LLM 呼び出しの同時実行制御と過負荷耐性）において、`ConsensusEngine` が無制限に `asyncio.gather` を呼び出している。
+* **参照した情報源**:
+  * Python asyncio Semaphore: https://docs.python.org/3/library/asyncio-sync.html#semaphore
+  * Anthropic API Rate Limits
+* **知見**:
+  * `asyncio.Semaphore` をグローバルまたはエンジン単位で導入し、`send` 呼び出し前に `acquire` することで同時実行数を制御可能。
+  * セマフォのカウントは設定可能にし、`MAGI_LLM_CONCURRENCY_LIMIT` などの環境変数で調整可能にする。
+* **影響**: `LLMClient` または新規の `ConcurrencyController` クラスにセマフォを導入する。
 
 ### DI パターン
-- **コンテキスト**: 要件 4（依存性注入によるテスト容易性）において、`ConsensusEngine` が `PersonaManager` / `ContextManager` を直接インスタンス化している。
-- **参照した情報源**:
-  - 既存コード: `ConsensusEngine.__init__`
-  - Pure DI パターン
-- **知見**:
-  - 現状の規模であれば、DI コンテナ（`dependency-injector` 等）は過剰。
-  - コンストラクタ引数に `Optional[PersonaManager]` を追加し、`None` の場合はデフォルト実装を使用する Pure DI パターンで十分。
-- **影響**: `ConsensusEngine.__init__` の引数を拡張し、デフォルト引数で後方互換性を維持する。
+* **コンテキスト**: 要件 4（依存性注入によるテスト容易性）において、`ConsensusEngine` が `PersonaManager` / `ContextManager` を直接インスタンス化している。
+* **参照した情報源**:
+  * 既存コード: `ConsensusEngine.__init__`
+  * Pure DI パターン
+* **知見**:
+  * 現状の規模であれば、DI コンテナ（`dependency-injector` 等）は過剰。
+  * コンストラクタ引数に `Optional[PersonaManager]` を追加し、`None` の場合はデフォルト実装を使用する Pure DI パターンで十分。
+* **影響**: `ConsensusEngine.__init__` の引数を拡張し、デフォルト引数で後方互換性を維持する。
 
 ## アーキテクチャパターン評価
 
