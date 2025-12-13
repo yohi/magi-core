@@ -516,13 +516,15 @@ class PluginPermissionGuardService(Protocol):
 | Intent | asyncio.Semaphore による LLM 同時実行数の制御と監視 |
 | Requirements | 2.1, 2.2, 2.5 |
 
-**責務と制約**
+##### 責務と制約
+
 - **プロセス全体で単一インスタンス（シングルトン）として管理** (要件 2.1 のプロセス全体の上限を保証)
 - グローバルセマフォによる同時実行数制御
 - 待機数と待機時間の記録
 - タイムアウト時の拒否
 
-**依存関係**
+##### 依存関係
+
 - Inbound: ConsensusEngine, LLMClient — 同時実行制御 (P0)
 - Outbound: MagiSettings — 上限値参照 (P1)
 
