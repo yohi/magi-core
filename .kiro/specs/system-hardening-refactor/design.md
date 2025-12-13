@@ -189,6 +189,7 @@ sequenceDiagram
 | 2.3 | レート制限時の再試行抑制 | LLMClient | - | - |
 | 2.4 | クオーラム未達まで継続 | ConsensusEngine | - | - |
 | 2.5 | 同時実行数監視ログ | ConcurrencyController | - | - |
+| 2.6 | トークン予算の管理・制御 | TokenBudgetManager | TokenBudgetManagerProtocol | - |
 | 3.1 | バッファ上限とポリシー設定 | StreamingEmitter | StreamingConfig | - |
 | 3.2 | バックプレッシャ/ドロップ処理 | StreamingEmitter | - | - |
 | 3.3 | 欠落ログ | StreamingEmitter | - | - |
@@ -229,6 +230,7 @@ sequenceDiagram
 | ConcurrencyController | Core | LLM 同時実行数制御 | 2.1-2.5 | - | Service |
 | ConsensusEngine | Core | 合議フロー（DI 拡張） | 4.1-4.4 | ConcurrencyController (P0), LLMClient (P0) | Service |
 | StreamingEmitter | Core | バックプレッシャ対応ストリーミング | 3.1-3.5 | MagiSettings (P1) | Service, State |
+| TokenBudgetManager | Core | トークン消費の追跡と予算制御 | 2.6 | ConsensusEngineFactory (P0) | Service |
 | GuardrailsAdapter | Security | マルチプロバイダ Guardrails | 7.1-7.4 | MagiSettings (P1) | Service |
 | LLMClient | LLM | API 通信（レート制限対応） | 2.3 | ConcurrencyController (P0) | Service |
 
@@ -514,14 +516,22 @@ class PluginPermissionGuardService(Protocol):
 | Intent | asyncio.Semaphore による LLM 同時実行数の制御と監視 |
 | Requirements | 2.1, 2.2, 2.5 |
 
-**責務と制約**
-- グローバルまたはエンジン単位のセマフォ管理
+##### 責務と制約
+
+- **プロセス全体で単一インスタンス（シングルトン）として管理** (要件 2.1 のプロセス全体の上限を保証)
+- グローバルセマフォによる同時実行数制御
 - 待機数と待機時間の記録
 - タイムアウト時の拒否
 
-**依存関係**
+##### 依存関係
+
 - Inbound: ConsensusEngine, LLMClient — 同時実行制御 (P0)
 - Outbound: MagiSettings — 上限値参照 (P1)
+
+##### ライフサイクル管理
+
+- `MagiCLI` またはアプリケーションルートで初期化され、全ての `ConsensusEngine` インスタンスに注入される
+- `ConsensusEngineFactory` のデフォルト引数は **テスト専用** であり、本番環境では明示的な注入が必須
 
 **コントラクト**: Service [x]
 
@@ -620,6 +630,25 @@ class ContextManagerProtocol(Protocol):
     """コンテキストマネージャインターフェース（モック用）"""
     def get_context(self) -> Context: ...
 
+class TokenBudgetManagerProtocol(Protocol):
+    """
+    Intent: LLM API呼び出しのトークン使用量を追跡し、予算を強制する。
+    Note: Noneは予算管理なし/無制限を意味する。
+    """
+    def check_budget(self, estimated_tokens: int) -> bool:
+        """
+        推定トークン数が予算内であるかをチェックする。
+        Trueを返した場合、続行可能（予算内）を意味する。
+        Falseを返した場合、続行不可（予算超過）を意味する。
+        """
+        ...
+    def consume(self, actual_tokens: int) -> None:
+        """
+        実際に消費されたトークン数を記録する。
+        実装は過剰消費時に例外を発生させるべきではなく、黙って記録する。
+        """
+        ...
+
 class ConsensusEngineFactory:
     """DI 対応 ConsensusEngine ファクトリ"""
     
@@ -633,6 +662,7 @@ class ConsensusEngineFactory:
         concurrency_controller: Optional[ConcurrencyController] = None,
         streaming_emitter: Optional[StreamingEmitter] = None,
         guardrails_adapter: Optional[GuardrailsAdapter] = None,
+        token_budget_manager: Optional[TokenBudgetManagerProtocol] = None,
     ) -> ConsensusEngine:
         """
         依存を注入して ConsensusEngine を生成する。
@@ -642,12 +672,17 @@ class ConsensusEngineFactory:
             persona_manager: ペルソナマネージャ（None の場合はデフォルト）
             context_manager: コンテキストマネージャ（None の場合はデフォルト）
             llm_client_factory: LLMClient 生成関数（None の場合はデフォルト）
-            concurrency_controller: 同時実行制御（None の場合はデフォルト）
+            concurrency_controller: 同時実行制御（None の場合はデフォルト、テスト用）
             streaming_emitter: ストリーミングエミッタ（None の場合はデフォルト）
             guardrails_adapter: Guardrails アダプタ（None の場合はデフォルト）
+            token_budget_manager: トークン予算管理（None の場合はデフォルト）
         
         Returns:
             設定済み ConsensusEngine
+        
+        Note:
+            本番環境では concurrency_controller を明示的に注入すること。
+            デフォルト値（None）はテスト専用であり、プロセス全体の同時実行制御を保証しない。
         """
         ...
 ```
@@ -672,7 +707,76 @@ class ConsensusEngineFactory:
 
 **コントラクト**: Service [x] / State [x]
 
+##### Service Interface
+
+```python
+from typing import Protocol, Optional, Literal
+import asyncio
+
+class StreamingTimeoutError(Exception):
+    """
+    バックプレッシャモードでキュー空き待ちがタイムアウトした場合に発生する例外。
+    
+    Semantics:
+        - 指定されたタイムアウト時間内にキューの空きスロットを確保できなかったことを示す。
+        - 呼び出し元はこれを捕捉し、フォールバック（ログ記録、エラー送出など）を行う必要がある。
+    """
+    pass
+
+class StreamingEmitterService(Protocol):
+    """ストリーミング出力インターフェース"""
+    
+    async def emit(
+        self,
+        event_type: str,
+        content: str,
+        priority: Literal["normal", "critical"] = "normal",
+    ) -> None:
+        """
+        イベントを非同期で出力する。
+        
+        Args:
+            event_type: イベント種別（例: "thinking", "debate", "result"）
+            content: 出力内容
+            priority: 優先度。"critical" は最終結果など欠落を許容しないイベント。
+        
+        Raises:
+            StreamingTimeoutError: バックプレッシャモードでタイムアウト発生時
+        
+        Implementation Notes:
+            1. Priority Enforcement:
+               - 内部的に有界なクリティカルキュー、または優先度付きキューを使用し、クリティカルイベントを常に優先する。
+               - Atomic enqueue操作により、クリティカルイベント挿入時の整合性を保証する。
+            
+            2. Overflow Behavior:
+               - Mode 'backpressure':
+                 - キュー満杯時、`streaming_emit_timeout` 秒間ブロック（await）する。
+                 - タイムアウト時、非クリティカルイベントであれば `StreamingTimeoutError` を送出する。
+                 - 非クリティカルイベントを追い出し（eviction）、クリティカルイベント用のスペースを作るフォールバックも検討する。
+               - Mode 'drop':
+                 - キュー満杯時、最も優先度の低い、または最も古い非クリティカルイベントを即座にドロップし、ログに記録する。
+                 - クリティカルイベントは決してドロップせず、必要なら容量を一時的に超過させるか、非クリティカルを削除して挿入する。
+            
+            3. Memory Safety:
+               - `streaming_queue_size` による厳格なバッファ制限（Bounded buffers）。
+               - クリティカルイベント用の一時的なソフトリミット（Soft limits）。
+               - バックグラウンドでの古いイベントのクリーンアップポリシー。
+               - 閾値到達時のメトリクス記録とアラート発報。
+        """
+        ...
+    
+    def get_state(self) -> "StreamingState":
+        """現在のストリーミング状態を取得する"""
+        ...
+```
+
+- Preconditions: `enabled=True` の場合のみ出力を実行
+- Postconditions: イベントがキューに追加されるか、ドロップがログ記録される
+- Invariants: `priority="critical"` のイベントは決してドロップされない
+
 ##### State Management
+
+`StreamingState`は、`MagiSettings`で定義されるストリーミング関連の設定（例: `streaming_enabled`, `streaming_queue_size`, `streaming_overflow_policy`）に基づいて初期化され、`StreamingEmitter`の現在の動作状態を反映します。
 
 ```python
 from dataclasses import dataclass
