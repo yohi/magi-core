@@ -13,7 +13,7 @@
   - `dump_masked()` メソッドで API キーをマスクした設定を返却 (診断出力用)
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 6.1, 6.2_
 
-- [ ] 1.2 ConfigManager の MagiSettings 統合
+- [x] 1.2 ConfigManager の MagiSettings 統合
   - `ConfigManager.load()` を既存の Config インスタンス化から `MagiSettings()` 呼び出しに置き換え
   - 環境変数、`magi.yaml` ファイル、コマンドライン引数からの設定ロードを Pydantic の優先順位ルールで統一
   - Pydantic バリデーションエラーを捕捉し、修正可能なエラーメッセージ (`MagiException`) に変換

@@ -1,5 +1,6 @@
 """MAGIシステムのCLIエントリーポイント"""
 
+import json
 import sys
 from typing import List
 
@@ -45,6 +46,15 @@ def main(args: List[str] | None = None) -> int:
         for error in validation.errors:
             print(error, file=sys.stderr)
         return 1
+
+    if parsed.options.get("config_check"):
+        try:
+            config = ConfigManager().load()
+        except MagiException as exc:
+            print(f"Configuration error: {exc.error.message}", file=sys.stderr)
+            return 1
+        print(json.dumps(config.dump_masked(), ensure_ascii=False, indent=2))
+        return 0
 
     # プロバイダ設定の読み込み
     provider_selector = None
