@@ -5,7 +5,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
@@ -131,6 +131,16 @@ class PluginLoader:
                 asyncio.to_thread(self.load, path),
                 timeout=effective_timeout,
             )
+        except asyncio.TimeoutError:
+            duration = time.monotonic() - start
+            LOGGER.error(
+                "plugin.load.timeout path=%s effective_timeout=%.3f duration=%.3f",
+                path,
+                effective_timeout,
+                duration,
+                exc_info=True
+            )
+            raise
         except Exception:
             LOGGER.exception("plugin.load.failed path=%s", path)
             raise
@@ -144,11 +154,23 @@ class PluginLoader:
         *,
         timeout: Optional[float] = None,
         concurrency_limit: Optional[int] = None,
-    ) -> List[Plugin]:
-        """複数プラグインを非同期でロードする"""
-        _ = concurrency_limit  # 未使用パラメータ（同時実行制御は今後のタスクで対応）
+    ) -> List[Union[Plugin, Exception]]:
+        """複数プラグインを非同期でロードする
+
+        Args:
+            paths: ロードするプラグインファイルのパスリスト
+            timeout: 各プラグインのロードタイムアウト（秒）
+            concurrency_limit: 同時実行数の制限（未実装）
+
+        Returns:
+            プラグインまたは例外のリスト。各要素は成功時はPluginオブジェクト、
+            失敗時はExceptionオブジェクト。1つのプラグインの失敗が他のプラグインの
+            ロードを妨げることはない。
+        """
+        _ = concurrency_limit  # 未使用パラメータ(同時実行制御は今後のタスクで対応)
         tasks = [self.load_async(path, timeout=timeout) for path in paths]
-        return await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        return results
 
     def load(self, path: Path) -> Plugin:
         """YAMLファイルからプラグインを読み込み、パースし、検証する"""

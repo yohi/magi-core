@@ -255,7 +255,7 @@ class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
                 "hash": "sha256:" + ("e" * 64),
             },
             "bridge": {
-                "command": "echo one",
+                "command": "python3",
                 "interface": "stdio",
             },
         }
@@ -265,7 +265,7 @@ class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
                 "hash": "sha256:" + ("f" * 64),
             },
             "bridge": {
-                "command": "echo two",
+                "command": "/usr/bin/python3",
                 "interface": "stdio",
             },
         }
@@ -275,8 +275,50 @@ class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
         file_one.write_text(yaml.dump(plugin_data_1))
         file_two.write_text(yaml.dump(plugin_data_2))
 
-        plugins = await self.loader.load_all_async([file_one, file_two])
+        results = await self.loader.load_all_async([file_one, file_two])
 
-        self.assertEqual(len(plugins), 2)
-        self.assertEqual(plugins[0].metadata.name, "plugin_one")
-        self.assertEqual(plugins[1].metadata.name, "plugin_two")
+        self.assertEqual(len(results), 2)
+        # 成功ケースでは両方ともPluginオブジェクトであることを確認
+        self.assertIsInstance(results[0], Plugin)
+        self.assertIsInstance(results[1], Plugin)
+        self.assertEqual(results[0].metadata.name, "plugin_one")
+        self.assertEqual(results[1].metadata.name, "plugin_two")
+
+    async def test_load_all_async_isolates_failures(self):
+        """1つのプラグインのロード失敗が他のプラグインに影響しないこと"""
+        # 1つ目は正常なプラグイン
+        plugin_data_1 = {
+            "plugin": {
+                "name": "valid_plugin",
+                "hash": "sha256:" + ("a" * 64),
+            },
+            "bridge": {
+                "command": "python3",
+                "interface": "stdio",
+            },
+        }
+        file_one = self.temp_path / "valid.yaml"
+        file_one.write_text(yaml.dump(plugin_data_1))
+
+        # 2つ目は存在しないファイル
+        file_two = self.temp_path / "nonexistent.yaml"
+
+        # 3つ目は無効なYAML
+        file_three = self.temp_path / "invalid.yaml"
+        file_three.write_text("{invalid yaml:")
+
+        results = await self.loader.load_all_async([file_one, file_two, file_three])
+
+        self.assertEqual(len(results), 3)
+
+        # 1つ目は成功
+        self.assertIsInstance(results[0], Plugin)
+        self.assertEqual(results[0].metadata.name, "valid_plugin")
+
+        # 2つ目と3つ目は例外
+        self.assertIsInstance(results[1], Exception)
+        self.assertIsInstance(results[2], Exception)
+
+        # 例外がMagiExceptionであることを確認
+        self.assertIsInstance(results[1], MagiException)
+        self.assertIsInstance(results[2], MagiException)
