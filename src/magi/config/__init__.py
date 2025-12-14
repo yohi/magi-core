@@ -9,6 +9,7 @@ from magi.config.provider import (
     ProviderConfigLoader,
     mask_secret,
 )
+from magi.config.settings import MagiSettings
 
 __all__ = [
     "Config",
@@ -20,4 +21,5 @@ __all__ = [
     "DEFAULT_PROVIDER_ID",
     "SUPPORTED_PROVIDERS",
     "mask_secret",
+    "MagiSettings",
 ]

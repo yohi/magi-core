@@ -533,6 +533,88 @@ class PluginPermissionGuardService(Protocol):
 - `MagiCLI` またはアプリケーションルートで初期化され、全ての `ConsensusEngine` インスタンスに注入される
 - `ConsensusEngineFactory` のデフォルト引数は **テスト専用** であり、本番環境では明示的な注入が必須
 
+**シングルトン実装方針**
+
+Pythonでのシングルトン実装は以下のアプローチを採用：
+
+1. **モジュールレベルのファクトリー関数** (推奨)：
+   - グローバル変数による管理（初回呼び出し時に初期化）
+   - テスト時のリセット用フックを提供
+
+```python
+# src/magi/core/concurrency_controller.py
+
+_instance: Optional[ConcurrencyControllerService] = None
+
+def get_concurrency_controller(settings: MagiSettings) -> ConcurrencyControllerService:
+    """
+    プロセス全体で共有されるConcurrencyControllerインスタンスを取得。
+    初回呼び出し時のみインスタンスを作成。
+    """
+    global _instance
+    if _instance is None:
+        _instance = ConcurrencyControllerImpl(
+            max_concurrent=settings.llm.max_concurrent_requests
+        )
+    return _instance
+
+def reset_concurrency_controller() -> None:
+    """テスト専用: シングルトンをリセット"""
+    global _instance
+    _instance = None
+```
+
+2. **MagiCLIでの初期化**：
+
+```python
+# src/magi/cli.py
+
+from magi.config import get_settings
+from magi.core.concurrency_controller import get_concurrency_controller
+from magi.consensus.factory import ConsensusEngineFactory
+
+def main():
+    settings = get_settings()
+
+    # シングルトンを初期化
+    concurrency_controller = get_concurrency_controller(settings)
+
+    # ConsensusEngineFactoryに明示的に注入
+    factory = ConsensusEngineFactory(
+        settings=settings,
+        concurrency_controller=concurrency_controller
+    )
+
+    # PluginLoaderにも明示的に注入
+    plugin_loader = PluginLoader(
+        settings=settings,
+        concurrency_controller=concurrency_controller
+    )
+```
+
+3. **ConsensusEngineFactory使用例**：
+
+```python
+# 本番環境での使用（明示的注入）
+engine = factory.create(
+    consensus_type=ConsensusType.DEBATE,
+    # concurrency_controllerは factory に注入済み
+)
+
+# テスト環境での使用（モック注入）
+test_controller = MockConcurrencyController()
+test_factory = ConsensusEngineFactory(
+    settings=test_settings,
+    concurrency_controller=test_controller
+)
+test_engine = test_factory.create(consensus_type=ConsensusType.DEBATE)
+```
+
+**重要な制約**：
+- デフォルト引数（`concurrency_controller=None`）は **テストヘルパー専用**
+- 本番コードでは `None` を渡してはならない（lintルールで検出）
+- テストでは `reset_concurrency_controller()` を使用してシングルトンをクリア
+
 **コントラクト**: Service [x]
 
 ##### Service Interface
@@ -582,6 +664,68 @@ class ConcurrencyControllerService(Protocol):
         """レート制限発生を記録する"""
         ...
 ```
+
+##### 監視とタイムアウト処理
+
+**タイムアウト設定**
+
+- **デフォルト値**: 30秒（環境変数 `SEMAPHORE_ACQUIRE_TIMEOUT_SECONDS` で設定可能）
+- **チューニングガイダンス**:
+  - p95 acquire_wait > 20秒 → タイムアウトを 40-60秒に延長
+  - waiting_count が常時 10+ → `max_concurrent_requests` を増加
+  - p95 acquire_wait < 5秒 → タイムアウトを 15-20秒に短縮可能
+
+**監視メトリクス**
+
+実装は OpenTelemetry または Prometheus クライアントを使用：
+
+| メトリクス名 | 型 | 説明 | パーセンタイル |
+|------------|-----|------|--------------|
+| `semaphore_queue_length` | Gauge | 現在の待機数 | - |
+| `semaphore_acquire_wait_seconds` | Histogram | 取得待機時間 | p95, p99 |
+| `semaphore_hold_seconds` | Histogram | セマフォ保持時間 | p95, p99 |
+| `semaphore_timeouts_total` | Counter | タイムアウト発生回数 | - |
+| `semaphore_rate_limits_total` | Counter | レート制限発生回数 | - |
+
+**デッドロック検出**
+
+- **トリガー条件**: p95 `semaphore_hold_seconds` > 120秒
+- **ログ出力内容**:
+  - タスクID
+  - スタックトレース (`traceback.format_stack()`)
+  - 保持時間（秒）
+  - 現在のキュー状態（`waiting_count`, `active_count`）
+- **実装**: メトリクス収集時に保持時間をチェックし、閾値超過時に警告ログを出力
+
+**リトライ戦略**
+
+`ConcurrencyLimitError` 発生時のリトライロジック：
+
+```python
+# 指数バックオフ + ジッター
+base_delay = 1.0  # 秒
+max_retries = 3
+
+for attempt in range(max_retries):
+    try:
+        async with controller.acquire(timeout=30.0):
+            return await llm_client.send(request)
+    except ConcurrencyLimitError:
+        if attempt == max_retries - 1:
+            # 最終リトライ失敗 → HTTP 429 または適切なエラーメッセージ
+            raise ConcurrencyLimitError("システムが高負荷です。しばらく待ってから再試行してください。")
+
+        wait_time = base_delay * (2 ** attempt)
+        jitter = random.uniform(0, wait_time * 0.1)
+        await asyncio.sleep(wait_time + jitter)
+```
+
+**冪等性とエラーハンドリング**
+
+- LLM API呼び出しは基本的に冪等（temperature=0の場合）
+- temperature > 0 の場合は非決定的なため、リトライ時に異なる結果が返る可能性
+- リトライ時は元のリクエストIDを保持し、重複呼び出しを避ける
+- CLI/APIレイヤーで `ConcurrencyLimitError` をキャッチし、HTTP 429 または適切なエラーメッセージを返す
 
 ---
 
