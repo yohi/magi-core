@@ -2,7 +2,7 @@
 
 ## 1. 統合設定モデルの実装 (Pydantic V2)
 
-- [ ] 1.1 (P) MagiSettings の Pydantic V2 モデル化
+ - [x] 1.1 (P) MagiSettings の Pydantic V2 モデル化
   - 既存の Config クラスを `pydantic.BaseSettings` に移行し、全設定項目を型付きフィールドとして定義
   - `model_config` で `env_prefix="MAGI_"`, `env_file=".env"`, `extra="forbid"` を設定し、環境変数ロードと未知キー検出を有効化
   - API 設定 (`api_key`, `model`, `timeout`, `retry_count`) および合議設定 (`debate_rounds`, `voting_threshold`, `quorum_threshold`, `token_budget`) を Field でバリデーション
