@@ -1,8 +1,10 @@
 import asyncio
+import contextvars
 import logging
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -19,6 +21,10 @@ from magi.plugins.signature import PluginSignatureValidator
 HASH_PATTERN = re.compile(r"^sha256:[0-9a-fA-F]{64}$")
 GUARD = PluginGuard()
 LOGGER = logging.getLogger(__name__)
+_PLUGIN_LOADER_EXECUTOR = ThreadPoolExecutor(
+    max_workers=8,
+    thread_name_prefix="magi-plugin-loader",
+)
 
 
 class PluginMetadataModel(BaseModel):
@@ -201,6 +207,14 @@ class PluginLoader:
         results = await asyncio.gather(*tasks, return_exceptions=True)
         return results
 
+    async def _run_in_executor(self, func, /, *args, **kwargs):
+        loop = asyncio.get_running_loop()
+        context = contextvars.copy_context()
+        return await loop.run_in_executor(
+            _PLUGIN_LOADER_EXECUTOR,
+            lambda: context.run(func, *args, **kwargs),
+        )
+
     async def _load_async_impl(self, path: Path) -> Plugin:
         """load の非同期版実装"""
         if not path.exists():
@@ -210,7 +224,7 @@ class PluginLoader:
             ))
 
         try:
-            content = await asyncio.to_thread(path.read_text, encoding="utf-8")
+            content = await self._run_in_executor(path.read_text, encoding="utf-8")
             plugin_data = self._parse_yaml(content)
         except Exception as e:
             raise MagiException(create_plugin_error(
@@ -275,6 +289,17 @@ class PluginLoader:
 
         if signature:
             key_path = self._resolve_public_key_path()
+            if self._is_production_mode() and key_path is None:
+                raise MagiException(
+                    create_plugin_error(
+                        ErrorCode.SIGNATURE_VERIFICATION_FAILED,
+                        (
+                            "Production mode requires explicit plugin public key path "
+                            "(production_mode=True). Set plugin_public_key_path or "
+                            "MAGI_PLUGIN_PUBKEY_PATH."
+                        ),
+                    )
+                )
             result = self.signature_validator.verify_signature(raw_content, signature, key_path)
             if not result.ok:
                 LOGGER.warning(
@@ -311,25 +336,56 @@ class PluginLoader:
 
     async def _verify_security_async(self, raw_content: str, plugin_data: Dict[str, Any], path: Path) -> None:
         """署名/ハッシュ検証を非同期で実施する。"""
-        await asyncio.to_thread(self._verify_security, raw_content, plugin_data, path)
+        await self._run_in_executor(self._verify_security, raw_content, plugin_data, path)
+
+    def _is_production_mode(self) -> bool:
+        """本番運用モードかどうかを返す"""
+        return bool(getattr(self.config, "production_mode", False))
 
     def _resolve_public_key_path(self) -> Optional[Path]:
         """公開鍵パスを優先順位に基づき解決する。"""
+        production_mode = self._is_production_mode()
+
+        def _log_resolution(source: str, resolved: Optional[Path]) -> Optional[Path]:
+            LOGGER.info(
+                "plugin.signature.key_path_resolved source=%s path=%s production_mode=%s",
+                source,
+                resolved,
+                production_mode,
+            )
+            return resolved
+
         if self.public_key_path:
-            return self.public_key_path
+            return _log_resolution("init_arg", Path(self.public_key_path))
 
         config_path = getattr(self.config, "plugin_public_key_path", None)
         if config_path:
-            return Path(config_path)
+            return _log_resolution("config", Path(config_path))
 
         env_path = os.environ.get("MAGI_PLUGIN_PUBKEY_PATH")
         if env_path:
-            return Path(env_path)
+            return _log_resolution("env", Path(env_path))
 
         default_path = Path.cwd() / "plugins" / "public_key.pem"
-        if default_path.exists():
-            return default_path
+        if production_mode:
+            if default_path.exists():
+                LOGGER.warning(
+                    "plugin.signature.key_path_ignored source=cwd_default path=%s production_mode=True",
+                    default_path,
+                )
+            LOGGER.error(
+                "plugin.signature.key_path_missing production_mode=True "
+                "hint=set plugin_public_key_path or MAGI_PLUGIN_PUBKEY_PATH"
+            )
+            return None
 
+        if default_path.exists():
+            return _log_resolution("cwd_default", default_path)
+
+        LOGGER.warning(
+            "plugin.signature.key_path_missing production_mode=%s",
+            production_mode,
+        )
         return None
 
     def _validate_or_raise(self, plugin_data: Dict[str, Any], path: Path) -> PluginModel:
