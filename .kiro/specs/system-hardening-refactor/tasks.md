@@ -31,7 +31,7 @@
 
 ## 2. プラグインロードの非同期化と隔離
 
-- [ ] 2.1 (P) PluginLoader の非同期化基盤構築
+ - [x] 2.1 (P) PluginLoader の非同期化基盤構築
   - `load_async()` と `load_all_async()` の非同期メソッドを追加
   - ファイル読み込み (`path.read_text`) を `asyncio.to_thread` でオフロード
   - YAML パース結果を Pydantic モデルで検証し、スキーマエラーを `PluginLoadError` として返却
