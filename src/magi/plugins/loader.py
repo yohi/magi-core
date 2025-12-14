@@ -257,7 +257,7 @@ class PluginLoader:
                     ErrorCode.PLUGIN_YAML_PARSE_ERROR,
                     f"Plugin validation failed for {path}: {', '.join(errors)}",
                 )
-            )
+            ) from exc
 
         try:
             GUARD.validate(plugin_model.bridge.command, [])
@@ -267,7 +267,7 @@ class PluginLoader:
                     ErrorCode.PLUGIN_YAML_PARSE_ERROR,
                     f"Plugin validation failed for {path}: {exc.error.message}",
                 )
-            )
+            ) from exc
 
         return plugin_model
 
@@ -276,10 +276,30 @@ class PluginLoader:
         """Pydantic のエラーを人間可読な文字列に整形する"""
         formatted = []
         for err in exc.errors():
+            section_error = PluginLoader._describe_section_error(err)
+            if section_error:
+                formatted.append(section_error)
+                continue
             loc = ".".join(str(part) for part in err.get("loc", []))
             msg = err.get("msg", "validation error")
             formatted.append(f"{loc}: {msg}" if loc else msg)
         return formatted
+
+    @staticmethod
+    def _describe_section_error(err: Dict[str, Any]) -> Optional[str]:
+        """plugin/bridge セクション欠落時のメッセージを明示する"""
+        loc = err.get("loc", [])
+        if len(loc) != 1:
+            return None
+        section = loc[0]
+        if section not in ("plugin", "bridge"):
+            return None
+
+        err_type = err.get("type") or ""
+        msg = err.get("msg") or ""
+        if err_type == "missing" or err_type.endswith("_type") or "valid dictionary" in msg:
+            return f"Missing or invalid '{section}' section"
+        return None
 
 @dataclass
 class ValidationResult:
