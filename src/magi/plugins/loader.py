@@ -1,6 +1,8 @@
+import asyncio
 import logging
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -118,6 +120,35 @@ class PluginLoader:
         self.public_key_path = public_key_path
         self.config = config
         self.signature_validator = signature_validator or PluginSignatureValidator()
+
+    async def load_async(self, path: Path, *, timeout: Optional[float] = None) -> Plugin:
+        """プラグインを非同期でロードする"""
+        effective_timeout = self._get_load_timeout(timeout)
+        start = time.monotonic()
+        LOGGER.info("plugin.load.started path=%s timeout=%.3f", path, effective_timeout)
+        try:
+            plugin = await asyncio.wait_for(
+                asyncio.to_thread(self.load, path),
+                timeout=effective_timeout,
+            )
+        except Exception:
+            LOGGER.exception("plugin.load.failed path=%s", path)
+            raise
+        duration = time.monotonic() - start
+        LOGGER.info("plugin.load.completed path=%s duration=%.3f", path, duration)
+        return plugin
+
+    async def load_all_async(
+        self,
+        paths: List[Path],
+        *,
+        timeout: Optional[float] = None,
+        concurrency_limit: Optional[int] = None,
+    ) -> List[Plugin]:
+        """複数プラグインを非同期でロードする"""
+        _ = concurrency_limit  # 未使用パラメータ（同時実行制御は今後のタスクで対応）
+        tasks = [self.load_async(path, timeout=timeout) for path in paths]
+        return await asyncio.gather(*tasks)
 
     def load(self, path: Path) -> Plugin:
         """YAMLファイルからプラグインを読み込み、パースし、検証する"""
@@ -270,6 +301,20 @@ class PluginLoader:
             ) from exc
 
         return plugin_model
+
+    def _get_load_timeout(self, timeout: Optional[float]) -> float:
+        """ロードタイムアウトを解決する"""
+        if timeout is not None:
+            return timeout
+
+        config_timeout = None
+        if self.config is not None:
+            try:
+                config_timeout = getattr(self.config, "plugin_load_timeout")
+            except Exception:
+                config_timeout = None
+
+        return float(config_timeout) if config_timeout is not None else 30.0
 
     @staticmethod
     def _format_pydantic_errors(exc: ValidationError) -> List[str]:

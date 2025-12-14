@@ -211,3 +211,72 @@ class TestPluginLoader(unittest.TestCase):
         self.assertEqual(cm.exception.error.code, ErrorCode.PLUGIN_YAML_PARSE_ERROR.value)
         error_message = cm.exception.error.message.lower()
         self.assertTrue("plugin" in error_message or "bridge" in error_message)
+
+
+class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
+    """非同期ロードの基本動作を検証する"""
+
+    def setUp(self):
+        self.tmpdir = TemporaryDirectory()
+        self.temp_path = Path(self.tmpdir.name)
+        self.loader = PluginLoader()
+
+    def tearDown(self):
+        self.tmpdir.cleanup()
+
+    async def test_load_async_logs_start_and_complete(self):
+        """load_async が正常に読み込み、開始/完了ログを残す"""
+        plugin_data = {
+            "plugin": {
+                "name": "async_plugin",
+                "hash": "sha256:" + ("d" * 64),
+            },
+            "bridge": {
+                "command": "echo async",
+                "interface": "stdio",
+            },
+        }
+        plugin_file = self.temp_path / "async_plugin.yaml"
+        plugin_file.write_text(yaml.dump(plugin_data))
+
+        with self.assertLogs("magi.plugins.loader", level="INFO") as cm:
+            plugin = await self.loader.load_async(plugin_file)
+
+        self.assertEqual(plugin.metadata.name, "async_plugin")
+        logs = "\n".join(cm.output)
+        self.assertIn("plugin.load.started", logs)
+        self.assertIn("plugin.load.completed", logs)
+
+    async def test_load_all_async_loads_multiple_plugins(self):
+        """複数プラグインを非同期で読み込めること"""
+        plugin_data_1 = {
+            "plugin": {
+                "name": "plugin_one",
+                "hash": "sha256:" + ("e" * 64),
+            },
+            "bridge": {
+                "command": "echo one",
+                "interface": "stdio",
+            },
+        }
+        plugin_data_2 = {
+            "plugin": {
+                "name": "plugin_two",
+                "hash": "sha256:" + ("f" * 64),
+            },
+            "bridge": {
+                "command": "echo two",
+                "interface": "stdio",
+            },
+        }
+
+        file_one = self.temp_path / "one.yaml"
+        file_two = self.temp_path / "two.yaml"
+        file_one.write_text(yaml.dump(plugin_data_1))
+        file_two.write_text(yaml.dump(plugin_data_2))
+
+        plugins = await self.loader.load_all_async([file_one, file_two])
+
+        self.assertEqual(len(plugins), 2)
+        self.assertEqual(plugins[0].metadata.name, "plugin_one")
+        self.assertEqual(plugins[1].metadata.name, "plugin_two")
