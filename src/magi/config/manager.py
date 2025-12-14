@@ -155,7 +155,7 @@ class ConfigManager:
         guardrails_cfg = data.get("guardrails")
         if isinstance(guardrails_cfg, dict):
             if "enabled" in guardrails_cfg:
-                result["guardrails_enabled"] = bool(guardrails_cfg.get("enabled"))
+                result["guardrails_enabled"] = guardrails_cfg.get("enabled")
             if "timeout_seconds" in guardrails_cfg:
                 result["guardrails_timeout"] = guardrails_cfg.get("timeout_seconds")
             if "on_timeout_behavior" in guardrails_cfg:
@@ -172,7 +172,7 @@ class ConfigManager:
         streaming_cfg = data.get("streaming")
         if isinstance(streaming_cfg, dict):
             if "enabled" in streaming_cfg:
-                result["streaming_enabled"] = bool(streaming_cfg.get("enabled"))
+                result["streaming_enabled"] = streaming_cfg.get("enabled")
             emitter_cfg = streaming_cfg.get("emitter", {})
             if isinstance(emitter_cfg, dict):
                 if "queue_size" in emitter_cfg:

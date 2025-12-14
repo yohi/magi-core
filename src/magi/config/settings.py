@@ -1,10 +1,13 @@
 """Pydantic V2 ベースの統合設定モデル"""
 
+import logging
 from pathlib import Path
 from typing import Any, Dict, Literal, Optional, Tuple
 
 from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class MagiSettings(BaseSettings):
@@ -116,7 +119,16 @@ class MagiSettings(BaseSettings):
         coerced = dict(data)
         for legacy, new in mapping.items():
             if legacy in coerced:
-                coerced[new] = coerced.pop(legacy)
+                if new not in coerced:
+                    # 新しいキーが存在しない場合のみ、レガシーキーを移動
+                    coerced[new] = coerced.pop(legacy)
+                else:
+                    # 両方のキーが存在する場合、新しいキーを優先
+                    coerced.pop(legacy)
+                    logger.warning(
+                        f"両方のキーが設定に存在します: レガシーキー '{legacy}' と新しいキー '{new}'。"
+                        f"新しいキー '{new}' を優先し、レガシーキー '{legacy}' は無視されます。"
+                    )
         return coerced
 
     def dump_masked(self) -> dict:
@@ -159,7 +171,11 @@ class MagiSettings(BaseSettings):
         return self.guardrails_on_timeout
 
     @guardrails_on_timeout_behavior.setter
-    def guardrails_on_timeout_behavior(self, value: str) -> None:
+    def guardrails_on_timeout_behavior(self, value: Literal["fail-open", "fail-closed"]) -> None:
+        if value not in ("fail-open", "fail-closed"):
+            raise ValueError(
+                f"guardrails_on_timeout_behavior must be 'fail-open' or 'fail-closed', got: {value}"
+            )
         self.guardrails_on_timeout = value
 
     @property
@@ -167,7 +183,11 @@ class MagiSettings(BaseSettings):
         return self.guardrails_on_error
 
     @guardrails_on_error_policy.setter
-    def guardrails_on_error_policy(self, value: str) -> None:
+    def guardrails_on_error_policy(self, value: Literal["fail-open", "fail-closed"]) -> None:
+        if value not in ("fail-open", "fail-closed"):
+            raise ValueError(
+                f"guardrails_on_error_policy must be 'fail-open' or 'fail-closed', got: {value}"
+            )
         self.guardrails_on_error = value
 
     @property

@@ -75,7 +75,7 @@ def main(args: List[str] | None = None) -> int:
     try:
         config_manager = ConfigManager()
         config = config_manager.load()
-    except Exception as e:
+    except MagiException as exc:
         # API keyがなくてもヘルプ系コマンドは動作させる
         if parsed.command in ("help", "version"):
             config = Config(api_key="")
@@ -86,6 +86,13 @@ def main(args: List[str] | None = None) -> int:
                 print(f"Provider selection error: {exc.error.message}", file=sys.stderr)
                 return 1
             config = Config(api_key=provider_ctx.api_key, model=provider_ctx.model)
+        else:
+            print(f"Configuration error: {exc.error.message}", file=sys.stderr)
+            return 1
+    except Exception as e:
+        # 予期しないエラーの場合
+        if parsed.command in ("help", "version"):
+            config = Config(api_key="")
         else:
             print(f"Configuration error: {e}", file=sys.stderr)
             return 1
@@ -117,6 +124,7 @@ Commands:
 Options:
     -h, --help           ヘルプメッセージを表示
     -v, --version        バージョン情報を表示
+    --config-check       設定内容を検証して表示（API keyはマスク）
     --format <format>    出力形式を指定（json, markdown）
     --plugin <name>      使用するプラグインを指定
 
