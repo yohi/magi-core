@@ -346,7 +346,8 @@ class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
 
         class SlowLoader(PluginLoader):
             async def _load_async_impl(self, path: Path) -> Plugin:
-                await asyncio.sleep(0.05)
+                if "slow" in path.name:
+                    await asyncio.sleep(0.05)
                 return await super()._load_async_impl(path)
 
         loader = SlowLoader()
@@ -357,7 +358,7 @@ class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
         }
         fast_plugin = {
             "plugin": {"name": "fast_plugin", "hash": "sha256:" + ("2" * 64)},
-            "bridge": {"command": "echo fast", "interface": "stdio"},
+            "bridge": {"command": "echo", "interface": "stdio"},
         }
 
         slow_file = self.temp_path / "slow.yaml"
@@ -373,7 +374,7 @@ class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(results), 2)
         self.assertIsInstance(results[0], MagiException)
-        self.assertEqual(results[0].error.code, ErrorCode.PLUGIN_COMMAND_TIMEOUT.value)
+        self.assertEqual(results[0].error.code, ErrorCode.PLUGIN_LOAD_TIMEOUT.value)
         self.assertIsInstance(results[1], Plugin)
         self.assertEqual(results[1].metadata.name, "fast_plugin")
 

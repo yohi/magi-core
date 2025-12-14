@@ -139,7 +139,7 @@ class PluginLoader:
             )
             raise MagiException(
                 create_plugin_error(
-                    ErrorCode.PLUGIN_COMMAND_TIMEOUT,
+                    ErrorCode.PLUGIN_LOAD_TIMEOUT,
                     f"Plugin load timed out for {path} after {effective_timeout:.3f}s",
                 )
             )
