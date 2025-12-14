@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
+from pydantic.config import ConfigDict
 
 from magi.errors import ErrorCode, MagiException, create_plugin_error
 from magi.models import PersonaType
@@ -15,6 +17,64 @@ from magi.plugins.signature import PluginSignatureValidator
 HASH_PATTERN = re.compile(r"^sha256:[0-9a-fA-F]{64}$")
 GUARD = PluginGuard()
 LOGGER = logging.getLogger(__name__)
+
+
+class PluginMetadataModel(BaseModel):
+    """プラグインメタデータのスキーマ"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    version: str = "1.0.0"
+    description: str = ""
+    signature: Optional[str] = None
+    hash: Optional[str] = None
+
+    @field_validator("hash")
+    @classmethod
+    def validate_hash(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        if not HASH_PATTERN.match(value):
+            raise ValueError("plugin.hash must be sha256:<64hex> format")
+        return value
+
+    @model_validator(mode="after")
+    def ensure_security_marker(self) -> "PluginMetadataModel":
+        if not self.signature and not self.hash:
+            raise ValueError("plugin.signature or plugin.hash is required")
+        return self
+
+
+class BridgeConfigModel(BaseModel):
+    """プラグインブリッジ設定のスキーマ"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    command: str
+    interface: str = Field(pattern="^(stdio|file)$")
+    timeout: int = Field(default=30, gt=0)
+
+
+class PluginModel(BaseModel):
+    """プラグイン定義全体のスキーマ"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    plugin: PluginMetadataModel
+    bridge: BridgeConfigModel
+    agent_overrides: Dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("agent_overrides")
+    @classmethod
+    def validate_agent_overrides(cls, value: Dict[str, Any]) -> Dict[str, str]:
+        if not isinstance(value, dict):
+            raise TypeError("agent_overrides must be a dictionary")
+        for key, val in value.items():
+            if not isinstance(key, str) or not isinstance(val, str):
+                raise ValueError("agent_overrides keys and values must be strings")
+        return value
+
 
 @dataclass
 class PluginMetadata:
@@ -75,38 +135,32 @@ class PluginLoader:
                 ErrorCode.PLUGIN_YAML_PARSE_ERROR,
                 f"Failed to parse plugin YAML from {path}: {e}"
             )) from e
-        
-        validation_result = self.validate(plugin_data)
-        if not validation_result.is_valid:
-            raise MagiException(create_plugin_error(
-                ErrorCode.PLUGIN_YAML_PARSE_ERROR,
-                f"Plugin validation failed for {path}: {', '.join(validation_result.errors)}"
-            ))
 
-        self._verify_security(content, plugin_data, path)
+        plugin_model = self._validate_or_raise(plugin_data, path)
+
+        self._verify_security(content, plugin_model.model_dump(), path)
 
         metadata = PluginMetadata(
-            name=plugin_data["plugin"]["name"],
-            version=plugin_data["plugin"].get("version", "1.0.0"),
-            description=plugin_data["plugin"].get("description", ""),
-            signature=plugin_data["plugin"].get("signature"),
-            hash=plugin_data["plugin"].get("hash"),
+            name=plugin_model.plugin.name,
+            version=plugin_model.plugin.version,
+            description=plugin_model.plugin.description,
+            signature=plugin_model.plugin.signature,
+            hash=plugin_model.plugin.hash,
         )
         bridge = BridgeConfig(
-            command=plugin_data["bridge"]["command"],
-            interface=plugin_data["bridge"]["interface"],
-            timeout=plugin_data["bridge"].get("timeout", 30)
+            command=plugin_model.bridge.command,
+            interface=plugin_model.bridge.interface,
+            timeout=plugin_model.bridge.timeout,
         )
 
         agent_overrides: Dict[PersonaType, str] = {}
-        if "agent_overrides" in plugin_data:
-            for persona_name, override_prompt in plugin_data["agent_overrides"].items():
-                try:
-                    persona_type = PersonaType[persona_name.upper()]
-                    agent_overrides[persona_type] = override_prompt
-                except KeyError:
-                    # Unknown persona types are ignored
-                    pass
+        for persona_name, override_prompt in plugin_model.agent_overrides.items():
+            try:
+                persona_type = PersonaType[persona_name.upper()]
+                agent_overrides[persona_type] = override_prompt
+            except KeyError:
+                # Unknown persona types are ignored
+                pass
         
         return Plugin(
             metadata=metadata,
@@ -118,62 +172,17 @@ class PluginLoader:
 
     def validate(self, plugin_data: Dict) -> "ValidationResult":
         """プラグイン定義の妥当性を検証"""
-        errors = []
-
-        if not isinstance(plugin_data, dict):
-            errors.append("Plugin data must be a dictionary.")
+        errors: List[str] = []
+        try:
+            plugin_model = PluginModel.model_validate(plugin_data)
+        except ValidationError as exc:
+            errors.extend(self._format_pydantic_errors(exc))
             return ValidationResult(is_valid=False, errors=errors)
 
-        # Validate 'plugin' section
-        if "plugin" not in plugin_data or not isinstance(plugin_data["plugin"], dict):
-            errors.append("Missing or invalid 'plugin' section.")
-        else:
-            if "name" not in plugin_data["plugin"] or not isinstance(plugin_data["plugin"]["name"], str):
-                errors.append("Plugin 'name' is required and must be a string.")
-            if "version" in plugin_data["plugin"] and not isinstance(plugin_data["plugin"]["version"], str):
-                errors.append("Plugin 'version' must be a string.")
-            if "description" in plugin_data["plugin"] and not isinstance(plugin_data["plugin"]["description"], str):
-                errors.append("Plugin 'description' must be a string.")
-            signature = plugin_data["plugin"].get("signature")
-            digest = plugin_data["plugin"].get("hash")
-            if not signature and not digest:
-                errors.append("Plugin signature or hash is required.")
-            if digest and not HASH_PATTERN.match(digest):
-                errors.append("Plugin 'hash' must be sha256:<64hex> format.")
-
-        # Validate 'bridge' section
-        if "bridge" not in plugin_data or not isinstance(plugin_data["bridge"], dict):
-            errors.append("Missing or invalid 'bridge' section.")
-        else:
-            if "command" not in plugin_data["bridge"] or not isinstance(plugin_data["bridge"]["command"], str):
-                errors.append("Bridge 'command' is required and must be a string.")
-            if "interface" not in plugin_data["bridge"] or plugin_data["bridge"]["interface"] not in ["stdio", "file"]:
-                errors.append("Bridge 'interface' is required and must be 'stdio' or 'file'.")
-            else:
-                try:
-                    GUARD.validate(plugin_data["bridge"]["command"], [])
-                except MagiException as exc:
-                    errors.append(exc.error.message)
-            if "timeout" in plugin_data["bridge"] and not isinstance(plugin_data["bridge"]["timeout"], int):
-                errors.append("Bridge 'timeout' must be an integer.")
-            elif "timeout" in plugin_data["bridge"] and plugin_data["bridge"]["timeout"] <= 0:
-                errors.append("Bridge 'timeout' must be a positive integer.")
-
-        # Validate 'agent_overrides' section
-        if "agent_overrides" in plugin_data:
-            if not isinstance(plugin_data["agent_overrides"], dict):
-                errors.append("'agent_overrides' must be a dictionary.")
-            else:
-                for persona_name, override_prompt in plugin_data["agent_overrides"].items():
-                    if not isinstance(persona_name, str) or not isinstance(override_prompt, str):
-                        errors.append(f"Agent override keys and values must be strings: {persona_name}: {override_prompt}")
-                    try:
-                        # Check if the persona name is valid
-                        PersonaType[persona_name.upper()]
-                    except KeyError:
-                        # Unknown persona types are allowed here and will be ignored in load()
-                        pass
-
+        try:
+            GUARD.validate(plugin_model.bridge.command, [])
+        except MagiException as exc:
+            errors.append(exc.error.message)
 
         return ValidationResult(is_valid=len(errors) == 0, errors=errors)
 
@@ -235,6 +244,61 @@ class PluginLoader:
         if default_path.exists():
             return default_path
 
+        return None
+
+    def _validate_or_raise(self, plugin_data: Dict[str, Any], path: Path) -> PluginModel:
+        """Pydantic 検証を行い、失敗時は MagiException を送出する。"""
+        try:
+            plugin_model = PluginModel.model_validate(plugin_data)
+        except ValidationError as exc:
+            errors = self._format_pydantic_errors(exc)
+            raise MagiException(
+                create_plugin_error(
+                    ErrorCode.PLUGIN_YAML_PARSE_ERROR,
+                    f"Plugin validation failed for {path}: {', '.join(errors)}",
+                )
+            ) from exc
+
+        try:
+            GUARD.validate(plugin_model.bridge.command, [])
+        except MagiException as exc:
+            raise MagiException(
+                create_plugin_error(
+                    ErrorCode.PLUGIN_YAML_PARSE_ERROR,
+                    f"Plugin validation failed for {path}: {exc.error.message}",
+                )
+            ) from exc
+
+        return plugin_model
+
+    @staticmethod
+    def _format_pydantic_errors(exc: ValidationError) -> List[str]:
+        """Pydantic のエラーを人間可読な文字列に整形する"""
+        formatted = []
+        for err in exc.errors():
+            section_error = PluginLoader._describe_section_error(err)
+            if section_error:
+                formatted.append(section_error)
+                continue
+            loc = ".".join(str(part) for part in err.get("loc", []))
+            msg = err.get("msg", "validation error")
+            formatted.append(f"{loc}: {msg}" if loc else msg)
+        return formatted
+
+    @staticmethod
+    def _describe_section_error(err: Dict[str, Any]) -> Optional[str]:
+        """plugin/bridge セクション欠落時のメッセージを明示する"""
+        loc = err.get("loc", [])
+        if len(loc) != 1:
+            return None
+        section = loc[0]
+        if section not in ("plugin", "bridge"):
+            return None
+
+        err_type = err.get("type") or ""
+        msg = err.get("msg") or ""
+        if err_type == "missing" or err_type.endswith("_type") or "valid dictionary" in msg:
+            return f"Missing or invalid '{section}' section"
         return None
 
 @dataclass
