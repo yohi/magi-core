@@ -3,6 +3,7 @@ import threading
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Optional
 import yaml
 import sys
 from string import ascii_letters, digits
@@ -380,6 +381,62 @@ class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
 
         logs = "\n".join(cm.output)
         self.assertIn("plugin.load.timeout", logs)
+
+    async def test_load_all_async_respects_concurrency_limit(self):
+        """同時ロード数制限を超えないこと"""
+
+        class TrackingLoader(PluginLoader):
+            def __init__(self):
+                super().__init__()
+                self.active = 0
+                self.max_active = 0
+
+            async def load_async(self, path: Path, *, timeout: Optional[float] = None) -> Plugin:
+                self.active += 1
+                self.max_active = max(self.max_active, self.active)
+                try:
+                    await asyncio.sleep(0.05)
+                    return Plugin(
+                        metadata=PluginMetadata(name=path.stem),
+                        bridge=BridgeConfig(command="echo", interface="stdio"),
+                        agent_overrides={},
+                    )
+                finally:
+                    self.active -= 1
+
+        loader = TrackingLoader()
+        plugin_files = [self.temp_path / f"plugin_{idx}.yaml" for idx in range(3)]
+
+        results = await loader.load_all_async(plugin_files, concurrency_limit=1, timeout=1.0)
+
+        self.assertTrue(all(isinstance(result, Plugin) for result in results))
+        self.assertEqual(loader.max_active, 1)
+
+    async def test_load_all_async_logs_waiting_when_limit_reached(self):
+        """上限到達時に待機開始/終了がログに残ること"""
+
+        class SlowLoader(PluginLoader):
+            async def load_async(self, path: Path, *, timeout: Optional[float] = None) -> Plugin:
+                await asyncio.sleep(0.05)
+                return Plugin(
+                    metadata=PluginMetadata(name=path.stem),
+                    bridge=BridgeConfig(command="echo", interface="stdio"),
+                    agent_overrides={},
+                )
+
+        loader = SlowLoader()
+
+        with self.assertLogs("magi.plugins.loader", level="INFO") as cm:
+            results = await loader.load_all_async(
+                [self.temp_path / "slow.yaml", self.temp_path / "fast.yaml"],
+                concurrency_limit=1,
+                timeout=1.0,
+            )
+
+        self.assertTrue(all(isinstance(result, Plugin) for result in results))
+        logs = "\n".join(cm.output)
+        self.assertIn("plugin.load.wait_start", logs)
+        self.assertIn("plugin.load.wait_end", logs)
 
     async def test_load_all_async_isolates_failures(self):
         """1つのプラグインのロード失敗が他のプラグインに影響しないこと"""
