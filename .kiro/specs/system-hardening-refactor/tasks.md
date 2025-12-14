@@ -77,7 +77,7 @@
   - `PermissionCheckResult` (許可/拒否、スコープ、フィルタ済み上書き) を返却
   - _Requirements: 8.1, 8.2_
 
-- [ ] 4.2 (P) 信頼されたプラグインの権限管理
+- [x] 4.2 (P) 信頼されたプラグインの権限管理
   - `plugin_trusted_signatures` 設定に基づく信頼判定を実装
   - 署名検証済みかつ信頼リストに含まれるプラグインのみ FULL_OVERRIDE 権限を付与
   - 信頼されていないプラグインは CONTEXT_ONLY に制限

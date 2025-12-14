@@ -32,6 +32,9 @@ class PluginPermissionGuard:
 
     def __init__(self, settings: MagiSettings) -> None:
         self.settings = settings
+        self._trusted_signatures = {
+            sig for sig in (settings.plugin_trusted_signatures or []) if sig
+        }
 
     def check_override_permission(
         self,
@@ -39,6 +42,7 @@ class PluginPermissionGuard:
         requested_overrides: Dict[str, str],
     ) -> PermissionCheckResult:
         """agent_overrides の権限を検証し、結果を返す。"""
+        plugin_name = self._get_plugin_name(plugin)
         allowed_scope = self._resolve_allowed_scope()
 
         if not requested_overrides:
@@ -50,7 +54,6 @@ class PluginPermissionGuard:
 
         requested_scope = OverrideScope.FULL_OVERRIDE
         if not self._is_scope_allowed(requested_scope, allowed_scope):
-            plugin_name = self._get_plugin_name(plugin)
             reason = "full override is disabled by configuration"
             LOGGER.warning(
                 "plugin.override.denied plugin=%s requested_scope=%s allowed_scope=%s reason=%s",
@@ -66,6 +69,31 @@ class PluginPermissionGuard:
                 filtered_overrides={},
             )
 
+        if not self._is_trusted_plugin(plugin):
+            reason = "plugin signature not trusted for full override"
+            signature = self._get_plugin_signature(plugin) or "none"
+            LOGGER.warning(
+                "plugin.override.denied plugin=%s requested_scope=%s allowed_scope=%s reason=%s signature=%s",
+                plugin_name,
+                requested_scope.value,
+                allowed_scope.value,
+                reason,
+                signature,
+            )
+            return PermissionCheckResult(
+                allowed=False,
+                scope=OverrideScope.CONTEXT_ONLY,
+                reason=reason,
+                filtered_overrides={},
+            )
+
+        LOGGER.info(
+            "plugin.override.applied plugin=%s scope=%s signature=%s overrides=%d",
+            plugin_name,
+            requested_scope.value,
+            self._get_plugin_signature(plugin) or "none",
+            len(requested_overrides),
+        )
         return PermissionCheckResult(
             allowed=True,
             scope=requested_scope,
@@ -100,3 +128,21 @@ class PluginPermissionGuard:
                 return str(name)
         name = getattr(plugin, "name", None)
         return str(name) if name else "unknown"
+
+    @staticmethod
+    def _get_plugin_signature(plugin: Any) -> Optional[str]:
+        """プラグインの署名値を取得する。"""
+        metadata = getattr(plugin, "metadata", None)
+        if metadata is not None:
+            signature = getattr(metadata, "signature", None)
+            if signature:
+                return str(signature)
+        signature = getattr(plugin, "signature", None)
+        return str(signature) if signature else None
+
+    def _is_trusted_plugin(self, plugin: Any) -> bool:
+        """設定された信頼済み署名に合致するかを判定する。"""
+        signature = self._get_plugin_signature(plugin)
+        if not signature:
+            return False
+        return signature in self._trusted_signatures
