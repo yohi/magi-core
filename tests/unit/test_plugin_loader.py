@@ -1,3 +1,4 @@
+import asyncio
 import threading
 import unittest
 from pathlib import Path
@@ -339,6 +340,46 @@ class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
 
         logs = "\n".join(cm.output)
         self.assertIn("plugin.load.signature_failed", logs)
+
+    async def test_load_async_timeout_is_isolated(self):
+        """タイムアウトしたプラグインが他のロードを妨げないこと"""
+
+        class SlowLoader(PluginLoader):
+            async def _load_async_impl(self, path: Path) -> Plugin:
+                if "slow" in path.name:
+                    await asyncio.sleep(0.05)
+                return await super()._load_async_impl(path)
+
+        loader = SlowLoader()
+
+        slow_plugin = {
+            "plugin": {"name": "slow_plugin", "hash": "sha256:" + ("1" * 64)},
+            "bridge": {"command": "echo", "interface": "stdio"},
+        }
+        fast_plugin = {
+            "plugin": {"name": "fast_plugin", "hash": "sha256:" + ("2" * 64)},
+            "bridge": {"command": "echo", "interface": "stdio"},
+        }
+
+        slow_file = self.temp_path / "slow.yaml"
+        fast_file = self.temp_path / "fast.yaml"
+        slow_file.write_text(yaml.dump(slow_plugin))
+        fast_file.write_text(yaml.dump(fast_plugin))
+
+        with self.assertLogs("magi.plugins.loader", level="ERROR") as cm:
+            results = await loader.load_all_async(
+                [slow_file, fast_file],
+                timeout=0.01,
+            )
+
+        self.assertEqual(len(results), 2)
+        self.assertIsInstance(results[0], MagiException)
+        self.assertEqual(results[0].error.code, ErrorCode.PLUGIN_LOAD_TIMEOUT.value)
+        self.assertIsInstance(results[1], Plugin)
+        self.assertEqual(results[1].metadata.name, "fast_plugin")
+
+        logs = "\n".join(cm.output)
+        self.assertIn("plugin.load.timeout", logs)
 
     async def test_load_all_async_isolates_failures(self):
         """1つのプラグインのロード失敗が他のプラグインに影響しないこと"""
