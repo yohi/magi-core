@@ -69,7 +69,7 @@
 
 ## 4. プラグイン権限ガードの実装
 
-- [ ] 4.1 (P) PluginPermissionGuard の基本実装
+- [x] 4.1 (P) PluginPermissionGuard の基本実装
   - `check_override_permission()` メソッドで `agent_overrides` の権限チェックを実装
   - 許可範囲 (`OverrideScope.CONTEXT_ONLY` / `FULL_OVERRIDE`) を設定で制御
   - `plugin_prompt_override_allowed` が false の場合は CONTEXT_ONLY のみ許可
