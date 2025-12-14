@@ -1,3 +1,4 @@
+import threading
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -14,6 +15,7 @@ from hypothesis.strategies import text, dictionaries, sampled_from, integers
 from magi.plugins.loader import PluginLoader, PluginMetadata, BridgeConfig, Plugin, ValidationResult
 from magi.errors import MagiException, ErrorCode
 from magi.models import PersonaType
+from magi.plugins.signature import SignatureVerificationResult
 
 
 def _build_invalid_yaml(text_value: str) -> str:
@@ -216,6 +218,28 @@ class TestPluginLoader(unittest.TestCase):
 class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
     """非同期ロードの基本動作を検証する"""
 
+    class _StubSignatureValidator:
+        def __init__(self):
+            self.thread_ids = []
+
+        def verify_signature(self, content, signature_b64, public_key_path):
+            self.thread_ids.append(threading.get_ident())
+            return SignatureVerificationResult(
+                ok=False,
+                mode="signature",
+                key_path=public_key_path,
+                reason="invalid_signature",
+            )
+
+        def verify_hash(self, content, digest):
+            self.thread_ids.append(threading.get_ident())
+            return SignatureVerificationResult(
+                ok=False,
+                mode="hash",
+                key_path=None,
+                reason="invalid_hash",
+            )
+
     def setUp(self):
         self.tmpdir = TemporaryDirectory()
         self.temp_path = Path(self.tmpdir.name)
@@ -283,6 +307,38 @@ class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(results[1], Plugin)
         self.assertEqual(results[0].metadata.name, "plugin_one")
         self.assertEqual(results[1].metadata.name, "plugin_two")
+
+    async def test_load_async_signature_failure_offloaded_and_logged(self):
+        """署名検証失敗が別スレッドで行われ、ログが記録される"""
+        stub_validator = self._StubSignatureValidator()
+        loader = PluginLoader(signature_validator=stub_validator)
+
+        plugin_data = {
+            "plugin": {
+                "name": "signed-plugin",
+                "signature": "invalid-base64",
+            },
+            "bridge": {
+                # PluginGuard が拒否しない安全なコマンドを使用する
+                "command": "echo",
+                "interface": "stdio",
+            },
+        }
+        plugin_file = self.temp_path / "signed_plugin.yaml"
+        plugin_file.write_text(yaml.dump(plugin_data))
+
+        main_thread = threading.get_ident()
+
+        with self.assertLogs("magi.plugins.loader", level="INFO") as cm:
+            with self.assertRaises(MagiException) as err:
+                await loader.load_async(plugin_file)
+
+        self.assertEqual(err.exception.error.code, ErrorCode.SIGNATURE_VERIFICATION_FAILED.value)
+        self.assertTrue(stub_validator.thread_ids)
+        self.assertNotEqual(main_thread, stub_validator.thread_ids[0])
+
+        logs = "\n".join(cm.output)
+        self.assertIn("plugin.load.signature_failed", logs)
 
     async def test_load_all_async_isolates_failures(self):
         """1つのプラグインのロード失敗が他のプラグインに影響しないこと"""

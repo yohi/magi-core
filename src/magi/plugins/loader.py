@@ -127,10 +127,7 @@ class PluginLoader:
         start = time.monotonic()
         LOGGER.info("plugin.load.started path=%s timeout=%.3f", path, effective_timeout)
         try:
-            plugin = await asyncio.wait_for(
-                asyncio.to_thread(self.load, path),
-                timeout=effective_timeout,
-            )
+            plugin = await asyncio.wait_for(self._load_async_impl(path), timeout=effective_timeout)
         except asyncio.TimeoutError:
             duration = time.monotonic() - start
             LOGGER.error(
@@ -172,6 +169,29 @@ class PluginLoader:
         results = await asyncio.gather(*tasks, return_exceptions=True)
         return results
 
+    async def _load_async_impl(self, path: Path) -> Plugin:
+        """load の非同期版実装"""
+        if not path.exists():
+            raise MagiException(create_plugin_error(
+                ErrorCode.PLUGIN_YAML_PARSE_ERROR,
+                f"Plugin file not found: {path}"
+            ))
+
+        try:
+            content = await asyncio.to_thread(path.read_text, encoding="utf-8")
+            plugin_data = self._parse_yaml(content)
+        except Exception as e:
+            raise MagiException(create_plugin_error(
+                ErrorCode.PLUGIN_YAML_PARSE_ERROR,
+                f"Failed to parse plugin YAML from {path}: {e}"
+            )) from e
+
+        plugin_model = self._validate_or_raise(plugin_data, path)
+
+        await self._verify_security_async(content, plugin_model.model_dump(), path)
+
+        return self._build_plugin(plugin_model)
+
     def load(self, path: Path) -> Plugin:
         """YAMLファイルからプラグインを読み込み、パースし、検証する"""
         if not path.exists():
@@ -193,35 +213,7 @@ class PluginLoader:
 
         self._verify_security(content, plugin_model.model_dump(), path)
 
-        metadata = PluginMetadata(
-            name=plugin_model.plugin.name,
-            version=plugin_model.plugin.version,
-            description=plugin_model.plugin.description,
-            signature=plugin_model.plugin.signature,
-            hash=plugin_model.plugin.hash,
-        )
-        bridge = BridgeConfig(
-            command=plugin_model.bridge.command,
-            interface=plugin_model.bridge.interface,
-            timeout=plugin_model.bridge.timeout,
-        )
-
-        agent_overrides: Dict[PersonaType, str] = {}
-        for persona_name, override_prompt in plugin_model.agent_overrides.items():
-            try:
-                persona_type = PersonaType[persona_name.upper()]
-                agent_overrides[persona_type] = override_prompt
-            except KeyError:
-                # Unknown persona types are ignored
-                pass
-        
-        return Plugin(
-            metadata=metadata,
-            bridge=bridge,
-            agent_overrides=agent_overrides,
-            signature=metadata.signature,
-            hash=metadata.hash,
-        )
+        return self._build_plugin(plugin_model)
 
     def validate(self, plugin_data: Dict) -> "ValidationResult":
         """プラグイン定義の妥当性を検証"""
@@ -253,6 +245,11 @@ class PluginLoader:
             key_path = self._resolve_public_key_path()
             result = self.signature_validator.verify_signature(raw_content, signature, key_path)
             if not result.ok:
+                LOGGER.warning(
+                    "plugin.load.signature_failed path=%s reason=%s",
+                    path,
+                    result.reason or "invalid",
+                )
                 raise MagiException(
                     create_plugin_error(
                         ErrorCode.SIGNATURE_VERIFICATION_FAILED,
@@ -279,6 +276,10 @@ class PluginLoader:
                 )
             else:
                 LOGGER.info("plugin.hash.verified path=%s legacy=%s", path, result.legacy)
+
+    async def _verify_security_async(self, raw_content: str, plugin_data: Dict[str, Any], path: Path) -> None:
+        """署名/ハッシュ検証を非同期で実施する。"""
+        await asyncio.to_thread(self._verify_security, raw_content, plugin_data, path)
 
     def _resolve_public_key_path(self) -> Optional[Path]:
         """公開鍵パスを優先順位に基づき解決する。"""
@@ -364,6 +365,38 @@ class PluginLoader:
         if err_type == "missing" or err_type.endswith("_type") or "valid dictionary" in msg:
             return f"Missing or invalid '{section}' section"
         return None
+
+    def _build_plugin(self, plugin_model: PluginModel) -> Plugin:
+        """検証済みのモデルからPluginオブジェクトを構築する"""
+        metadata = PluginMetadata(
+            name=plugin_model.plugin.name,
+            version=plugin_model.plugin.version,
+            description=plugin_model.plugin.description,
+            signature=plugin_model.plugin.signature,
+            hash=plugin_model.plugin.hash,
+        )
+        bridge = BridgeConfig(
+            command=plugin_model.bridge.command,
+            interface=plugin_model.bridge.interface,
+            timeout=plugin_model.bridge.timeout,
+        )
+
+        agent_overrides: Dict[PersonaType, str] = {}
+        for persona_name, override_prompt in plugin_model.agent_overrides.items():
+            try:
+                persona_type = PersonaType[persona_name.upper()]
+                agent_overrides[persona_type] = override_prompt
+            except KeyError:
+                # Unknown persona types are ignored
+                pass
+
+        return Plugin(
+            metadata=metadata,
+            bridge=bridge,
+            agent_overrides=agent_overrides,
+            signature=metadata.signature,
+            hash=metadata.hash,
+        )
 
 @dataclass
 class ValidationResult:
