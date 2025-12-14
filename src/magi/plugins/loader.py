@@ -159,8 +159,8 @@ class PluginLoader:
 
         Args:
             paths: ロードするプラグインファイルのパスリスト
-            timeout: 各プラグインのロードタイムアウト（秒）
-            concurrency_limit: 同時実行数の制限（未実装）
+            timeout: 各プラグインのロードタイムアウト(秒)
+            concurrency_limit: 同時実行数の制限(未実装)
 
         Returns:
             プラグインまたは例外のリスト。各要素は成功時はPluginオブジェクト、
