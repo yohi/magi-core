@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import os
 import threading
 import unittest
 from pathlib import Path
@@ -17,12 +19,30 @@ from hypothesis.strategies import text, dictionaries, sampled_from, integers
 from magi.plugins.loader import PluginLoader, PluginMetadata, BridgeConfig, Plugin, ValidationResult
 from magi.errors import MagiException, ErrorCode
 from magi.models import PersonaType
-from magi.plugins.signature import SignatureVerificationResult
+from magi.plugins.signature import PluginSignatureValidator, SignatureVerificationResult
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 
 def _build_invalid_yaml(text_value: str) -> str:
     """無効なYAML文字列を生成する"""
     return "{" + text_value + ":"
+
+
+def _generate_rsa_key_pair():
+    """RSA鍵ペアを生成して返す"""
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_pem = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    return private_key, public_pem
+
+
+def _canonical_bytes(plugin_data: dict) -> bytes:
+    """署名対象の正規化バイト列を生成する"""
+    content_without_sig = yaml.dump(plugin_data, sort_keys=False, allow_unicode=True)
+    return PluginSignatureValidator.canonicalize(content_without_sig)
 
 class TestPluginLoader(unittest.TestCase):
 
@@ -215,6 +235,117 @@ class TestPluginLoader(unittest.TestCase):
         self.assertEqual(cm.exception.error.code, ErrorCode.PLUGIN_YAML_PARSE_ERROR.value)
         error_message = cm.exception.error.message.lower()
         self.assertTrue("plugin" in error_message or "bridge" in error_message)
+
+    def test_production_mode_requires_explicit_public_key_path(self):
+        """production_mode 有効時はCWDフォールバックを無効化し、明示パスを要求する"""
+        private_key, public_pem = _generate_rsa_key_pair()
+        plugin_data = {
+            "plugin": {
+                "name": "prod-secure-plugin",
+                "version": "1.0.0",
+                "description": "production mode",
+                "hash": "sha256:" + ("e" * 64),
+            },
+            "bridge": {"command": "echo", "interface": "stdio", "timeout": 5},
+        }
+        canonical = _canonical_bytes(plugin_data)
+        signature = private_key.sign(
+            canonical,
+            padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
+            hashes.SHA256(),
+        )
+        plugin_data["plugin"]["signature"] = base64.b64encode(signature).decode("ascii")
+
+        plugin_file = self.temp_path / "prod_plugin.yaml"
+        plugin_file.write_text(
+            yaml.dump(plugin_data, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+
+        plugins_dir = self.temp_path / "plugins"
+        plugins_dir.mkdir(exist_ok=True)
+        default_key_path = plugins_dir / "public_key.pem"
+        default_key_path.write_text(public_pem.decode("utf-8"), encoding="utf-8")
+
+        env_backup = os.environ.get("MAGI_PLUGIN_PUBKEY_PATH")
+        os.environ.pop("MAGI_PLUGIN_PUBKEY_PATH", None)
+        current_cwd = Path.cwd()
+        os.chdir(self.temp_path)
+        try:
+            config = type(
+                "Config",
+                (),
+                {"plugin_public_key_path": None, "production_mode": True},
+            )()
+            loader = PluginLoader(config=config)
+
+            with self.assertLogs("magi.plugins.loader", level="INFO") as logs, self.assertRaises(MagiException) as cm:
+                loader.load(plugin_file)
+
+            self.assertEqual(cm.exception.error.code, ErrorCode.SIGNATURE_VERIFICATION_FAILED.value)
+            self.assertIn("production_mode", cm.exception.error.message)
+            log_text = "\n".join(logs.output)
+            self.assertIn("plugin.signature.key_path_missing", log_text)
+            self.assertIn("production_mode=True", log_text)
+            self.assertIn("key_path_ignored", log_text)
+        finally:
+            os.chdir(current_cwd)
+            if env_backup is not None:
+                os.environ["MAGI_PLUGIN_PUBKEY_PATH"] = env_backup
+            else:
+                os.environ.pop("MAGI_PLUGIN_PUBKEY_PATH", None)
+
+    def test_logs_public_key_resolution_source_env(self):
+        """公開鍵パス解決元が環境変数であることをログに記録する"""
+        private_key, public_pem = _generate_rsa_key_pair()
+        plugin_data = {
+            "plugin": {
+                "name": "env-secure-plugin",
+                "version": "1.0.0",
+                "description": "env path",
+                "hash": "sha256:" + ("f" * 64),
+            },
+            "bridge": {"command": "echo", "interface": "stdio", "timeout": 5},
+        }
+        canonical = _canonical_bytes(plugin_data)
+        signature = private_key.sign(
+            canonical,
+            padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
+            hashes.SHA256(),
+        )
+        plugin_data["plugin"]["signature"] = base64.b64encode(signature).decode("ascii")
+
+        plugin_file = self.temp_path / "env_plugin.yaml"
+        plugin_file.write_text(
+            yaml.dump(plugin_data, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+
+        env_key_path = self.temp_path / "env_pubkey.pem"
+        env_key_path.write_text(public_pem.decode("utf-8"), encoding="utf-8")
+        env_backup = os.environ.get("MAGI_PLUGIN_PUBKEY_PATH")
+        os.environ["MAGI_PLUGIN_PUBKEY_PATH"] = str(env_key_path)
+
+        try:
+            config = type(
+                "Config",
+                (),
+                {"plugin_public_key_path": None, "production_mode": False},
+            )()
+            loader = PluginLoader(config=config)
+
+            with self.assertLogs("magi.plugins.loader", level="INFO") as logs:
+                plugin = loader.load(plugin_file)
+
+            self.assertEqual(plugin.metadata.name, "env-secure-plugin")
+            log_text = "\n".join(logs.output)
+            self.assertIn("source=env", log_text)
+            self.assertIn(str(env_key_path), log_text)
+        finally:
+            if env_backup is not None:
+                os.environ["MAGI_PLUGIN_PUBKEY_PATH"] = env_backup
+            else:
+                os.environ.pop("MAGI_PLUGIN_PUBKEY_PATH", None)
 
 
 class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
