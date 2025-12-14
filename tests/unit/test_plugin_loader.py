@@ -232,7 +232,7 @@ class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
                 "hash": "sha256:" + ("d" * 64),
             },
             "bridge": {
-                "command": "echo async",
+                "command": "echo",
                 "interface": "stdio",
             },
         }
