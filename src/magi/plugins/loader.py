@@ -331,10 +331,7 @@ class PluginLoader:
 
         config_timeout = None
         if self.config is not None:
-            try:
-                config_timeout = getattr(self.config, "plugin_load_timeout")
-            except Exception:
-                config_timeout = None
+            config_timeout = getattr(self.config, "plugin_load_timeout", None)
 
         return float(config_timeout) if config_timeout is not None else 30.0
 
