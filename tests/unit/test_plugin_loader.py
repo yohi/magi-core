@@ -211,3 +211,114 @@ class TestPluginLoader(unittest.TestCase):
         self.assertEqual(cm.exception.error.code, ErrorCode.PLUGIN_YAML_PARSE_ERROR.value)
         error_message = cm.exception.error.message.lower()
         self.assertTrue("plugin" in error_message or "bridge" in error_message)
+
+
+class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
+    """非同期ロードの基本動作を検証する"""
+
+    def setUp(self):
+        self.tmpdir = TemporaryDirectory()
+        self.temp_path = Path(self.tmpdir.name)
+        self.loader = PluginLoader()
+
+    def tearDown(self):
+        self.tmpdir.cleanup()
+
+    async def test_load_async_logs_start_and_complete(self):
+        """load_async が正常に読み込み、開始/完了ログを残す"""
+        plugin_data = {
+            "plugin": {
+                "name": "async_plugin",
+                "hash": "sha256:" + ("d" * 64),
+            },
+            "bridge": {
+                "command": "echo",
+                "interface": "stdio",
+            },
+        }
+        plugin_file = self.temp_path / "async_plugin.yaml"
+        plugin_file.write_text(yaml.dump(plugin_data))
+
+        with self.assertLogs("magi.plugins.loader", level="INFO") as cm:
+            plugin = await self.loader.load_async(plugin_file)
+
+        self.assertEqual(plugin.metadata.name, "async_plugin")
+        logs = "\n".join(cm.output)
+        self.assertIn("plugin.load.started", logs)
+        self.assertIn("plugin.load.completed", logs)
+
+    async def test_load_all_async_loads_multiple_plugins(self):
+        """複数プラグインを非同期で読み込めること"""
+        plugin_data_1 = {
+            "plugin": {
+                "name": "plugin_one",
+                "hash": "sha256:" + ("e" * 64),
+            },
+            "bridge": {
+                "command": "python3",
+                "interface": "stdio",
+            },
+        }
+        plugin_data_2 = {
+            "plugin": {
+                "name": "plugin_two",
+                "hash": "sha256:" + ("f" * 64),
+            },
+            "bridge": {
+                "command": "/usr/bin/python3",
+                "interface": "stdio",
+            },
+        }
+
+        file_one = self.temp_path / "one.yaml"
+        file_two = self.temp_path / "two.yaml"
+        file_one.write_text(yaml.dump(plugin_data_1))
+        file_two.write_text(yaml.dump(plugin_data_2))
+
+        results = await self.loader.load_all_async([file_one, file_two])
+
+        self.assertEqual(len(results), 2)
+        # 成功ケースでは両方ともPluginオブジェクトであることを確認
+        self.assertIsInstance(results[0], Plugin)
+        self.assertIsInstance(results[1], Plugin)
+        self.assertEqual(results[0].metadata.name, "plugin_one")
+        self.assertEqual(results[1].metadata.name, "plugin_two")
+
+    async def test_load_all_async_isolates_failures(self):
+        """1つのプラグインのロード失敗が他のプラグインに影響しないこと"""
+        # 1つ目は正常なプラグイン
+        plugin_data_1 = {
+            "plugin": {
+                "name": "valid_plugin",
+                "hash": "sha256:" + ("a" * 64),
+            },
+            "bridge": {
+                "command": "python3",
+                "interface": "stdio",
+            },
+        }
+        file_one = self.temp_path / "valid.yaml"
+        file_one.write_text(yaml.dump(plugin_data_1))
+
+        # 2つ目は存在しないファイル
+        file_two = self.temp_path / "nonexistent.yaml"
+
+        # 3つ目は無効なYAML
+        file_three = self.temp_path / "invalid.yaml"
+        file_three.write_text("{invalid yaml:")
+
+        results = await self.loader.load_all_async([file_one, file_two, file_three])
+
+        self.assertEqual(len(results), 3)
+
+        # 1つ目は成功
+        self.assertIsInstance(results[0], Plugin)
+        self.assertEqual(results[0].metadata.name, "valid_plugin")
+
+        # 2つ目と3つ目は例外
+        self.assertIsInstance(results[1], Exception)
+        self.assertIsInstance(results[2], Exception)
+
+        # 例外がMagiExceptionであることを確認
+        self.assertIsInstance(results[1], MagiException)
+        self.assertIsInstance(results[2], MagiException)
