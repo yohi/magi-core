@@ -319,7 +319,8 @@ class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
                 "signature": "invalid-base64",
             },
             "bridge": {
-                "command": "echo signed",
+                # PluginGuard が拒否しない安全なコマンドを使用する
+                "command": "echo",
                 "interface": "stdio",
             },
         }
