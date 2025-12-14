@@ -44,14 +44,14 @@
   - 署名検証失敗時に監査ログ (`plugin.load.signature_failed`) を記録し、PluginLoadError を送出
   - _Requirements: 1.1, 1.2, 1.5_
 
- - [x] 2.3 プラグインロードのタイムアウトと隔離
+- [x] 2.3 プラグインロードのタイムアウトと隔離
   - `load_async()` に個別タイムアウトを適用 (`asyncio.wait_for` 使用)
   - タイムアウト時は当該プラグインのみ無効化し、起動処理を継続
   - タイムアウト理由とプラグイン識別子を監査ログ (`plugin.load.timeout`) に記録
   - プラグインロード失敗時の影響を他プラグインや合議処理に波及させない隔離機構を実装
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 2.4 複数プラグインの同時ロード数制限
+- [x] 2.4 複数プラグインの同時ロード数制限
   - `load_all_async()` で `asyncio.Semaphore` を用いた同時ロード数制限を実装
   - 上限値は `MagiSettings.plugin_concurrency_limit` (デフォルト 3) から取得
   - 上限超過時のロード要求を待機させ、待機開始/終了を監査ログに記録

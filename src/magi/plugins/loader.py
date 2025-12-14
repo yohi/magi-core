@@ -162,15 +162,42 @@ class PluginLoader:
         Args:
             paths: ロードするプラグインファイルのパスリスト
             timeout: 各プラグインのロードタイムアウト(秒)
-            concurrency_limit: 同時実行数の制限(未実装)
+            concurrency_limit: 同時実行数の制限。None の場合は設定値を使用。
 
         Returns:
             プラグインまたは例外のリスト。各要素は成功時はPluginオブジェクト、
             失敗時はExceptionオブジェクト。1つのプラグインの失敗が他のプラグインの
             ロードを妨げることはない。
         """
-        _ = concurrency_limit  # 未使用パラメータ(同時実行制御は今後のタスクで対応)
-        tasks = [self.load_async(path, timeout=timeout) for path in paths]
+        effective_limit = self._get_concurrency_limit(concurrency_limit)
+        semaphore = asyncio.Semaphore(effective_limit)
+
+        async def _load_with_limit(path: Path) -> Plugin:
+            wait_started_at: Optional[float] = None
+            if semaphore.locked():
+                wait_started_at = time.monotonic()
+                LOGGER.info(
+                    "plugin.load.wait_start path=%s limit=%d",
+                    path,
+                    effective_limit,
+                )
+
+            await semaphore.acquire()
+            if wait_started_at is not None:
+                wait_duration = time.monotonic() - wait_started_at
+                LOGGER.info(
+                    "plugin.load.wait_end path=%s limit=%d wait_duration=%.3f",
+                    path,
+                    effective_limit,
+                    wait_duration,
+                )
+
+            try:
+                return await self.load_async(path, timeout=timeout)
+            finally:
+                semaphore.release()
+
+        tasks = [_load_with_limit(path) for path in paths]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         return results
 
@@ -340,6 +367,20 @@ class PluginLoader:
             config_timeout = getattr(self.config, "plugin_load_timeout", None)
 
         return float(config_timeout) if config_timeout is not None else 30.0
+
+    def _get_concurrency_limit(self, concurrency_limit: Optional[int]) -> int:
+        """プラグインロードの同時実行上限を解決する"""
+        if concurrency_limit is not None and concurrency_limit > 0:
+            return int(concurrency_limit)
+
+        config_limit = None
+        if self.config is not None:
+            config_limit = getattr(self.config, "plugin_concurrency_limit", None)
+
+        if isinstance(config_limit, int) and config_limit > 0:
+            return config_limit
+
+        return 3
 
     @staticmethod
     def _format_pydantic_errors(exc: ValidationError) -> List[str]:
