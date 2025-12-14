@@ -78,6 +78,12 @@ class ArgumentParser:
                 i += 1
                 continue
 
+            # 設定チェックオプション
+            if arg == "--config-check":
+                options["config_check"] = True
+                i += 1
+                continue
+
             # フォーマットオプション
             if arg == "--format":
                 if i + 1 < len(argv):
@@ -146,7 +152,7 @@ class ArgumentParser:
         errors: List[str] = []
 
         # ヘルプ・バージョンオプションは常に有効
-        if parsed.options.get("help") or parsed.options.get("version"):
+        if parsed.options.get("help") or parsed.options.get("version") or parsed.options.get("config_check"):
             return ValidationResult(is_valid=True, errors=[])
 
         # コマンドが空の場合
