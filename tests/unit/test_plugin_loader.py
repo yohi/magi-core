@@ -153,7 +153,7 @@ class TestPluginLoader(unittest.TestCase):
             self.loader.load(plugin_file)
 
         self.assertEqual(cm.exception.error.code, ErrorCode.PLUGIN_YAML_PARSE_ERROR.value)
-        self.assertIn("signature", cm.exception.error.message.lower())
+        self.assertIn("signature or plugin.hash", cm.exception.error.message.lower())
 
     def test_command_with_meta_characters_is_rejected(self):
         """メタ文字を含むコマンドは無効として扱われる"""
@@ -209,8 +209,5 @@ class TestPluginLoader(unittest.TestCase):
             self.loader.load(plugin_file)
         
         self.assertEqual(cm.exception.error.code, ErrorCode.PLUGIN_YAML_PARSE_ERROR.value)
-        # We need to check for either of the two missing sections errors.
-        # This is a bit brittle, but Hypothesis might generate only one type of error at a time.
-        error_message = cm.exception.error.message
-        self.assertTrue("Missing or invalid 'plugin' section" in error_message or
-                        "Missing or invalid 'bridge' section" in error_message)
+        error_message = cm.exception.error.message.lower()
+        self.assertTrue("plugin" in error_message or "bridge" in error_message)

@@ -21,7 +21,7 @@
   - 既存コードベース全体の `Config` 参照箇所を `MagiSettings` に更新 (`src/magi/` 配下全体)
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 6.3_
 
-- [ ] 1.3 (P) プラグイン定義の Pydantic モデル化
+  - [x] 1.3 (P) プラグイン定義の Pydantic モデル化
   - `PluginMetadataModel`, `BridgeConfigModel`, `PluginModel` を Pydantic BaseModel として定義
   - `name`, `version`, `description`, `signature`, `hash` を PluginMetadataModel に型付きで定義
   - `command`, `interface`, `timeout` を BridgeConfigModel に定義し、`timeout` は `gt=0` で検証

@@ -99,61 +99,13 @@
 
 - **リスク 2**: セマフォ導入によるデッドロック
 
-  **軽減策の詳細**:
+  **軽減策**:
+  - タイムアウト設定（デフォルト30秒）とチューニングガイダンス
+  - 監視メトリクス（待機数、待機時間、保持時間、タイムアウト発生回数）
+  - デッドロック検出（長時間保持の警告ログ）
+  - リトライ戦略（指数バックオフ + ジッター、最大3回）
 
-  1. **タイムアウト設定**
-     - **デフォルト値**: 30秒（`SEMAPHORE_ACQUIRE_TIMEOUT_SECONDS=30`）
-     - **チューニングガイダンス**:
-       - p95 acquire_wait が 20秒を超える場合、タイムアウトを延長（40-60秒）
-       - キュー長（waiting_count）が常時 10 以上の場合、`max_concurrent_requests` を増加
-       - p95 acquire_wait が 5秒未満の場合、タイムアウトを短縮（15-20秒）可能
-
-  2. **監視メトリクス**
-     - `semaphore_queue_length`: 現在の待機数（gauge）
-     - `semaphore_acquire_wait_seconds`: 取得待機時間（histogram、p95/p99）
-     - `semaphore_hold_seconds`: セマフォ保持時間（histogram、p95/p99）
-     - `semaphore_timeouts_total`: タイムアウト発生回数（counter）
-     - `semaphore_rate_limits_total`: レート制限発生回数（counter）
-
-  3. **デッドロック検出**
-     - **長時間保持の検出**: p95 hold_seconds が 120秒を超える場合、警告ログを出力
-     - **ログ内容**: タスクID、スタックトレース、保持時間、現在のキュー状態
-     - **自動検出ロジック**: メトリクス収集時に保持時間をチェックし、閾値超過時にログ
-
-     ```python
-     # 例: 保持時間が異常に長い場合のログ
-     logger.warning(
-         "Long-running semaphore hold detected",
-         extra={
-             "task_id": task_id,
-             "hold_duration_seconds": duration,
-             "queue_length": queue_length,
-             "stack_trace": traceback.format_stack()
-         }
-     )
-     ```
-
-  4. **タイムアウト処理戦略**
-     - **リトライ戦略**:
-       - 指数バックオフ: `wait_time = base_delay * (2 ** attempt)`
-       - ジッター: `wait_time += random.uniform(0, wait_time * 0.1)`
-       - 最大リトライ回数: 3回
-       - リトライ条件: `ConcurrencyLimitError` のみ（他のエラーはリトライしない）
-
-     - **冪等性要件**:
-       - LLM API呼び出しは基本的に冪等（同じ入力で同じ出力）
-       - ただし、temperature > 0 の場合は非決定的なため、リトライ時に異なる結果が返る可能性がある
-       - リトライ時は元のリクエストIDを保持し、重複呼び出しを避ける
-
-     - **HTTP 429 返却タイミング**:
-       - 3回のリトライ後もタイムアウトが続く場合、`ConcurrencyLimitError` を上位に伝播
-       - CLI / API レイヤーで `ConcurrencyLimitError` をキャッチし、適切なエラーメッセージまたは HTTP 429 を返す
-       - メッセージ例: "システムが現在高負荷です。しばらく待ってから再試行してください。"
-
-  5. **実装上の注意点**
-     - これらの詳細は `design.md` の ConcurrencyController セクションと `tasks.md` に反映すること
-     - メトリクス収集は OpenTelemetry または Prometheus クライアントを使用
-     - テスト時は `reset_concurrency_controller()` でシングルトンをクリアし、モックを注入可能にする
+  **詳細な実装ガイダンスについては**: [design.md の ConcurrencyController セクション](./design.md#concurrencycontroller) を参照してください。
 
 - **リスク 3**: 非同期化による挙動変更 → 既存の同期 API を維持しつつ、内部で `asyncio.run` を呼び出すラッパーを提供する（後方互換性）。
 
