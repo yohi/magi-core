@@ -44,7 +44,7 @@
   - 署名検証失敗時に監査ログ (`plugin.load.signature_failed`) を記録し、PluginLoadError を送出
   - _Requirements: 1.1, 1.2, 1.5_
 
-- [ ] 2.3 プラグインロードのタイムアウトと隔離
+ - [x] 2.3 プラグインロードのタイムアウトと隔離
   - `load_async()` に個別タイムアウトを適用 (`asyncio.wait_for` 使用)
   - タイムアウト時は当該プラグインのみ無効化し、起動処理を継続
   - タイムアウト理由とプラグイン識別子を監査ログ (`plugin.load.timeout`) に記録

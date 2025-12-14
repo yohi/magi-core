@@ -135,9 +135,14 @@ class PluginLoader:
                 path,
                 effective_timeout,
                 duration,
-                exc_info=True
+                exc_info=True,
             )
-            raise
+            raise MagiException(
+                create_plugin_error(
+                    ErrorCode.PLUGIN_COMMAND_TIMEOUT,
+                    f"Plugin load timed out for {path} after {effective_timeout:.3f}s",
+                )
+            )
         except Exception:
             LOGGER.exception("plugin.load.failed path=%s", path)
             raise
