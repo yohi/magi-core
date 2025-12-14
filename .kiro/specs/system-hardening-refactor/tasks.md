@@ -38,7 +38,7 @@
   - プラグインロード開始/終了イベントを監査ログに記録 (`plugin.load.started`, `plugin.load.completed`)
   - _Requirements: 1.1, 1.5, 6.1, 6.3_
 
-- [ ] 2.2 (P) プラグイン署名検証の非同期化
+- [x] 2.2 (P) プラグイン署名検証の非同期化
   - `_verify_security()` 内の署名検証とハッシュ計算を `asyncio.to_thread` でオフロード
   - 公開鍵パス解決ロジックを維持しつつ、非同期実行に対応
   - 署名検証失敗時に監査ログ (`plugin.load.signature_failed`) を記録し、PluginLoadError を送出
