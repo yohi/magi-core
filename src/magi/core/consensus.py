@@ -31,7 +31,11 @@ from magi.core.context import ContextManager
 from magi.core.quorum import QuorumManager
 from magi.core.schema_validator import SchemaValidationError, SchemaValidator
 from magi.core.template_loader import TemplateLoader
-from magi.core.token_budget import ReductionLog, TokenBudgetManager
+from magi.core.token_budget import (
+    ReductionLog,
+    TokenBudgetManager,
+    TokenBudgetManagerProtocol,
+)
 from magi.errors import ErrorCode, MagiError, MagiException, create_agent_error
 from magi.llm.client import LLMClient
 from magi.core.streaming import (
@@ -136,6 +140,7 @@ class ConsensusEngine:
         streaming_emitter: Optional[Any] = None,
         event_context: Optional[Dict[str, Any]] = None,
         concurrency_controller: Optional[ConcurrencyController] = None,
+        token_budget_manager: Optional[TokenBudgetManagerProtocol] = None,
     ):
         """ConsensusEngineを初期化
 
@@ -203,8 +208,8 @@ class ConsensusEngine:
         # コンテキスト削減ログを保持
         self._reduction_logs: List[ReductionLog] = []
         # トークン予算マネージャ
-        self.token_budget_manager = TokenBudgetManager(
-            max_tokens=self.config.token_budget
+        self.token_budget_manager = token_budget_manager or TokenBudgetManager(
+            max_tokens=getattr(self.config, "token_budget", None)
         )
         # ストリーミング出力設定
         self._streaming_enabled = getattr(self.config, "enable_streaming_output", False)
@@ -260,6 +265,7 @@ class ConsensusEngine:
                 schema_validator=self.schema_validator,
                 template_loader=self.template_loader,
                 security_filter=self.security_filter,
+                token_budget_manager=self.token_budget_manager,
             )
 
         return agents
