@@ -433,6 +433,9 @@ class ConsensusEngine:
             queue_size=getattr(self.config, "streaming_queue_size", 100),
             emit_timeout_seconds=getattr(self.config, "streaming_emit_timeout", 2.0),
             overflow_policy=getattr(self.config, "streaming_overflow_policy", "drop"),
+            on_event=lambda event_type, payload: self._record_event(
+                event_type, **payload
+            ),
         )
 
     async def _run_thinking_phase(self, prompt: str) -> Dict[PersonaType, ThinkingOutput]:
