@@ -131,7 +131,7 @@
 
 ## 6. ストリーミング出力のバックプレッシャ対応
 
-- [ ] 6.1 (P) StreamingEmitter のバックプレッシャ/ドロップ方針設定化
+- [x] 6.1 (P) StreamingEmitter のバックプレッシャ/ドロップ方針設定化
   - `streaming_overflow_policy` (`drop` / `backpressure`) を `MagiSettings` から取得
   - `emit()` メソッドで `priority` 引数 (`normal` / `critical`) を追加
   - `priority="critical"` のイベントは決してドロップせず、必要に応じて非クリティカルイベントを削除して挿入
