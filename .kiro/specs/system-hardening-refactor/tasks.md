@@ -145,7 +145,7 @@
   - ドロップおよびタイムアウトをイベント (`streaming.drop`, `streaming.timeout`) として記録
   - _Requirements: 3.2, 3.3_
 
-- [ ] 6.3 (P) ストリーミングメトリクスの記録
+- [x] 6.3 (P) ストリーミングメトリクスの記録
   - TTFB (Time To First Byte)、送出遅延、欠落率を計測
   - `get_state()` で `StreamingState` (キューサイズ、現在長、送出数、ドロップ数、TTFB、経過時間、最終ドロップ理由) を返却
   - メトリクスを定期的にログに記録し、観測可能性を確保

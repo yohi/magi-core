@@ -7,7 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from magi.config.manager import Config
 from magi.core.consensus import ConsensusEngine
-from magi.core.streaming import QueueStreamingEmitter, StreamingTimeoutError
+from magi.core.streaming import (
+    QueueStreamingEmitter,
+    StreamingState,
+    StreamingTimeoutError,
+)
 from magi.models import DebateOutput, PersonaType, ThinkingOutput
 
 
@@ -169,6 +173,63 @@ class TestQueueStreamingEmitter(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, emitter.dropped)
         self.assertEqual("streaming.drop", events[0][0])
         self.assertEqual("backpressure_timeout", events[0][1]["reason"])
+
+    async def test_get_state_reports_metrics(self) -> None:
+        """get_state でキューメトリクスと TTFB/経過時間を取得できる."""
+        gate = asyncio.Event()
+
+        async def gated_send(_chunk):
+            await gate.wait()
+
+        emitter = QueueStreamingEmitter(
+            send_func=gated_send,
+            queue_size=2,
+            emit_timeout_seconds=0.05,
+            auto_start=False,
+        )
+
+        initial = emitter.get_state()
+        self.assertIsInstance(initial, StreamingState)
+        self.assertEqual(2, initial.queue_size)
+        self.assertEqual(0, initial.emitted_count)
+        self.assertIsNone(initial.ttfb_ms)
+
+        await emitter.emit("melchior", "c1", "debate", 1)
+        await emitter.start()
+        gate.set()
+        await asyncio.sleep(0.02)
+
+        state = emitter.get_state()
+        self.assertGreaterEqual(state.emitted_count, 1)
+        self.assertEqual(0, state.dropped_count)
+        self.assertAlmostEqual(0.0, state.drop_rate)
+        self.assertIsNotNone(state.ttfb_ms)
+        self.assertIsNotNone(state.elapsed_ms)
+        await emitter.aclose()
+
+    async def test_get_state_tracks_drop_rate_and_reason(self) -> None:
+        """ドロップ率と最終ドロップ理由を集計する."""
+
+        async def immediate_send(_chunk):
+            return None
+
+        emitter = QueueStreamingEmitter(
+            send_func=immediate_send,
+            queue_size=1,
+            emit_timeout_seconds=0.05,
+            auto_start=False,
+        )
+
+        await emitter.emit("melchior", "c1", "debate", 1)
+        await emitter.emit("balthasar", "c2", "debate", 1)
+        await emitter.start()
+        await asyncio.sleep(0.02)
+
+        state = emitter.get_state()
+        self.assertEqual(1, state.dropped_count)
+        self.assertEqual("evicted", state.last_drop_reason)
+        self.assertAlmostEqual(0.5, state.drop_rate)
+        await emitter.aclose()
 
 
 class TestConsensusDebateStreaming(unittest.IsolatedAsyncioTestCase):
