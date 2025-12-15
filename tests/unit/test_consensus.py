@@ -12,7 +12,9 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 import asyncio
 from datetime import datetime
+from contextlib import asynccontextmanager
 
+from magi.core.concurrency import ConcurrencyLimitError, ConcurrencyMetrics
 from magi.core.consensus import ConsensusEngine
 from magi.core.context import ContextManager
 from magi.agents.persona import PersonaManager
@@ -30,6 +32,30 @@ from magi.models import (
     Decision,
     PersonaType,
 )
+
+
+class _StubConcurrencyController:
+    """テスト用のシンプルな ConcurrencyController スタブ."""
+
+    def __init__(self, fail: bool = False):
+        self.fail = fail
+        self.calls = []
+
+    @asynccontextmanager
+    async def acquire(self, timeout=None):
+        self.calls.append(timeout)
+        if self.fail:
+            raise ConcurrencyLimitError("acquire failed in stub")
+        yield
+
+    def get_metrics(self) -> ConcurrencyMetrics:
+        return ConcurrencyMetrics(
+            active_count=0,
+            waiting_count=0,
+            total_acquired=len(self.calls),
+            total_timeouts=1 if self.fail else 0,
+            total_rate_limits=0,
+        )
 
 
 class TestConsensusEngineInit(unittest.TestCase):
@@ -405,6 +431,59 @@ class TestConsensusTokenBudget(unittest.TestCase):
         self.assertFalse(result["summary_applied"])
         self.assertEqual([], self.engine.context_reduction_logs)
         self.assertEqual(short_context, result["context"])
+
+
+class TestConsensusConcurrencyIntegration(unittest.TestCase):
+    """ConcurrencyController との統合テスト."""
+
+    def test_thinking_phase_acquires_concurrency(self):
+        """Thinking Phase が acquire を呼び出す."""
+        controller = _StubConcurrencyController()
+        config = Config(api_key="test-api-key")
+        engine = ConsensusEngine(config, concurrency_controller=controller)
+        thinking_output = ThinkingOutput(
+            persona_type=PersonaType.MELCHIOR,
+            content="ok",
+            timestamp=datetime.now(),
+        )
+        agent = MagicMock(think=AsyncMock(return_value=thinking_output))
+
+        with patch.object(
+            engine,
+            "_create_agents",
+            return_value={PersonaType.MELCHIOR: agent},
+        ):
+            result = asyncio.run(engine._run_thinking_phase("hello"))
+
+        self.assertEqual(len(controller.calls), 1)
+        self.assertEqual(controller.calls[0], config.timeout)
+        agent.think.assert_awaited_once()
+        self.assertIn(PersonaType.MELCHIOR, result)
+        self.assertEqual(result[PersonaType.MELCHIOR].content, "ok")
+
+    def test_concurrency_timeout_is_handled(self):
+        """ConcurrencyLimitError を捕捉して結果を欠落として扱う."""
+        controller = _StubConcurrencyController(fail=True)
+        engine = ConsensusEngine(
+            Config(api_key="test-api-key"), concurrency_controller=controller
+        )
+        agent = MagicMock(think=AsyncMock())
+
+        with patch.object(
+            engine,
+            "_create_agents",
+            return_value={PersonaType.MELCHIOR: agent},
+        ):
+            result = asyncio.run(engine._run_thinking_phase("hello"))
+
+        agent.think.assert_not_awaited()
+        self.assertEqual(result, {})
+        self.assertTrue(
+            any(
+                err.get("phase") == ConsensusPhase.THINKING.value
+                for err in engine.errors
+            )
+        )
 
 
 class TestConsensusSecurityFilter(unittest.TestCase):
