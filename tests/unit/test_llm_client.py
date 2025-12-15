@@ -363,6 +363,73 @@ class TestLLMClientAsync(unittest.TestCase):
             ]
         )
 
+    def test_rate_limit_records_metrics_and_logs_backoff(self):
+        """レート制限時にメトリクス記録とバックオフログが出る"""
+        from anthropic import RateLimitError
+        import httpx
+
+        # ConcurrencyControllerをモック化してレート制限記録を検証
+        mock_controller = MagicMock()
+        client = LLMClient(
+            api_key="test-key",
+            retry_count=2,
+            base_delay_seconds=0.1,
+            rate_limit_backoff_cap=0.2,
+            min_rate_limit_backoff_seconds=0.05,
+            concurrency_controller=mock_controller,
+        )
+
+        # 1回目は429を返し、2回目で成功する
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="rate-ok")]
+        mock_response.usage.input_tokens = 10
+        mock_response.usage.output_tokens = 5
+        mock_response.model = "model-x"
+
+        mock_httpx_response = MagicMock(spec=httpx.Response)
+        mock_httpx_response.request = MagicMock()
+        mock_httpx_response.status_code = 429
+        mock_httpx_response.headers = MagicMock()
+        mock_httpx_response.headers.get = MagicMock(return_value=None)
+
+        rate_limit_error = RateLimitError(
+            "Rate limit exceeded",
+            response=mock_httpx_response,
+            body=None,
+        )
+
+        call_count = 0
+
+        async def mock_send(request):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise rate_limit_error
+            return mock_response
+
+        client._send_request = AsyncMock(side_effect=mock_send)
+        request = LLMRequest(system_prompt="s", user_prompt="u")
+
+        with patch(
+            "magi.llm.client.random.uniform",
+            return_value=0.0,
+        ) as mock_uniform, patch(
+            "magi.llm.client.asyncio.sleep",
+            new_callable=AsyncMock,
+        ) as mock_sleep, self.assertLogs(
+            "magi.llm.client", level="WARNING"
+        ) as log:
+            asyncio.run(client.send(request))
+
+        mock_controller.note_rate_limit.assert_called_once()
+        self.assertEqual(mock_sleep.await_count, 1)
+        sleep_arg = mock_sleep.await_args_list[0].args[0]
+        self.assertGreaterEqual(sleep_arg, 0.05)
+        mock_uniform.assert_called_once_with(0, 0.1)
+        self.assertTrue(
+            any("rate limit" in message.lower() for message in log.output)
+        )
+
     def test_retry_with_full_jitter_for_timeout(self):
         """タイムアウト時にFull Jitterで3回試行し例外を送出する"""
         client = LLMClient(

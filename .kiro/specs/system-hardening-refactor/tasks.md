@@ -101,7 +101,7 @@
   - `note_rate_limit()` でレート制限発生を記録
   - _Requirements: 2.1, 2.2, 2.5_
 
-- [ ] 5.2 LLMClient のレート制限対応強化
+ - [x] 5.2 LLMClient のレート制限対応強化
   - レート制限エラー (HTTP 429) 検出時に、即座に再試行せずバックオフを適用
   - `ConcurrencyController.note_rate_limit()` を呼び出し、レート制限発生を記録
   - 再試行抑制がログに記録され、システム全体のスループット制御に寄与
