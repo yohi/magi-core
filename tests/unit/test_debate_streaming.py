@@ -41,6 +41,36 @@ class RecordingEmitter:
 class TestQueueStreamingEmitter(unittest.IsolatedAsyncioTestCase):
     """QueueStreamingEmitter の挙動を検証する."""
 
+    async def test_drop_records_event_and_counts(self) -> None:
+        """ドロップ時にイベントと欠落件数が記録される."""
+        events = []
+        gate = asyncio.Event()
+
+        async def slow_send(_chunk):
+            await gate.wait()
+
+        def on_event(event_type: str, payload: dict) -> None:
+            events.append((event_type, payload))
+
+        emitter = QueueStreamingEmitter(
+            send_func=slow_send,
+            queue_size=1,
+            emit_timeout_seconds=0.05,
+            auto_start=False,
+            on_event=on_event,
+        )
+        await emitter.emit("melchior", "c1", "debate", 1)
+        with self.assertLogs("magi.core.streaming", level="WARNING") as captured:
+            await emitter.emit("balthasar", "c2", "debate", 1)
+        gate.set()
+        await emitter.aclose()
+
+        self.assertEqual(1, emitter.dropped)
+        self.assertEqual("streaming.drop", events[0][0])
+        self.assertEqual(1, events[0][1]["dropped_total"])
+        self.assertEqual("overflow", events[0][1]["reason"])
+        self.assertTrue(any("dropped_total=1" in msg for msg in captured.output))
+
     async def test_drop_oldest_when_queue_full(self) -> None:
         """キュー満杯時に最古のチャンクをドロップして最新を保持する."""
         sent = []
@@ -118,17 +148,27 @@ class TestQueueStreamingEmitter(unittest.IsolatedAsyncioTestCase):
     async def test_backpressure_timeout_raises_for_normal(self) -> None:
         """backpressure モードでは空き待ちタイムアウトで例外を送出する."""
         send = AsyncMock()
+        events = []
+
+        def on_event(event_type: str, payload: dict) -> None:
+            events.append((event_type, payload))
+
         emitter = QueueStreamingEmitter(
             send_func=send,
             queue_size=1,
             emit_timeout_seconds=0.01,
             auto_start=False,
             overflow_policy="backpressure",
+            on_event=on_event,
         )
         await emitter.emit("melchior", "c1", "debate", 1)
         with self.assertRaises(StreamingTimeoutError):
             await emitter.emit("balthasar", "c2", "debate", 1)
         await emitter.aclose()
+
+        self.assertEqual(1, emitter.dropped)
+        self.assertEqual("streaming.timeout", events[0][0])
+        self.assertEqual("backpressure_timeout", events[0][1]["reason"])
 
 
 class TestConsensusDebateStreaming(unittest.IsolatedAsyncioTestCase):
