@@ -13,9 +13,11 @@ import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from pydantic.config import ConfigDict
 
+from magi.config.settings import MagiSettings
 from magi.errors import ErrorCode, MagiException, create_plugin_error
 from magi.models import PersonaType
 from magi.plugins.guard import PluginGuard
+from magi.plugins.permission_guard import PluginPermissionGuard
 from magi.plugins.signature import PluginSignatureValidator
 
 HASH_PATTERN = re.compile(r"^sha256:[0-9a-fA-F]{64}$")
@@ -115,6 +117,7 @@ class PluginLoader:
         public_key_path: Optional[Path] = None,
         config: Optional[Any] = None,
         signature_validator: Optional[PluginSignatureValidator] = None,
+        permission_guard: Optional[PluginPermissionGuard] = None,
     ) -> None:
         """初期化
 
@@ -122,10 +125,12 @@ class PluginLoader:
             public_key_path: 署名検証に用いる公開鍵パス (優先度最高)
             config: Config または同等のオブジェクト。plugin_public_key_path 属性を参照する
             signature_validator: 検証用のバリデータ (テスト差し替え用)
+            permission_guard: プロンプト上書き権限チェック用ガード (テスト差し替え用)
         """
         self.public_key_path = public_key_path
         self.config = config
         self.signature_validator = signature_validator or PluginSignatureValidator()
+        self.permission_guard = permission_guard or self._build_permission_guard(config)
 
     async def load_async(self, path: Path, *, timeout: Optional[float] = None) -> Plugin:
         """プラグインを非同期でロードする"""
@@ -245,7 +250,7 @@ class PluginLoader:
                 ErrorCode.PLUGIN_YAML_PARSE_ERROR,
                 f"Plugin file not found: {path}"
             ))
-        
+
         try:
             content = path.read_text(encoding="utf-8")
             plugin_data = self._parse_yaml(content)
@@ -483,8 +488,16 @@ class PluginLoader:
             timeout=plugin_model.bridge.timeout,
         )
 
+        filtered_overrides = plugin_model.agent_overrides
+        if self.permission_guard is not None:
+            check_result = self.permission_guard.check_override_permission(
+                metadata,
+                plugin_model.agent_overrides,
+            )
+            filtered_overrides = check_result.filtered_overrides
+
         agent_overrides: Dict[PersonaType, str] = {}
-        for persona_name, override_prompt in plugin_model.agent_overrides.items():
+        for persona_name, override_prompt in filtered_overrides.items():
             try:
                 persona_type = PersonaType[persona_name.upper()]
                 agent_overrides[persona_type] = override_prompt
@@ -499,6 +512,13 @@ class PluginLoader:
             signature=metadata.signature,
             hash=metadata.hash,
         )
+
+    @staticmethod
+    def _build_permission_guard(config: Optional[Any]) -> Optional[PluginPermissionGuard]:
+        """設定から PluginPermissionGuard を初期化する。"""
+        if isinstance(config, MagiSettings):
+            return PluginPermissionGuard(config)
+        return None
 
 @dataclass
 class ValidationResult:
