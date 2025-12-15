@@ -68,7 +68,7 @@ class TestQueueStreamingEmitter(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, emitter.dropped)
         self.assertEqual("streaming.drop", events[0][0])
         self.assertEqual(1, events[0][1]["dropped_total"])
-        self.assertEqual("overflow", events[0][1]["reason"])
+        self.assertEqual("evicted", events[0][1]["reason"])
         self.assertTrue(any("dropped_total=1" in msg for msg in captured.output))
 
     async def test_drop_oldest_when_queue_full(self) -> None:
@@ -167,7 +167,7 @@ class TestQueueStreamingEmitter(unittest.IsolatedAsyncioTestCase):
         await emitter.aclose()
 
         self.assertEqual(1, emitter.dropped)
-        self.assertEqual("streaming.timeout", events[0][0])
+        self.assertEqual("streaming.drop", events[0][0])
         self.assertEqual("backpressure_timeout", events[0][1]["reason"])
 
 
