@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Literal, Optional
 
@@ -20,6 +21,21 @@ class StreamChunk:
     phase: str
     round_number: Optional[int] = None
     priority: Literal["normal", "critical"] = "normal"
+
+
+@dataclass
+class StreamingState:
+    """ストリーミング状態のスナップショット."""
+
+    queue_size: int
+    current_queue_length: int
+    emitted_count: int
+    dropped_count: int
+    drop_rate: float
+    ttfb_ms: Optional[float]
+    elapsed_ms: Optional[float]
+    last_emit_ms: Optional[float]
+    last_drop_reason: Optional[str]
 
 
 class StreamingTimeoutError(TimeoutError):
@@ -83,12 +99,21 @@ class QueueStreamingEmitter(BaseStreamingEmitter):
         self._worker: asyncio.Task | None = None
         self._closed = False
         self._dropped = 0
+        self._emitted = 0
         self._auto_start = auto_start
         self._overflow_policy = overflow_policy
         self._on_event = on_event
+        self._started_at: float | None = None
+        self._first_emit_at: float | None = None
+        self._completed_at: float | None = None
+        self._ttfb_ms: float | None = None
+        self._last_emit_ms: float | None = None
+        self._last_drop_reason: str | None = None
 
     async def start(self) -> "QueueStreamingEmitter":
         if self._worker is None:
+            if self._started_at is None:
+                self._started_at = time.perf_counter()
             self._worker = asyncio.create_task(self._drain())
         return self
 
@@ -136,6 +161,7 @@ class QueueStreamingEmitter(BaseStreamingEmitter):
         )
 
     def _log_timeout(self, stream_chunk: StreamChunk, reason: str) -> None:
+        self._last_drop_reason = reason
         logger.warning(
             "streaming.emitter.timeout persona=%s phase=%s round=%s priority=%s "
             "dropped_total=%s reason=%s queue_length=%s queue_size=%s",
@@ -162,6 +188,7 @@ class QueueStreamingEmitter(BaseStreamingEmitter):
         self, stream_chunk: StreamChunk, dropped_persona: str, reason: str
     ) -> None:
         self._dropped += 1
+        self._last_drop_reason = reason
         logger.warning(
             "streaming.emitter.drop persona=%s phase=%s round=%s dropped_persona=%s "
             "dropped_total=%s reason=%s queue_length=%s queue_size=%s",
@@ -250,7 +277,16 @@ class QueueStreamingEmitter(BaseStreamingEmitter):
             except asyncio.CancelledError:
                 break
 
+            now = time.perf_counter()
+            if self._started_at is None:
+                self._started_at = now
+            if self._first_emit_at is None:
+                self._first_emit_at = now
+                if self._started_at is not None:
+                    self._ttfb_ms = (self._first_emit_at - self._started_at) * 1000
+
             try:
+                emit_started = time.perf_counter()
                 await asyncio.wait_for(
                     self._send_func(chunk),
                     timeout=self._emit_timeout,
@@ -266,6 +302,10 @@ class QueueStreamingEmitter(BaseStreamingEmitter):
                     exc,
                 )
             finally:
+                self._emitted += 1
+                emit_finished = time.perf_counter()
+                self._last_emit_ms = (emit_finished - emit_started) * 1000
+                self._completed_at = emit_finished
                 self._queue.task_done()
 
         # キャンセル時も残タスクを掃除する
@@ -278,6 +318,8 @@ class QueueStreamingEmitter(BaseStreamingEmitter):
 
     async def aclose(self) -> None:
         self._closed = True
+        if self._started_at is not None and self._completed_at is None:
+            self._completed_at = time.perf_counter()
         if self._worker is not None:
             self._worker.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -293,3 +335,28 @@ class QueueStreamingEmitter(BaseStreamingEmitter):
     @property
     def dropped(self) -> int:
         return self._dropped
+
+    def get_state(self) -> StreamingState:
+        """ストリーミングメトリクスのスナップショットを返す."""
+        now = time.perf_counter()
+        if self._started_at is None:
+            elapsed_ms = None
+        else:
+            end = self._completed_at or now
+            elapsed_ms = (end - self._started_at) * 1000
+
+        total = self._emitted + self._dropped
+        drop_rate = self._dropped / total if total else 0.0
+        state = StreamingState(
+            queue_size=self._queue.maxsize,
+            current_queue_length=self._queue.qsize(),
+            emitted_count=self._emitted,
+            dropped_count=self._dropped,
+            drop_rate=drop_rate,
+            ttfb_ms=self._ttfb_ms,
+            elapsed_ms=elapsed_ms,
+            last_emit_ms=self._last_emit_ms,
+            last_drop_reason=self._last_drop_reason,
+        )
+        self._emit_event("streaming.metrics", **state.__dict__)
+        return state
