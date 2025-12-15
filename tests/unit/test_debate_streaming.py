@@ -30,8 +30,9 @@ class RecordingEmitter:
         chunk: str,
         phase: str,
         round_number: int | None = None,
+        priority: str = "normal",
     ) -> None:
-        self.chunks.append((persona, chunk, phase, round_number))
+        self.chunks.append((persona, chunk, phase, round_number, priority))
 
     async def aclose(self) -> None:
         self.closed = True
