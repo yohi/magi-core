@@ -122,7 +122,7 @@
   - 同時実行数、待機数のメトリクスをログに記録
   - _Requirements: 2.1, 2.2, 2.4, 2.5_
 
-- [ ] 5.5 ConsensusEngineFactory への TokenBudgetManager 統合
+- [x] 5.5 ConsensusEngineFactory への TokenBudgetManager 統合
   - `ConsensusEngineFactory.create()` に `token_budget_manager` 引数を追加 (Optional, デフォルト None)
   - ConsensusEngine が TokenBudgetManager を受け取り、LLM 呼び出し前に `check_budget()` で予算チェックを実行
   - 予算超過時は LLM 呼び出しをスキップし、クオーラム未達処理へ分岐

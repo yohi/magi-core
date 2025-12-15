@@ -7,6 +7,18 @@ from typing import List, Optional, Protocol, Tuple, runtime_checkable
 from magi.models import ConsensusPhase
 
 
+class TokenBudgetExceeded(Exception):
+    """トークン予算を超過したことを示す例外."""
+
+    def __init__(self, estimated_tokens: int, max_tokens: Optional[int] = None):
+        self.estimated_tokens = estimated_tokens
+        self.max_tokens = max_tokens
+        message = "トークン予算を超過しました"
+        if max_tokens is not None:
+            message = f"{message}: estimated={estimated_tokens}, max={max_tokens}"
+        super().__init__(message)
+
+
 @dataclass
 class ReductionLog:
     """削減ログのエントリ."""
