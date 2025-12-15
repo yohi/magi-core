@@ -12,7 +12,15 @@ from magi.core.streaming import (
     StreamingState,
     StreamingTimeoutError,
 )
-from magi.models import DebateOutput, PersonaType, ThinkingOutput
+from magi.models import (
+    ConsensusPhase,
+    DebateOutput,
+    Decision,
+    PersonaType,
+    ThinkingOutput,
+    Vote,
+    VoteOutput,
+)
 
 
 class RecordingEmitter:
@@ -337,3 +345,108 @@ class TestConsensusDebateStreaming(unittest.IsolatedAsyncioTestCase):
             any(evt["type"] == "debate.streaming.aborted" for evt in engine.events)
         )
         self.assertGreaterEqual(len(emitter.chunks), 1)
+
+
+class TestConsensusStreamingIntegration(unittest.IsolatedAsyncioTestCase):
+    """ConsensusEngine のストリーミング統合を検証する."""
+
+    def setUp(self) -> None:
+        self.config = Config(api_key="key", enable_streaming_output=True)
+        self.emitter = RecordingEmitter()
+        self.engine = ConsensusEngine(self.config, streaming_emitter=self.emitter)
+
+    async def test_thinking_phase_streams_each_persona(self) -> None:
+        """Thinking フェーズで各ペルソナの出力がストリーム送出される."""
+        now = datetime.now()
+        agents = {
+            PersonaType.MELCHIOR: MagicMock(
+                think=AsyncMock(
+                    return_value=ThinkingOutput(
+                        persona_type=PersonaType.MELCHIOR,
+                        content="m-think",
+                        timestamp=now,
+                    )
+                )
+            ),
+            PersonaType.BALTHASAR: MagicMock(
+                think=AsyncMock(
+                    return_value=ThinkingOutput(
+                        persona_type=PersonaType.BALTHASAR,
+                        content="b-think",
+                        timestamp=now,
+                    )
+                )
+            ),
+            PersonaType.CASPER: MagicMock(
+                think=AsyncMock(
+                    return_value=ThinkingOutput(
+                        persona_type=PersonaType.CASPER,
+                        content="c-think",
+                        timestamp=now,
+                    )
+                )
+            ),
+        }
+
+        with patch.object(self.engine, "_create_agents", return_value=agents):
+            await self.engine._run_thinking_phase("prompt")
+
+        thinking_chunks = [
+            chunk for chunk in self.emitter.chunks
+            if chunk[2] == ConsensusPhase.THINKING.value
+        ]
+        self.assertEqual(3, len(thinking_chunks))
+        self.assertEqual(
+            {PersonaType.MELCHIOR.value, PersonaType.BALTHASAR.value, PersonaType.CASPER.value},
+            {chunk[0] for chunk in thinking_chunks},
+        )
+        self.assertTrue(all(chunk[4] == "normal" for chunk in thinking_chunks))
+
+    async def test_voting_phase_streams_votes_and_final_result(self) -> None:
+        """Voting フェーズと最終結果がストリーム送出される."""
+
+        class StubStrategy:
+            name = "stub"
+
+            async def run(self, _thinking, _debate):
+                return {
+                    "voting_results": {
+                        PersonaType.MELCHIOR: VoteOutput(
+                            persona_type=PersonaType.MELCHIOR,
+                            vote=Vote.APPROVE,
+                            reason="ok",
+                            conditions=[],
+                        ),
+                        PersonaType.BALTHASAR: VoteOutput(
+                            persona_type=PersonaType.BALTHASAR,
+                            vote=Vote.DENY,
+                            reason="reject",
+                            conditions=[],
+                        ),
+                    },
+                    "decision": Decision.APPROVED,
+                    "exit_code": 0,
+                    "all_conditions": ["c1"],
+                }
+
+        with patch.object(self.engine, "_select_voting_strategy", return_value=StubStrategy()):
+            result = await self.engine._run_voting_phase({}, [])
+
+        self.assertEqual(Decision.APPROVED, result["decision"])
+        voting_chunks = [
+            chunk for chunk in self.emitter.chunks
+            if chunk[2] == ConsensusPhase.VOTING.value
+        ]
+        self.assertEqual(2, len(voting_chunks))
+        self.assertEqual(
+            {PersonaType.MELCHIOR.value, PersonaType.BALTHASAR.value},
+            {chunk[0] for chunk in voting_chunks},
+        )
+
+        final_chunks = [
+            chunk for chunk in self.emitter.chunks
+            if chunk[2] == ConsensusPhase.COMPLETED.value
+        ]
+        self.assertEqual(1, len(final_chunks))
+        self.assertEqual("critical", final_chunks[0][4])
+        self.assertIn("approved", final_chunks[0][1])
