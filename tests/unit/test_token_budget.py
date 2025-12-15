@@ -2,7 +2,11 @@
 
 import unittest
 
-from magi.core.token_budget import TokenBudgetManager
+from magi.core.token_budget import (
+    SimpleTokenBudgetManager,
+    TokenBudgetManager,
+    TokenBudgetManagerProtocol,
+)
 from magi.models import ConsensusPhase
 
 
@@ -85,6 +89,37 @@ class TestTokenBudgetManager(unittest.TestCase):
         """tokens_per_char が0以下なら例外を送出する."""
         with self.assertRaises(ValueError):
             TokenBudgetManager(max_tokens=10, tokens_per_char=0)
+
+
+class TestSimpleTokenBudgetManager(unittest.TestCase):
+    """SimpleTokenBudgetManager の基本動作確認."""
+
+    def test_unlimited_budget_always_allows(self):
+        """max_tokens=None なら常に許可し、消費は記録しない."""
+        manager = SimpleTokenBudgetManager(max_tokens=None)
+
+        self.assertIsInstance(manager, TokenBudgetManagerProtocol)
+        self.assertTrue(manager.check_budget(1_000_000))
+
+        # consume しても無制限のまま
+        manager.consume(5_000)
+        self.assertTrue(manager.check_budget(1))
+
+    def test_check_budget_blocks_when_exceeds_remaining(self):
+        """残予算を超える場合は False を返す."""
+        manager = SimpleTokenBudgetManager(max_tokens=100)
+
+        self.assertTrue(manager.check_budget(60))
+        manager.consume(60)
+
+        self.assertTrue(manager.check_budget(40))
+        self.assertFalse(manager.check_budget(41))
+
+    def test_consume_negative_raises_value_error(self):
+        """負の消費は例外."""
+        manager = SimpleTokenBudgetManager(max_tokens=50)
+        with self.assertRaises(ValueError):
+            manager.consume(-1)
 
 
 if __name__ == "__main__":

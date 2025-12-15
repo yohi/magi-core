@@ -2,7 +2,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List, Optional, Protocol, Tuple, runtime_checkable
 
 from magi.models import ConsensusPhase
 
@@ -28,6 +28,46 @@ class BudgetResult:
     summary_applied: bool
     reduced_tokens: int
     logs: List[ReductionLog]
+
+
+@runtime_checkable
+class TokenBudgetManagerProtocol(Protocol):
+    """トークン予算管理の最小インターフェース."""
+
+    def check_budget(self, estimated_tokens: int) -> bool:
+        """推定トークン数が予算内かを判定する."""
+
+    def consume(self, actual_tokens: int) -> None:
+        """実際に消費したトークン数を記録する."""
+
+
+class SimpleTokenBudgetManager(TokenBudgetManagerProtocol):
+    """推定/実測トークンを追跡する軽量マネージャ."""
+
+    def __init__(self, max_tokens: Optional[int]) -> None:
+        if max_tokens is not None and max_tokens < 0:
+            raise ValueError("max_tokens must be >= 0")
+        self.max_tokens = max_tokens
+        self._consumed = 0
+
+    def check_budget(self, estimated_tokens: int) -> bool:
+        if estimated_tokens < 0:
+            raise ValueError("estimated_tokens must be >= 0")
+        if self.max_tokens is None:
+            return True
+        return self._consumed + estimated_tokens <= self.max_tokens
+
+    def consume(self, actual_tokens: int) -> None:
+        if actual_tokens < 0:
+            raise ValueError("actual_tokens must be >= 0")
+        if self.max_tokens is None:
+            return
+        self._consumed += actual_tokens
+
+    @property
+    def consumed(self) -> int:
+        """これまでに記録したトークン消費量."""
+        return self._consumed
 
 
 class TokenBudgetManager:
@@ -83,6 +123,17 @@ class TokenBudgetManager:
             if lang in self._LANGUAGE_TOKEN_RATES:
                 return self._LANGUAGE_TOKEN_RATES[lang]
         return 0.5
+
+    def check_budget(self, estimated_tokens: int) -> bool:
+        """推定トークン数が予算内かを判定する."""
+        if estimated_tokens < 0:
+            raise ValueError("estimated_tokens must be >= 0")
+        return estimated_tokens <= self.max_tokens
+
+    def consume(self, actual_tokens: int) -> None:
+        """TokenBudgetManager は累積管理を行わないため記録のみ."""
+        if actual_tokens < 0:
+            raise ValueError("actual_tokens must be >= 0")
 
     def enforce(self, context: str, phase: ConsensusPhase) -> BudgetResult:
         """コンテキストに予算を適用し、必要なら要約/圧縮する."""
