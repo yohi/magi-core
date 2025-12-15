@@ -92,7 +92,7 @@
 
 ## 5. LLM 同時実行制御の実装
 
-- [ ] 5.1 (P) ConcurrencyController の実装
+- [x] 5.1 (P) ConcurrencyController の実装
   - `asyncio.Semaphore` でプロセス全体の LLM 同時実行数を制御
   - 上限値は `MagiSettings.llm_concurrency_limit` (デフォルト 5) から取得
   - `acquire()` コンテキストマネージャで同時実行許可を取得・解放
