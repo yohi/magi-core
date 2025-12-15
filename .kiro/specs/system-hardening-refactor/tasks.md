@@ -107,7 +107,7 @@
   - 再試行抑制がログに記録され、システム全体のスループット制御に寄与
   - _Requirements: 2.3, 2.5_
 
-- [ ] 5.3 (P) TokenBudgetManager の Protocol 定義と基本実装
+- [x] 5.3 (P) TokenBudgetManager の Protocol 定義と基本実装
   - `TokenBudgetManagerProtocol` を定義 (`check_budget()`, `consume()` メソッド)
   - トークン予算チェックと消費記録の基本実装を作成
   - `check_budget()` は推定トークン数が予算内であるかを返却 (True: 続行可能, False: 予算超過)
