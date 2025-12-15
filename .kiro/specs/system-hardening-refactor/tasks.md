@@ -84,7 +84,7 @@
   - プロンプト変更適用時に、変更種別と適用元 (プラグイン識別子) を監査ログに記録
   - _Requirements: 8.3, 8.4_
 
-- [ ] 4.3 PluginLoader への PluginPermissionGuard 統合
+- [x] 4.3 PluginLoader への PluginPermissionGuard 統合
   - `load_async()` 内で `PluginPermissionGuard.check_override_permission()` を呼び出し
   - 権限チェック結果に基づき、`agent_overrides` をフィルタリング
   - フィルタ済みプラグインを返却し、拒否された上書きはログに記録

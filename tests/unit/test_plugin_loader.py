@@ -16,7 +16,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from hypothesis import given, settings
 from hypothesis.strategies import text, dictionaries, sampled_from, integers
 
+from magi.config.settings import MagiSettings
 from magi.plugins.loader import PluginLoader, PluginMetadata, BridgeConfig, Plugin, ValidationResult
+from magi.plugins.permission_guard import PluginPermissionGuard
 from magi.errors import MagiException, ErrorCode
 from magi.models import PersonaType
 from magi.plugins.signature import PluginSignatureValidator, SignatureVerificationResult
@@ -75,7 +77,7 @@ class TestPluginLoader(unittest.TestCase):
     def test_yaml_parsing_and_metadata_extraction(self, plugin_name, plugin_version, plugin_description,
                                                 command, interface, timeout,
                                                 melchior_override, balthasar_override, casper_override):
-        
+
         # Construct valid plugin YAML data
         plugin_data = {
             "plugin": {
@@ -95,7 +97,7 @@ class TestPluginLoader(unittest.TestCase):
                 "casper": casper_override
             }
         }
-        
+
         # Create a temporary plugin file
         plugin_file = self.temp_path / "test_plugin.yaml"
         plugin_file.write_text(yaml.dump(plugin_data))
@@ -155,6 +157,99 @@ class TestPluginLoader(unittest.TestCase):
         self.assertEqual(plugin.bridge.timeout, 30)          # Default timeout
         self.assertEqual(plugin.agent_overrides, {})       # Default empty dict
 
+    def test_agent_overrides_are_cleared_when_permission_denied(self):
+        """権限が無効な場合は agent_overrides が適用されない"""
+        settings = MagiSettings(api_key="dummy-key")
+        loader = PluginLoader(config=settings, permission_guard=PluginPermissionGuard(settings))
+
+        plugin_data = {
+            "plugin": {
+                "name": "denied-plugin",
+                "hash": "sha256:" + ("d" * 64),
+            },
+            "bridge": {
+                "command": "echo",
+                "interface": "stdio",
+            },
+            "agent_overrides": {
+                "melchior": "override-1",
+                "balthasar": "override-2",
+            },
+        }
+
+        plugin_file = self.temp_path / "denied.yaml"
+        plugin_file.write_text(yaml.dump(plugin_data))
+
+        with self.assertLogs("magi.plugins.permission_guard", level="WARNING") as cm:
+            plugin = loader.load(plugin_file)
+
+        self.assertEqual(plugin.agent_overrides, {})
+        logs = "\n".join(cm.output)
+        self.assertIn("plugin.override.denied", logs)
+
+    def test_agent_overrides_are_kept_when_trusted_and_allowed(self):
+        """信頼済み署名かつ許可設定時は agent_overrides が反映される"""
+
+        class _AllowSignatureValidator:
+            def verify_signature(self, content, signature_b64, public_key_path):
+                return SignatureVerificationResult(
+                    ok=True,
+                    mode="signature",
+                    key_path=public_key_path,
+                    reason=None,
+                )
+
+            def verify_hash(self, content, digest):
+                return SignatureVerificationResult(
+                    ok=True,
+                    mode="hash",
+                    key_path=None,
+                    reason=None,
+                )
+
+        settings = MagiSettings(
+            api_key="dummy-key",
+            plugin_prompt_override_allowed=True,
+            plugin_trusted_signatures=["trusted-signature"],
+        )
+        loader = PluginLoader(
+            config=settings,
+            permission_guard=PluginPermissionGuard(settings),
+            signature_validator=_AllowSignatureValidator(),
+        )
+
+        plugin_data = {
+            "plugin": {
+                "name": "trusted-plugin",
+                "signature": "trusted-signature",
+            },
+            "bridge": {
+                "command": "echo",
+                "interface": "stdio",
+            },
+            "agent_overrides": {
+                "melchior": "trusted-override",
+                "balthasar": "other-override",
+            },
+        }
+
+        plugin_file = self.temp_path / "trusted.yaml"
+        plugin_file.write_text(yaml.dump(plugin_data))
+
+        with self.assertLogs("magi.plugins.permission_guard", level="INFO") as cm:
+            plugin = loader.load(plugin_file)
+
+        self.assertEqual(
+            plugin.agent_overrides[PersonaType.MELCHIOR],
+            "trusted-override",
+        )
+        self.assertEqual(
+            plugin.agent_overrides[PersonaType.BALTHASAR],
+            "other-override",
+        )
+        logs = "\n".join(cm.output)
+        self.assertIn("plugin.override.applied", logs)
+
     def test_missing_signature_or_hash_is_rejected(self):
         """署名またはハッシュが欠落したプラグインは拒否される"""
         plugin_data = {
@@ -211,7 +306,7 @@ class TestPluginLoader(unittest.TestCase):
 
         with self.assertRaises(MagiException) as cm:
             self.loader.load(plugin_file)
-        
+
         self.assertEqual(cm.exception.error.code, ErrorCode.PLUGIN_YAML_PARSE_ERROR.value)
         self.assertIn("Failed to parse plugin YAML", cm.exception.error.message)
 
@@ -231,7 +326,7 @@ class TestPluginLoader(unittest.TestCase):
 
         with self.assertRaises(MagiException) as cm:
             self.loader.load(plugin_file)
-        
+
         self.assertEqual(cm.exception.error.code, ErrorCode.PLUGIN_YAML_PARSE_ERROR.value)
         error_message = cm.exception.error.message.lower()
         self.assertTrue("plugin" in error_message or "bridge" in error_message)
