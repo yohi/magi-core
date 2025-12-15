@@ -26,6 +26,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol
 from magi.agents.agent import Agent
 from magi.agents.persona import PersonaManager
 from magi.config.manager import Config
+from magi.core.concurrency import ConcurrencyController, ConcurrencyLimitError
 from magi.core.context import ContextManager
 from magi.core.quorum import QuorumManager
 from magi.core.schema_validator import SchemaValidationError, SchemaValidator
@@ -134,6 +135,7 @@ class ConsensusEngine:
         guardrails_adapter: Optional[GuardrailsAdapter] = None,
         streaming_emitter: Optional[Any] = None,
         event_context: Optional[Dict[str, Any]] = None,
+        concurrency_controller: Optional[ConcurrencyController] = None,
     ):
         """ConsensusEngineを初期化
 
@@ -181,6 +183,12 @@ class ConsensusEngine:
                 ),
                 enabled=getattr(self.config, "enable_guardrails", False),
             )
+        # 同時実行制御
+        limit = getattr(self.config, "llm_concurrency_limit", 1)
+        self.concurrency_controller = concurrency_controller or ConcurrencyController(
+            max_concurrent=limit
+        )
+        self._concurrency_timeout_seconds = getattr(self.config, "timeout", None)
         # LLMクライアントのファクトリ（デフォルトは設定値から生成）
         if llm_client_factory is None:
             self.llm_client_factory = self._build_default_llm_client_factory()
@@ -264,9 +272,79 @@ class ConsensusEngine:
                 model=self.config.model,
                 retry_count=self.config.retry_count,
                 timeout=self.config.timeout,
+                concurrency_controller=self.concurrency_controller,
             )
 
         return _factory
+
+    def _log_concurrency_metrics(
+        self,
+        phase: ConsensusPhase,
+        persona_type: Optional[PersonaType],
+    ) -> None:
+        """同時実行メトリクスをログに記録する."""
+        if self.concurrency_controller is None:
+            return
+
+        metrics = self.concurrency_controller.get_metrics()
+        logger.info(
+            (
+                "consensus.concurrency.metrics phase=%s persona=%s "
+                "active=%s waiting=%s acquired=%s timeouts=%s rate_limits=%s"
+            ),
+            phase.value if isinstance(phase, ConsensusPhase) else phase,
+            persona_type.value if persona_type else None,
+            metrics.active_count,
+            metrics.waiting_count,
+            metrics.total_acquired,
+            metrics.total_timeouts,
+            metrics.total_rate_limits,
+        )
+
+    async def _run_with_concurrency(
+        self,
+        phase: ConsensusPhase,
+        persona_type: Optional[PersonaType],
+        func: Callable[[], Awaitable[Any]],
+        *,
+        quorum_sensitive: bool = False,
+    ):
+        """ConcurrencyController を介して処理を実行する."""
+        if self.concurrency_controller is None:
+            return await func()
+
+        persona_value = persona_type.value if persona_type else None
+        try:
+            async with self.concurrency_controller.acquire(
+                timeout=self._concurrency_timeout_seconds
+            ):
+                result = await func()
+            self._log_concurrency_metrics(phase, persona_type)
+            return result
+        except ConcurrencyLimitError as exc:
+            self._errors.append(
+                {
+                    "phase": phase.value if isinstance(phase, ConsensusPhase) else phase,
+                    "persona_type": persona_value,
+                    "error": str(exc),
+                    "type": "concurrency_limit",
+                }
+            )
+            self._record_event(
+                "concurrency.limit",
+                phase=phase.value if isinstance(phase, ConsensusPhase) else phase,
+                persona=persona_value,
+                message=str(exc),
+            )
+            logger.warning(
+                "consensus.concurrency.limit phase=%s persona=%s",
+                phase.value if isinstance(phase, ConsensusPhase) else phase,
+                persona_value,
+            )
+            self._log_concurrency_metrics(phase, persona_type)
+            if quorum_sensitive and persona_value is not None:
+                self.quorum_manager.exclude(persona_value)
+            return None
 
     async def _emit_debate_streaming_output(
         self,
@@ -385,7 +463,11 @@ class ConsensusEngine:
                 ThinkingOutput または失敗時はNone
             """
             try:
-                return await agent.think(prompt)
+                return await self._run_with_concurrency(
+                    ConsensusPhase.THINKING,
+                    persona_type,
+                    lambda: agent.think(prompt),
+                )
             except Exception as e:
                 if isinstance(e, (KeyboardInterrupt, SystemExit)):
                     raise
@@ -480,7 +562,11 @@ class ConsensusEngine:
                 ) -> Optional[DebateOutput]:
                     """エラーハンドリング付きのDebate実行"""
                     try:
-                        return await agent.debate(others_thoughts, round_number)
+                        return await self._run_with_concurrency(
+                            ConsensusPhase.DEBATE,
+                            persona_type,
+                            lambda: agent.debate(others_thoughts, round_number),
+                        )
                     except Exception as e:
                         if isinstance(e, (KeyboardInterrupt, SystemExit)):
                             raise
@@ -697,7 +783,16 @@ class ConsensusEngine:
                 try:
                     while True:
                         try:
-                            return await agent.vote(context)
+                            vote_output = await self._run_with_concurrency(
+                                ConsensusPhase.VOTING,
+                                persona_type,
+                                lambda: agent.vote(context),
+                                quorum_sensitive=True,
+                            )
+                            if vote_output is None:
+                                failed_personas.append(persona_type.value)
+                                return None
+                            return vote_output
                         except SchemaValidationError as e:
                             schema_attempt += 1
                             self._record_event(
@@ -928,7 +1023,12 @@ class ConsensusEngine:
 
         async def vote_once(persona_type: PersonaType, agent: Agent) -> Optional[VoteOutput]:
             try:
-                return await agent.vote(context)
+                return await self._run_with_concurrency(
+                    ConsensusPhase.VOTING,
+                    persona_type,
+                    lambda: agent.vote(context),
+                    quorum_sensitive=True,
+                )
             except Exception as exc:
                 if isinstance(exc, (KeyboardInterrupt, SystemExit)):
                     raise

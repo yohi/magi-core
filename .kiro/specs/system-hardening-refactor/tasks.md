@@ -115,7 +115,7 @@
   - None 値は予算管理なし/無制限を意味し、常に True を返す実装を用意
   - _Requirements: 2.6_
 
-- [ ] 5.4 ConsensusEngine への ConcurrencyController 統合
+- [x] 5.4 ConsensusEngine への ConcurrencyController 統合
   - `ConsensusEngineFactory.create()` に `concurrency_controller` 引数を追加
   - LLM 呼び出し前に `async with controller.acquire()` で同時実行許可を取得
   - タイムアウト時は `ConcurrencyLimitError` を捕捉し、クオーラム未達処理へ分岐
