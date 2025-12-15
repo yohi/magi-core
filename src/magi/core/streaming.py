@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import logging
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable, Literal, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,11 @@ class StreamChunk:
     chunk: str
     phase: str
     round_number: Optional[int] = None
+    priority: Literal["normal", "critical"] = "normal"
+
+
+class StreamingTimeoutError(TimeoutError):
+    """バックプレッシャモードでのキュー空き待ちタイムアウト."""
 
 
 class BaseStreamingEmitter:
@@ -33,6 +38,7 @@ class BaseStreamingEmitter:
         chunk: str,
         phase: str,
         round_number: Optional[int] = None,
+        priority: Literal["normal", "critical"] = "normal",
     ) -> None:
         raise NotImplementedError
 
@@ -54,6 +60,7 @@ class NullStreamingEmitter(BaseStreamingEmitter):
         chunk: str,
         phase: str,
         round_number: Optional[int] = None,
+        priority: Literal["normal", "critical"] = "normal",
     ) -> None:
         return None
 
@@ -67,6 +74,7 @@ class QueueStreamingEmitter(BaseStreamingEmitter):
         queue_size: int = 100,
         emit_timeout_seconds: float = 2.0,
         auto_start: bool = True,
+        overflow_policy: Literal["drop", "backpressure"] = "drop",
     ) -> None:
         self._send_func = send_func
         self._queue: asyncio.Queue[StreamChunk] = asyncio.Queue(maxsize=queue_size)
@@ -75,6 +83,7 @@ class QueueStreamingEmitter(BaseStreamingEmitter):
         self._closed = False
         self._dropped = 0
         self._auto_start = auto_start
+        self._overflow_policy = overflow_policy
 
     async def start(self) -> "QueueStreamingEmitter":
         if self._worker is None:
@@ -87,6 +96,7 @@ class QueueStreamingEmitter(BaseStreamingEmitter):
         chunk: str,
         phase: str,
         round_number: Optional[int] = None,
+        priority: Literal["normal", "critical"] = "normal",
     ) -> None:
         if self._closed:
             return None
@@ -98,38 +108,116 @@ class QueueStreamingEmitter(BaseStreamingEmitter):
             chunk=chunk,
             phase=phase,
             round_number=round_number,
+            priority=priority,
         )
 
         if self._queue.full():
-            dropped: StreamChunk | None = None
-            try:
-                dropped = self._queue.get_nowait()
-                self._queue.task_done()
-            except asyncio.QueueEmpty:
-                dropped = None
-            if dropped is not None:
-                self._dropped += 1
-                logger.warning(
-                    "streaming.emitter.drop persona=%s phase=%s round=%s dropped_persona=%s",
-                    persona,
-                    phase,
-                    round_number,
-                    dropped.persona,
-                )
+            if self._overflow_policy == "drop":
+                await self._handle_drop_policy(stream_chunk)
+                return None
+            await self._handle_backpressure_policy(stream_chunk)
+            return None
 
-        try:
-            self._queue.put_nowait(stream_chunk)
-        except asyncio.QueueFull:
+        self._queue.put_nowait(stream_chunk)
+        return None
+
+    def _evict_oldest_non_critical(self) -> Optional[StreamChunk]:
+        """最古の非クリティカルチャンクをドロップする."""
+        for idx, existing in enumerate(self._queue._queue):  # type: ignore[attr-defined]
+            if existing.priority != "critical":
+                dropped = self._queue._queue[idx]  # type: ignore[attr-defined]
+                del self._queue._queue[idx]  # type: ignore[attr-defined]
+                if hasattr(self._queue, "_unfinished_tasks"):
+                    self._queue._unfinished_tasks = max(  # type: ignore[attr-defined]
+                        0, self._queue._unfinished_tasks - 1  # type: ignore[attr-defined]
+                    )
+                return dropped
+        return None
+
+    async def _handle_drop_policy(self, stream_chunk: StreamChunk) -> None:
+        dropped = self._evict_oldest_non_critical()
+        if dropped is None:
+            if stream_chunk.priority == "critical":
+                try:
+                    await asyncio.wait_for(
+                        self._queue.put(stream_chunk),
+                        timeout=self._emit_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "streaming.emitter.timeout persona=%s phase=%s round=%s priority=%s",
+                        stream_chunk.persona,
+                        stream_chunk.phase,
+                        stream_chunk.round_number,
+                        stream_chunk.priority,
+                    )
+                return None
+
             self._dropped += 1
             logger.warning(
                 "streaming.emitter.drop persona=%s phase=%s round=%s dropped_persona=%s",
-                persona,
-                phase,
-                round_number,
+                stream_chunk.persona,
+                stream_chunk.phase,
+                stream_chunk.round_number,
                 stream_chunk.persona,
             )
+            return None
 
-        return None
+        self._dropped += 1
+        logger.warning(
+            "streaming.emitter.drop persona=%s phase=%s round=%s dropped_persona=%s",
+            stream_chunk.persona,
+            stream_chunk.phase,
+            stream_chunk.round_number,
+            dropped.persona,
+        )
+        try:
+            self._queue.put_nowait(stream_chunk)
+        except asyncio.QueueFull:
+            # フォールバックで空きを待つ（理論上ここには到達しない）
+            await self._queue.put(stream_chunk)
+
+    async def _handle_backpressure_policy(self, stream_chunk: StreamChunk) -> None:
+        try:
+            await asyncio.wait_for(
+                self._queue.put(stream_chunk),
+                timeout=self._emit_timeout,
+            )
+        except asyncio.TimeoutError:
+            if stream_chunk.priority == "critical":
+                dropped = self._evict_oldest_non_critical()
+                if dropped is not None:
+                    self._dropped += 1
+                    logger.warning(
+                        "streaming.emitter.drop persona=%s phase=%s round=%s dropped_persona=%s",
+                        stream_chunk.persona,
+                        stream_chunk.phase,
+                        stream_chunk.round_number,
+                        dropped.persona,
+                    )
+                    self._queue.put_nowait(stream_chunk)
+                    return None
+                logger.warning(
+                    "streaming.emitter.timeout persona=%s phase=%s round=%s priority=%s",
+                    stream_chunk.persona,
+                    stream_chunk.phase,
+                    stream_chunk.round_number,
+                    stream_chunk.priority,
+                )
+                return None
+
+            self._dropped += 1
+            logger.warning(
+                "streaming.emitter.timeout persona=%s phase=%s round=%s priority=%s",
+                stream_chunk.persona,
+                stream_chunk.phase,
+                stream_chunk.round_number,
+                stream_chunk.priority,
+            )
+            raise StreamingTimeoutError(
+                f"streaming queue is full (policy=backpressure) "
+                f"for persona={stream_chunk.persona}"
+            )
 
     async def _drain(self) -> None:
         while not self._closed:
