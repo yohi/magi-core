@@ -205,7 +205,7 @@
 
 ## 9. 統合テストと検証
 
-- [ ] 9.1 (P) MagiSettings の単体テスト
+- [x] 9.1 (P) MagiSettings の単体テスト
   - Pydantic バリデーション成功/失敗ケースのテスト
   - クロスフィールドバリデーション (`production_mode` と `plugin_public_key_path`) のテスト
   - 環境変数、設定ファイル、デフォルト値の優先順位テスト
@@ -213,7 +213,7 @@
   - 未知キー検出 (`extra="forbid"`) のテスト
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 6.1, 6.2_
 
-- [ ] 9.2 (P) PluginLoader の非同期ロード単体テスト
+- [x] 9.2 (P) PluginLoader の非同期ロード単体テスト
   - `load_async()` の正常系 (ロード成功) テスト
   - タイムアウト時の動作テスト (当該プラグインのみ無効化)
   - スキーマエラー時のテスト (Pydantic バリデーション失敗)
@@ -221,8 +221,8 @@
   - 監査ログ記録のテスト
   - _Requirements: 1.1, 1.2, 1.3, 1.5, 6.1, 6.2, 6.3_
 
-- [ ] 9.3 (P) ConcurrencyController の単体テスト
-  - セマフォによる同時実行数制限のテスト
+- [x] 9.3 (P) ConcurrencyController の単体テスト
+  - セマフォによる同時実行数制限-のテスト
   - タイムアウト時の `ConcurrencyLimitError` 送出テスト
   - メトリクス記録 (`get_metrics()`) のテスト
   - レート制限記録 (`note_rate_limit()`) のテスト
