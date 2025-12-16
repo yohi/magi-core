@@ -169,6 +169,10 @@ class TestConsensusFlagMatrix(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertEqual(result["meta"]["strategy"], expected_strategy)
 
+                # ストリーミングエミッタを閉じてタスクを解放する
+                if engine.streaming_emitter:
+                    await engine.streaming_emitter.aclose()
+
 
 class TestConsensusEventCodes(unittest.IsolatedAsyncioTestCase):
     """イベントにエラーコードとフェーズが付与されていることを確認する."""
