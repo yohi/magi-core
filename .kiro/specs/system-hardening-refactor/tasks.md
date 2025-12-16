@@ -183,7 +183,7 @@
   - 評価結果を監査ログ (`guardrails.evaluation`) に記録
   - _Requirements: 7.1, 7.2_
 
- - [ ] 8.2 (P) Guardrails のタイムアウトと fail ポリシー適用
+ - [x] 8.2 (P) Guardrails のタイムアウトと fail ポリシー適用
   - `guardrails_timeout` 設定に基づき、各プロバイダの評価にタイムアウトを適用
   - タイムアウトまたは例外発生時は、`guardrails_on_timeout` / `guardrails_on_error` ポリシー (`fail-open` / `fail-closed`) に従って処理
   - `fail-open`: 評価失敗時は許可扱い、`fail-closed`: 拒否扱い
