@@ -222,7 +222,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.5, 6.1, 6.2, 6.3_
 
 - [x] 9.3 (P) ConcurrencyController の単体テスト
-  - セマフォによる同時実行数制限-のテスト
+  - セマフォによる同時実行数制限のテスト
   - タイムアウト時の `ConcurrencyLimitError` 送出テスト
   - メトリクス記録 (`get_metrics()`) のテスト
   - レート制限記録 (`note_rate_limit()`) のテスト
