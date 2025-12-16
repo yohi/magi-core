@@ -181,6 +181,19 @@ class TestGuardrailsAdapter(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.provider, "blocking")
         self.assertEqual(result.reason, "blocked_by_test")
 
+    async def test_heuristic_sanitizes_pii(self) -> None:
+        """HeuristicGuardrailsProvider が PII (メールアドレス) をサニタイズする."""
+        adapter = GuardrailsAdapter(enabled=True)
+        # メールアドレスを含むプロンプト
+        prompt = "Contact me at user@example.com for more info."
+        result = await adapter.check(prompt)
+
+        self.assertFalse(result.blocked)
+        self.assertIsNotNone(result.sanitized_prompt)
+        self.assertIn("[EMAIL_REDACTED]", result.sanitized_prompt)
+        self.assertNotIn("user@example.com", result.sanitized_prompt)
+        self.assertEqual(result.reason, "pii_sanitized")
+
 
 class TestConsensusGuardrails(unittest.IsolatedAsyncioTestCase):
     """ConsensusEngine への Guardrails 統合テスト."""
