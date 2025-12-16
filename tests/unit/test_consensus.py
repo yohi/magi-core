@@ -23,7 +23,7 @@ from magi.agents.persona import PersonaManager
 from magi.agents.agent import Agent
 from magi.config.manager import Config
 from magi.errors import MagiException
-from magi.security.guardrails import GuardrailsAdapter
+from magi.security.guardrails import GuardrailsAdapter, GuardrailsResult
 from magi.models import (
     ConsensusPhase,
     ConsensusResult,
@@ -58,6 +58,26 @@ class _StubConcurrencyController:
             total_acquired=len(self.calls),
             total_timeouts=1 if self.fail else 0,
             total_rate_limits=0,
+        )
+
+
+class _SanitizingGuardrailsAdapter:
+    """サニタイズ結果を返すガードレールモック."""
+
+    def __init__(self, sanitized: str = "sanitized-input") -> None:
+        self.sanitized = sanitized
+        self.calls: list[str] = []
+
+    async def check(self, prompt: str) -> GuardrailsResult:
+        self.calls.append(prompt)
+        return GuardrailsResult(
+            blocked=False,
+            reason="sanitize",
+            provider="sanitizer",
+            failure=None,
+            fail_open=False,
+            metadata={"original": prompt},
+            sanitized_prompt=self.sanitized,
         )
 
 
@@ -534,6 +554,43 @@ class TestConsensusEngineFactoryDI(unittest.TestCase):
         self.assertIsInstance(engine.guardrails, GuardrailsAdapter)
         self.assertIsInstance(engine.streaming_emitter, NullStreamingEmitter)
         self.assertIsInstance(engine.token_budget_manager, TokenBudgetManager)
+
+    def test_factory_guardrails_sanitizes_before_security_filter(self):
+        """工場経由のガードレールが SecurityFilter 前にサニタイズを適用する."""
+        config = Config(api_key="test-api-key", enable_guardrails=True)
+        adapter = _SanitizingGuardrailsAdapter(sanitized="cleaned")
+        factory = ConsensusEngineFactory()
+        engine = factory.create(config, guardrails_adapter=adapter)
+
+        detection = MagicMock(blocked=False, matched_rules=[])
+        with patch.object(
+            engine.security_filter,
+            "detect_abuse",
+            return_value=detection,
+        ) as detect_mock, patch.object(
+            engine,
+            "_run_thinking_phase",
+            AsyncMock(return_value={}),
+        ), patch.object(
+            engine,
+            "_run_debate_phase",
+            AsyncMock(return_value=[]),
+        ), patch.object(
+            engine,
+            "_run_voting_phase",
+            AsyncMock(
+                return_value={
+                    "voting_results": {},
+                    "decision": Decision.APPROVED,
+                    "exit_code": 0,
+                    "all_conditions": [],
+                }
+            ),
+        ):
+            asyncio.run(engine.execute("unsafe input"))
+
+        self.assertEqual(adapter.calls, ["unsafe input"])
+        detect_mock.assert_called_once_with("cleaned")
 
 
 class TestConsensusSecurityFilter(unittest.TestCase):
