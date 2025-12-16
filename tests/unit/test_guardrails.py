@@ -92,6 +92,27 @@ class TestGuardrailsAdapter(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.failure, "timeout")
         self.assertTrue(result.fail_open)
 
+    async def test_timeout_logs_policy_applied(self) -> None:
+        """タイムアウト時にポリシー適用ログが出力される."""
+        adapter = GuardrailsAdapter(
+            providers=[SlowProvider(delay=0.05)],
+            timeout_seconds=0.01,
+            on_timeout_behavior="fail-open",
+            enabled=True,
+        )
+
+        with self.assertLogs("magi.security.guardrails", level="WARNING") as cm:
+            result = await adapter.check("safe")
+
+        self.assertFalse(result.blocked)
+        self.assertEqual(result.failure, "timeout")
+        logs = "\n".join(cm.output)
+        self.assertIn("guardrails.policy_applied", logs)
+        self.assertIn("provider=slow", logs)
+        self.assertIn("failure=timeout", logs)
+        self.assertIn("policy=fail-open", logs)
+        self.assertIn("fail_open=True", logs)
+
     async def test_provider_error_respects_policy(self) -> None:
         """プロバイダ例外時に on_error_policy を反映する."""
         adapter = GuardrailsAdapter(
@@ -105,6 +126,27 @@ class TestGuardrailsAdapter(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result.failure, "error")
         self.assertTrue(result.fail_open)
+
+    async def test_error_logs_policy_applied(self) -> None:
+        """例外発生時にポリシー適用ログが出力される."""
+        adapter = GuardrailsAdapter(
+            providers=[FailingProvider()],
+            timeout_seconds=0.05,
+            on_error_policy="fail-closed",
+            enabled=True,
+        )
+
+        with self.assertLogs("magi.security.guardrails", level="WARNING") as cm:
+            result = await adapter.check("safe")
+
+        self.assertEqual(result.failure, "error")
+        self.assertFalse(result.fail_open)
+        logs = "\n".join(cm.output)
+        self.assertIn("guardrails.policy_applied", logs)
+        self.assertIn("provider=failing", logs)
+        self.assertIn("failure=error", logs)
+        self.assertIn("policy=fail-closed", logs)
+        self.assertIn("fail_open=False", logs)
 
     async def test_registering_additional_provider_blocks(self) -> None:
         """register_provider で追加したプロバイダも評価される."""

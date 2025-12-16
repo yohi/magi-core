@@ -141,6 +141,12 @@ class GuardrailsAdapter:
                     provider_name,
                     self.on_timeout_behavior,
                 )
+                logger.warning(
+                    "guardrails.policy_applied provider=%s failure=timeout policy=%s fail_open=%s",
+                    provider_name,
+                    self.on_timeout_behavior,
+                    fail_open,
+                )
                 return GuardrailsResult(
                     blocked=False,
                     reason="timeout",
@@ -155,6 +161,12 @@ class GuardrailsAdapter:
                     provider_name,
                     self.on_error_policy,
                     exc,
+                )
+                logger.warning(
+                    "guardrails.policy_applied provider=%s failure=error policy=%s fail_open=%s",
+                    provider_name,
+                    self.on_error_policy,
+                    fail_open,
                 )
                 return GuardrailsResult(
                     blocked=False,
