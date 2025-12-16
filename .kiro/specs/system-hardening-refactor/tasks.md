@@ -196,7 +196,7 @@
   - サニタイズ処理をプロバイダから受け取り、適用後にログ記録
   - _Requirements: 7.4_
 
-- [ ] 8.4 ConsensusEngine への GuardrailsAdapter 統合
+- [x] 8.4 ConsensusEngine への GuardrailsAdapter 統合
   - `ConsensusEngineFactory.create()` に `guardrails_adapter` 引数を追加
   - 合議フロー開始前に入力を `guardrails_adapter.evaluate()` で評価
   - 拒否時は合議を中断し、ユーザーにエラーを返却
