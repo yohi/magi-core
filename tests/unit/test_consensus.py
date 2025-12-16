@@ -15,12 +15,15 @@ from datetime import datetime
 from contextlib import asynccontextmanager
 
 from magi.core.concurrency import ConcurrencyLimitError, ConcurrencyMetrics
-from magi.core.consensus import ConsensusEngine
+from magi.core.consensus import ConsensusEngine, ConsensusEngineFactory
 from magi.core.context import ContextManager
+from magi.core.streaming import NullStreamingEmitter
+from magi.core.token_budget import TokenBudgetManager
 from magi.agents.persona import PersonaManager
 from magi.agents.agent import Agent
 from magi.config.manager import Config
 from magi.errors import MagiException
+from magi.security.guardrails import GuardrailsAdapter
 from magi.models import (
     ConsensusPhase,
     ConsensusResult,
@@ -484,6 +487,53 @@ class TestConsensusConcurrencyIntegration(unittest.TestCase):
                 for err in engine.errors
             )
         )
+
+
+class TestConsensusEngineFactoryDI(unittest.TestCase):
+    """ConsensusEngineFactory で依存を注入できることを確認するテスト."""
+
+    def test_factory_allows_dependency_injection(self):
+        """主要依存が工場経由で差し替えられる。"""
+        config = Config(api_key="test-api-key")
+        persona_manager = MagicMock()
+        context_manager = MagicMock()
+        guardrails_adapter = MagicMock(spec=GuardrailsAdapter)
+        streaming_emitter = MagicMock()
+        token_budget_manager = MagicMock(spec=TokenBudgetManager)
+        llm_client = object()
+
+        def llm_factory():
+            return llm_client
+
+        factory = ConsensusEngineFactory()
+        engine = factory.create(
+            config,
+            persona_manager=persona_manager,
+            context_manager=context_manager,
+            llm_client_factory=llm_factory,
+            guardrails_adapter=guardrails_adapter,
+            streaming_emitter=streaming_emitter,
+            token_budget_manager=token_budget_manager,
+            concurrency_controller=_StubConcurrencyController(),
+        )
+
+        self.assertIs(engine.persona_manager, persona_manager)
+        self.assertIs(engine.context_manager, context_manager)
+        self.assertIs(engine.guardrails, guardrails_adapter)
+        self.assertIs(engine.streaming_emitter, streaming_emitter)
+        self.assertIs(engine.token_budget_manager, token_budget_manager)
+        self.assertIs(engine.llm_client_factory, llm_factory)
+
+    def test_factory_uses_defaults_when_dependencies_not_provided(self):
+        """依存を渡さない場合はデフォルト実装が利用される。"""
+        config = Config(api_key="test-api-key")
+        engine = ConsensusEngineFactory().create(config)
+
+        self.assertIsInstance(engine.persona_manager, PersonaManager)
+        self.assertIsInstance(engine.context_manager, ContextManager)
+        self.assertIsInstance(engine.guardrails, GuardrailsAdapter)
+        self.assertIsInstance(engine.streaming_emitter, NullStreamingEmitter)
+        self.assertIsInstance(engine.token_budget_manager, TokenBudgetManager)
 
 
 class TestConsensusSecurityFilter(unittest.TestCase):
