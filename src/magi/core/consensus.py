@@ -509,6 +509,16 @@ class ConsensusEngine:
             if output is not None:
                 results[persona_type] = output
 
+        # ストリーミング送出（有効時のみ）
+        if self._streaming_enabled and results:
+            await self.streaming_emitter.start()
+            for persona_type, output in results.items():
+                await self.streaming_emitter.emit(
+                    persona_type.value,
+                    output.content,
+                    ConsensusPhase.THINKING.value,
+                )
+
         # フェーズをDEBATEに遷移
         self._transition_to_phase(ConsensusPhase.DEBATE)
 
@@ -516,7 +526,8 @@ class ConsensusEngine:
 
     async def _run_debate_phase(
         self,
-        thinking_results: Dict[PersonaType, ThinkingOutput]
+        thinking_results: Dict[PersonaType, ThinkingOutput],
+        close_streaming: bool = True,
     ) -> List[DebateRound]:
         """Debate Phaseを実行
 
@@ -652,7 +663,7 @@ class ConsensusEngine:
                     self._streaming_state["dropped"] = self.streaming_emitter.dropped
                 except Exception:
                     self._streaming_state["dropped"] = 0
-            if self._streaming_enabled:
+            if self._streaming_enabled and close_streaming:
                 await self.streaming_emitter.aclose()
 
         if self._streaming_enabled:
@@ -710,6 +721,30 @@ class ConsensusEngine:
         meta.setdefault("excluded_agents", result.get("excluded_agents", []))
         meta.setdefault("partial_results", result.get("partial_results", False))
         meta.setdefault("summary_applied", result.get("summary_applied", False))
+
+        if self._streaming_enabled:
+            await self.streaming_emitter.start()
+            for persona_type, vote_output in result.get("voting_results", {}).items():
+                content = f"{vote_output.vote.value}:{vote_output.reason}"
+                await self.streaming_emitter.emit(
+                    persona_type.value,
+                    content,
+                    ConsensusPhase.VOTING.value,
+                )
+
+            decision = result.get("decision")
+            decision_value = getattr(decision, "value", decision)
+            conditions = result.get("all_conditions") or []
+            summary_parts = [f"decision={decision_value}"]
+            if conditions:
+                summary_parts.append(f"conditions={','.join(map(str, conditions))}")
+            summary = " ".join(summary_parts)
+            await self.streaming_emitter.emit(
+                "consensus",
+                summary,
+                ConsensusPhase.COMPLETED.value,
+                priority="critical",
+            )
         return result
 
     def _select_voting_strategy(self) -> VotingStrategy:
@@ -1312,14 +1347,25 @@ class ConsensusEngine:
         if plugin is not None and hasattr(plugin, 'agent_overrides'):
             self.persona_manager.apply_overrides(plugin.agent_overrides)
 
-        # Thinking Phaseを実行
-        thinking_results = await self._run_thinking_phase(prompt)
+        try:
+            # Thinking Phaseを実行
+            thinking_results = await self._run_thinking_phase(prompt)
 
-        # Debate Phaseを実行
-        debate_results = await self._run_debate_phase(thinking_results)
+            # Debate Phaseを実行（ストリーミングは後段まで開放）
+            debate_results = await self._run_debate_phase(
+                thinking_results, close_streaming=False
+            )
 
-        # Voting Phaseを実行
-        voting_result = await self._run_voting_phase(thinking_results, debate_results)
+            # Voting Phaseを実行
+            voting_result = await self._run_voting_phase(
+                thinking_results, debate_results
+            )
+        finally:
+            if self._streaming_enabled:
+                try:
+                    await self.streaming_emitter.aclose()
+                except Exception:
+                    logger.warning("streaming_emitter close failed", exc_info=True)
 
         # 結果を抽出
         voting_results = voting_result["voting_results"]

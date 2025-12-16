@@ -151,7 +151,7 @@
   - メトリクスを定期的にログに記録し、観測可能性を確保
   - _Requirements: 3.5_
 
-- [ ] 6.4 ConsensusEngine への StreamingEmitter 統合
+- [x] 6.4 ConsensusEngine への StreamingEmitter 統合
   - `ConsensusEngineFactory.create()` に `streaming_emitter` 引数を追加
   - 合議フローの各フェーズ (Thinking, Debate, Voting) で `emit()` を呼び出し
   - 最終結果 (合議の結論および要約) は `priority="critical"` で送出し、欠落を防止
