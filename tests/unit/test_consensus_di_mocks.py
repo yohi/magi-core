@@ -106,7 +106,7 @@ class FakeLLMClient:
     async def send(self, request) -> LLMResponse:
         self.sent_prompts.append(request.user_prompt)
         if "Voting Phase" in request.user_prompt:
-            content = "{""vote"": ""APPROVE"", ""reason"": ""ok"", ""conditions"": []}"
+            content = '{"vote": "APPROVE", "reason": "ok", "conditions": []}'
         else:
             content = f"応答: {request.user_prompt}"
         return LLMResponse(content=content, usage={"input_tokens": 0, "output_tokens": 0}, model="fake")
