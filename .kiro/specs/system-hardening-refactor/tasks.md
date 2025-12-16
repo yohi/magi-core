@@ -176,14 +176,14 @@
 
 ## 8. Guardrails の拡張性と fail ポリシー明確化
 
-- [ ] 8.1 (P) GuardrailsAdapter のマルチプロバイダ対応
+ - [x] 8.1 (P) GuardrailsAdapter のマルチプロバイダ対応
   - `GuardrailsProviderProtocol` を定義 (`name`, `enabled`, `evaluate()` メソッド)
   - `register_provider()` メソッドでカスタムプロバイダを追加可能に
   - 複数プロバイダを順次評価し、判定結果 (許可/拒否/要サニタイズ) と理由コードを返却
   - 評価結果を監査ログ (`guardrails.evaluation`) に記録
   - _Requirements: 7.1, 7.2_
 
-- [ ] 8.2 (P) Guardrails のタイムアウトと fail ポリシー適用
+ - [ ] 8.2 (P) Guardrails のタイムアウトと fail ポリシー適用
   - `guardrails_timeout` 設定に基づき、各プロバイダの評価にタイムアウトを適用
   - タイムアウトまたは例外発生時は、`guardrails_on_timeout` / `guardrails_on_error` ポリシー (`fail-open` / `fail-closed`) に従って処理
   - `fail-open`: 評価失敗時は許可扱い、`fail-closed`: 拒否扱い

@@ -40,6 +40,16 @@ class FailingProvider:
         raise RuntimeError("provider failure")
 
 
+class BlockingProvider:
+    """即時にブロックを返すプロバイダ."""
+
+    name = "blocking"
+    enabled = True
+
+    async def evaluate(self, prompt: str) -> GuardrailsDecision:
+        return GuardrailsDecision(blocked=True, reason="blocked_by_test")
+
+
 class TestGuardrailsAdapter(unittest.IsolatedAsyncioTestCase):
     """GuardrailsAdapter の単体テスト."""
 
@@ -95,6 +105,21 @@ class TestGuardrailsAdapter(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result.failure, "error")
         self.assertTrue(result.fail_open)
+
+    async def test_registering_additional_provider_blocks(self) -> None:
+        """register_provider で追加したプロバイダも評価される."""
+        adapter = GuardrailsAdapter(
+            providers=[SlowProvider(delay=0.0)],
+            enabled=True,
+        )
+
+        adapter.register_provider(BlockingProvider())
+
+        result = await adapter.check("safe")
+
+        self.assertTrue(result.blocked)
+        self.assertEqual(result.provider, "blocking")
+        self.assertEqual(result.reason, "blocked_by_test")
 
 
 class TestConsensusGuardrails(unittest.IsolatedAsyncioTestCase):

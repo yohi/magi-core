@@ -103,6 +103,16 @@ class GuardrailsAdapter:
         self.on_error_policy = on_error_policy
         self.enabled = enabled
 
+    def register_provider(self, provider: GuardrailsProvider) -> None:
+        """追加の Guardrails プロバイダを登録する。"""
+        if not hasattr(provider, "evaluate"):
+            raise ValueError("provider must implement evaluate(prompt: str)")
+        name = getattr(provider, "name", provider.__class__.__name__)
+        enabled = getattr(provider, "enabled", True)
+        if not enabled:
+            logger.warning("guardrails.provider.disabled name=%s", name)
+        self.providers.append(provider)
+
     async def check(self, prompt: str) -> GuardrailsResult:
         """プロンプトに対し Guardrails を実行する."""
         if not self.enabled:
