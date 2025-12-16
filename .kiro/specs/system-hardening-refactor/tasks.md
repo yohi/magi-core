@@ -168,7 +168,7 @@
   - 本番環境では `concurrency_controller` を明示的に注入することをドキュメント化
   - _Requirements: 4.1, 4.2_
 
-- [ ] 7.2 (P) 単体テスト用モック依存の作成
+- [x] 7.2 (P) 単体テスト用モック依存の作成
   - `PersonaManagerProtocol`, `ContextManagerProtocol`, `LLMClient`, `StreamingEmitter`, `GuardrailsAdapter`, `TokenBudgetManagerProtocol` のモック実装を作成
   - モックはネットワークアクセスを不要とし、合議フローの分岐 (成功/失敗/クオーラム未達/リトライ枯渇) を再現可能に
   - モック依存を注入した ConsensusEngine の単体テストを実装
