@@ -44,7 +44,7 @@ from magi.core.streaming import (
     StreamChunk,
 )
 from magi.security.filter import SecurityFilter
-from magi.security.guardrails import GuardrailsAdapter
+from magi.security.guardrails import GuardrailsAdapter, GuardrailsResult
 from magi.models import (
     ConsensusPhase,
     ConsensusResult,
@@ -1233,10 +1233,10 @@ class ConsensusEngine:
         }
         return name_map.get(persona_type, persona_type.value)
 
-    async def _run_guardrails(self, prompt: str) -> None:
-        """Guardrails を SecurityFilter 前段で実行する."""
+    async def _run_guardrails(self, prompt: str) -> str:
+        """Guardrails を SecurityFilter 前段で実行し、必要ならサニタイズ済み入力を返す."""
         if not getattr(self.config, "enable_guardrails", False):
-            return
+            return prompt
 
         result = await self.guardrails.check(prompt)
         provider = result.provider or "unknown"
@@ -1258,11 +1258,14 @@ class ConsensusEngine:
                 failure=result.failure,
                 reason=result.reason,
             )
+            logger.warning(
+                "guardrails.%s provider=%s failure=%s",
+                "fail_open" if result.fail_open else "blocked",
+                provider,
+                result.failure,
+            )
             if result.fail_open:
-                logger.warning(
-                    "guardrails.fail_open provider=%s failure=%s", provider, result.failure
-                )
-                return
+                return prompt
             raise MagiException(
                 MagiError(
                     code=failure_code,
@@ -1284,6 +1287,11 @@ class ConsensusEngine:
                 provider=provider,
                 reason=result.reason,
                 metadata=result.metadata,
+            )
+            logger.warning(
+                "guardrails.blocked provider=%s reason=%s",
+                provider,
+                result.reason,
             )
             raise MagiException(
                 MagiError(
@@ -1309,28 +1317,32 @@ class ConsensusEngine:
                 phase="preflight",
                 provider=provider,
                 failure=result.failure,
+                reason=result.reason,
             )
             logger.warning(
                 "guardrails.fail_open provider=%s failure=%s", provider, result.failure
             )
+            return prompt
+
+        if result.sanitized_prompt:
+            sanitized = result.sanitized_prompt
+            self._record_event(
+                "guardrails.sanitized",
+                provider=provider,
+                reason=result.reason,
+                metadata=result.metadata,
+            )
+            return sanitized
+
+        return prompt
 
     async def execute(
         self,
         prompt: str,
-        plugin: Optional[object] = None
+        plugin: Optional[object] = None,
     ) -> ConsensusResult:
-        """合議プロセスを実行
-
-        Thinking → Debate → Votingの3フェーズを経て最終判定を決定する。
-
-        Args:
-            prompt: ユーザーからのプロンプト
-            plugin: プラグイン（オプション）
-
-        Returns:
-            ConsensusResult: 合議結果
-        """
-        await self._run_guardrails(prompt)
+        """合議プロセスを実行."""
+        prompt = await self._run_guardrails(prompt)
 
         detection = self.security_filter.detect_abuse(prompt)
         if detection.blocked:
@@ -1345,20 +1357,14 @@ class ConsensusEngine:
                 )
             )
 
-        # プラグインのオーバーライドを適用
-        if plugin is not None and hasattr(plugin, 'agent_overrides'):
+        if plugin is not None and hasattr(plugin, "agent_overrides"):
             self.persona_manager.apply_overrides(plugin.agent_overrides)
 
         try:
-            # Thinking Phaseを実行
             thinking_results = await self._run_thinking_phase(prompt)
-
-            # Debate Phaseを実行（ストリーミングは後段まで開放）
             debate_results = await self._run_debate_phase(
                 thinking_results, close_streaming=False
             )
-
-            # Voting Phaseを実行
             voting_result = await self._run_voting_phase(
                 thinking_results, debate_results
             )
@@ -1369,12 +1375,9 @@ class ConsensusEngine:
                 except Exception:
                     logger.warning("streaming_emitter close failed", exc_info=True)
 
-        # 結果を抽出
         voting_results = voting_result["voting_results"]
         final_decision = voting_result["decision"]
         exit_code = voting_result["exit_code"]
-
-        # 注意: _run_voting_phase 内で既にCOMPLETEDに遷移済み
 
         return ConsensusResult(
             thinking_results=thinking_results,
@@ -1382,7 +1385,7 @@ class ConsensusEngine:
             voting_results=voting_results,
             final_decision=final_decision,
             exit_code=exit_code,
-            all_conditions=voting_result["all_conditions"]
+            all_conditions=voting_result["all_conditions"],
         )
 
     @property
