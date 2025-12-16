@@ -2,16 +2,20 @@
 
 import asyncio
 import unittest
+import unittest.mock
 from typing import Dict, List, Optional
+from unittest.mock import AsyncMock, MagicMock
 
 from magi.agents.persona import Persona, PersonaType
 from magi.config.settings import MagiSettings
+from magi.core.concurrency import ConcurrencyMetrics
 from magi.core.consensus import ConsensusEngineFactory
 from magi.core.context import ContextManager
+from magi.core.schema_validator import SchemaValidationError
 from magi.core.token_budget import BudgetResult, TokenBudgetManagerProtocol
 from magi.errors import MagiException
 from magi.llm.client import LLMResponse
-from magi.models import ConsensusPhase, Decision
+from magi.models import ConsensusPhase, Decision, Vote, VoteOutput
 from magi.security.guardrails import GuardrailsResult
 
 
@@ -148,6 +152,48 @@ class FakeGuardrailsAdapter:
         )
 
 
+class FakeConcurrencyController:
+    """同時実行制御のモック."""
+
+    def __init__(self, max_concurrent: int = 10) -> None:
+        self.max_concurrent = max_concurrent
+        self.acquire_calls: List[Optional[float]] = []
+        self._total_acquired = 0
+        self._total_timeouts = 0
+        self._total_rate_limits = 0
+
+    def acquire(self, timeout: Optional[float] = None):
+        """同時実行許可を取得するコンテキストマネージャのモック."""
+        from contextlib import asynccontextmanager
+
+        self_ref = self
+
+        @asynccontextmanager
+        async def _acquire():
+            self_ref.acquire_calls.append(timeout)
+            self_ref._total_acquired += 1
+            try:
+                yield
+            finally:
+                pass
+
+        return _acquire()
+
+    def get_metrics(self) -> ConcurrencyMetrics:
+        """現在のメトリクスを返す."""
+        return ConcurrencyMetrics(
+            active_count=0,
+            waiting_count=0,
+            total_acquired=self._total_acquired,
+            total_timeouts=self._total_timeouts,
+            total_rate_limits=self._total_rate_limits,
+        )
+
+    def note_rate_limit(self) -> None:
+        """レート制限発生を記録する."""
+        self._total_rate_limits += 1
+
+
 class TestConsensusEngineWithMocks(unittest.TestCase):
     """DI向けモック依存を用いたConsensusEngineテスト."""
 
@@ -162,6 +208,7 @@ class TestConsensusEngineWithMocks(unittest.TestCase):
             llm_client_factory=overrides.get("llm_client_factory", lambda: FakeLLMClient()),
             guardrails_adapter=overrides.get("guardrails_adapter", FakeGuardrailsAdapter()),
             streaming_emitter=overrides.get("streaming_emitter", FakeStreamingEmitter()),
+            concurrency_controller=overrides.get("concurrency_controller", FakeConcurrencyController()),
             token_budget_manager=overrides.get("token_budget_manager", FakeTokenBudgetManager()),
         )
 
@@ -186,6 +233,114 @@ class TestConsensusEngineWithMocks(unittest.TestCase):
 
         with self.assertRaises(MagiException):
             asyncio.run(engine.execute("危険な入力"))
+
+    def test_execute_quorum_not_reached(self):
+        """クオーラム未達時にフェイルセーフ応答を返すこと."""
+        # クオーラムを3に設定
+        settings = MagiSettings(
+            api_key="dummy-key",
+            streaming_enabled=True,
+            debate_rounds=1,
+            quorum_threshold=3,
+            retry_count=1,
+        )
+        factory = ConsensusEngineFactory()
+        engine = factory.create(
+            settings,
+            persona_manager=FakePersonaManager(),
+            context_manager=ContextManager(),
+            template_loader=FakeTemplateLoader(),
+            llm_client_factory=lambda: FakeLLMClient(),
+            guardrails_adapter=FakeGuardrailsAdapter(),
+            streaming_emitter=FakeStreamingEmitter(),
+            concurrency_controller=FakeConcurrencyController(),
+            token_budget_manager=FakeTokenBudgetManager(),
+        )
+
+        # 2つのエージェントは成功、1つは失敗するようモック
+        def _vote_output(persona: PersonaType) -> VoteOutput:
+            return VoteOutput(
+                persona_type=persona,
+                vote=Vote.APPROVE,
+                reason="ok",
+                conditions=[],
+            )
+
+        agents = {
+            PersonaType.MELCHIOR: MagicMock(
+                vote=AsyncMock(return_value=_vote_output(PersonaType.MELCHIOR))
+            ),
+            PersonaType.BALTHASAR: MagicMock(
+                vote=AsyncMock(return_value=_vote_output(PersonaType.BALTHASAR))
+            ),
+            PersonaType.CASPER: MagicMock(
+                vote=AsyncMock(side_effect=Exception("network failure"))
+            ),
+        }
+
+        with unittest.mock.patch.object(
+            engine, "_create_agents", return_value=agents
+        ), unittest.mock.patch.object(
+            engine, "_build_voting_context", return_value="ctx"
+        ):
+            result = asyncio.run(engine._run_voting_phase({}, []))
+
+        # フェイルセーフで拒否されること
+        self.assertTrue(result["fail_safe"])
+        self.assertEqual(Decision.DENIED, result["decision"])
+        self.assertEqual(1, result["exit_code"])
+        self.assertIn("quorum", result["reason"])
+        # ストリーミングが使用されたことを確認
+        self.assertGreater(len(engine.streaming_emitter.events), 0)
+
+    def test_execute_schema_retry_exhausted(self):
+        """スキーマ検証リトライ枯渇時にエラーが記録されること."""
+        # リトライ回数を0に設定
+        settings = MagiSettings(
+            api_key="dummy-key",
+            streaming_enabled=True,
+            debate_rounds=1,
+            schema_retry_count=0,
+        )
+        factory = ConsensusEngineFactory()
+        engine = factory.create(
+            settings,
+            persona_manager=FakePersonaManager(),
+            context_manager=ContextManager(),
+            template_loader=FakeTemplateLoader(),
+            llm_client_factory=lambda: FakeLLMClient(),
+            guardrails_adapter=FakeGuardrailsAdapter(),
+            streaming_emitter=FakeStreamingEmitter(),
+            concurrency_controller=FakeConcurrencyController(),
+            token_budget_manager=FakeTokenBudgetManager(),
+        )
+
+        # 全エージェントがスキーマ検証エラーを返すようモック
+        agent = MagicMock()
+        agent.vote = AsyncMock(side_effect=SchemaValidationError(["invalid schema"]))
+
+        agents = {
+            PersonaType.MELCHIOR: agent,
+            PersonaType.BALTHASAR: MagicMock(
+                vote=AsyncMock(side_effect=SchemaValidationError(["invalid schema"]))
+            ),
+            PersonaType.CASPER: MagicMock(
+                vote=AsyncMock(side_effect=SchemaValidationError(["invalid schema"]))
+            ),
+        }
+
+        with unittest.mock.patch.object(
+            engine, "_create_agents", return_value=agents
+        ), unittest.mock.patch.object(
+            engine, "_build_voting_context", return_value="ctx"
+        ):
+            result = asyncio.run(engine._run_voting_phase({}, []))
+
+        # 投票結果が空でエラーが記録されること
+        self.assertEqual(result["voting_results"], {})
+        self.assertGreaterEqual(len(engine.errors), 1)
+        # ストリーミングが使用されたことを確認
+        self.assertGreater(len(engine.streaming_emitter.events), 0)
 
 
 if __name__ == "__main__":

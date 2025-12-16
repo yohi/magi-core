@@ -1,4 +1,4 @@
-"""ConsensusEngine のスキーマリトライ挙動を検証する"""
+"""ConsensusEngine のスキーマリトライ挙動を検証する（DI注入パターン）"""
 
 import asyncio
 import tempfile
@@ -6,16 +6,27 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from magi.config.manager import Config
-from magi.core.consensus import ConsensusEngine
+from magi.config.settings import MagiSettings
+from magi.core.consensus import ConsensusEngineFactory
+from magi.core.context import ContextManager
 from magi.core.schema_validator import SchemaValidationError, SchemaValidator
 from magi.core.template_loader import TemplateLoader
-from magi.models import PersonaType, Vote, VoteOutput
 from magi.errors import ErrorCode
+from magi.models import PersonaType, Vote, VoteOutput
+
+# test_consensus_di_mocks.py から共通モックをインポート
+from .test_consensus_di_mocks import (
+    FakeConcurrencyController,
+    FakeGuardrailsAdapter,
+    FakeLLMClient,
+    FakePersonaManager,
+    FakeStreamingEmitter,
+    FakeTokenBudgetManager,
+)
 
 
 class TestConsensusSchemaRetry(unittest.TestCase):
-    """Voting フェーズのスキーマリトライをテストする"""
+    """Voting フェーズのスキーマリトライをテストする（DI注入パターン）"""
 
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -34,16 +45,31 @@ class TestConsensusSchemaRetry(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def test_retry_then_success(self):
-        """スキーマ検証失敗後にリトライ成功する"""
-        config = Config(
+    def _create_engine(self, **settings_overrides):
+        """DIファクトリを使用してエンジンを作成するヘルパー."""
+        settings = MagiSettings(
             api_key="test",
-            schema_retry_count=1,
+            streaming_enabled=True,
+            debate_rounds=1,
+            schema_retry_count=settings_overrides.get("schema_retry_count", 1),
             template_base_path=self.temp_dir.name,
         )
-        engine = ConsensusEngine(
-            config, schema_validator=self.validator, template_loader=self.template_loader
+        factory = ConsensusEngineFactory()
+        return factory.create(
+            settings,
+            persona_manager=FakePersonaManager(),
+            context_manager=ContextManager(),
+            template_loader=self.template_loader,
+            llm_client_factory=lambda: FakeLLMClient(),
+            guardrails_adapter=FakeGuardrailsAdapter(),
+            streaming_emitter=FakeStreamingEmitter(),
+            concurrency_controller=FakeConcurrencyController(),
+            token_budget_manager=FakeTokenBudgetManager(),
         )
+
+    def test_retry_then_success(self):
+        """スキーマ検証失敗後にリトライ成功する"""
+        engine = self._create_engine(schema_retry_count=1)
 
         valid_vote = VoteOutput(
             persona_type=PersonaType.MELCHIOR,
@@ -63,17 +89,12 @@ class TestConsensusSchemaRetry(unittest.TestCase):
         self.assertIn(PersonaType.MELCHIOR, result["voting_results"])
         self.assertEqual(result["voting_results"][PersonaType.MELCHIOR].vote, Vote.APPROVE)
         self.assertEqual(result["exit_code"], 0)
+        # DI注入されたモックが使用されたことを確認
+        self.assertGreater(len(engine.streaming_emitter.events), 0)
 
     def test_retry_exhaustion_records_error(self):
         """再試行上限到達でエラーが記録される"""
-        config = Config(
-            api_key="test",
-            schema_retry_count=0,
-            template_base_path=self.temp_dir.name,
-        )
-        engine = ConsensusEngine(
-            config, schema_validator=self.validator, template_loader=self.template_loader
-        )
+        engine = self._create_engine(schema_retry_count=0)
 
         agent = MagicMock()
         agent.vote = AsyncMock(side_effect=[SchemaValidationError(["invalid schema"])])
@@ -88,17 +109,12 @@ class TestConsensusSchemaRetry(unittest.TestCase):
         self.assertEqual(
             engine.errors[0]["code"], ErrorCode.CONSENSUS_SCHEMA_RETRY_EXCEEDED.value
         )
+        # DI注入されたモックが使用されたことを確認
+        self.assertGreater(len(engine.streaming_emitter.events), 0)
 
     def test_retry_exhaustion_emits_expected_events(self):
         """スキーマ再試行枯渇時にイベントが記録される"""
-        config = Config(
-            api_key="test",
-            schema_retry_count=0,
-            template_base_path=self.temp_dir.name,
-        )
-        engine = ConsensusEngine(
-            config, schema_validator=self.validator, template_loader=self.template_loader
-        )
+        engine = self._create_engine(schema_retry_count=0)
         # テンプレートをロードして version 情報をキャッシュ
         engine.template_loader.load(engine.config.vote_template_name)
 
@@ -116,17 +132,12 @@ class TestConsensusSchemaRetry(unittest.TestCase):
         self.assertIn("schema.retry", event_types)
         self.assertIn("schema.retry_exhausted", event_types)
         self.assertIn("schema.rejected", event_types)
+        # DI注入されたモックが使用されたことを確認
+        self.assertGreater(len(engine.streaming_emitter.events), 0)
 
     def test_schema_range_error_triggers_fail_safe_and_logs(self):
         """数値範囲違反の検証失敗でフェイルセーフにする"""
-        config = Config(
-            api_key="test",
-            schema_retry_count=0,
-            template_base_path=self.temp_dir.name,
-        )
-        engine = ConsensusEngine(
-            config, schema_validator=self.validator, template_loader=self.template_loader
-        )
+        engine = self._create_engine(schema_retry_count=0)
 
         async def invalid_vote(_context):
             payload = {
@@ -156,6 +167,8 @@ class TestConsensusSchemaRetry(unittest.TestCase):
         self.assertTrue(
             any("confidence" in err for err in engine.errors[0]["errors"])
         )
+        # DI注入されたモックが使用されたことを確認
+        self.assertGreater(len(engine.streaming_emitter.events), 0)
 
 
 if __name__ == "__main__":

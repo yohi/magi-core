@@ -228,45 +228,45 @@
   - レート制限記録 (`note_rate_limit()`) のテスト
   - _Requirements: 2.1, 2.2, 2.5_
 
-- [ ] 9.4 (P) PluginPermissionGuard の単体テスト
+- [x] 9.4 (P) PluginPermissionGuard の単体テスト
   - `check_override_permission()` の権限チェックテスト (CONTEXT_ONLY / FULL_OVERRIDE)
   - 信頼されたプラグインの権限管理テスト
   - 許可外変更の拒否とログ記録テスト
   - _Requirements: 8.1, 8.2, 8.3, 8.4_
 
-- [ ] 9.5 (P) StreamingEmitter のバックプレッシャ単体テスト
+- [x] 9.5 (P) StreamingEmitter のバックプレッシャ単体テスト
   - `drop` モードでのドロップ動作テスト
   - `backpressure` モードでの待機とタイムアウトテスト
   - クリティカルイベントの欠落防止テスト
   - メトリクス記録 (`get_state()`) のテスト
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 9.6 (P) GuardrailsAdapter のマルチプロバイダ単体テスト
+- [x] 9.6 (P) GuardrailsAdapter のマルチプロバイダ単体テスト
   - カスタムプロバイダ登録のテスト
   - タイムアウト時の fail-open/fail-closed ポリシー適用テスト
   - 判定結果の監査ログ記録テスト
   - 入力遮断と安全化のテスト
   - _Requirements: 7.1, 7.2, 7.3, 7.4_
 
-- [ ] 9.7 プラグインロードの統合テスト
+- [x] 9.7 プラグインロードの統合テスト
   - 複数プラグインの同時ロード (`load_all_async()`) テスト
   - 同時ロード数制限の動作テスト
   - 失敗プラグインの隔離テスト (他プラグインへの影響がないこと)
   - _Requirements: 1.3, 1.4, 1.5_
 
-- [ ] 9.8 合議フローの統合テスト (DI 注入あり)
+- [x] 9.8 合議フローの統合テスト (DI 注入あり)
   - モック依存を注入した ConsensusEngine の完全フロー実行テスト
   - 成功/失敗/クオーラム未達/リトライ枯渇の各分岐テスト
   - ConcurrencyController, StreamingEmitter, GuardrailsAdapter, TokenBudgetManager の統合動作テスト
   - _Requirements: 4.1, 4.3, 4.4, 2.1, 2.4, 3.1, 7.1_
 
-- [ ] 9.9 (P) 本番運用モードの統合テスト
+- [x] 9.9 (P) 本番運用モードの統合テスト
   - `production_mode=True` 時の公開鍵パス厳格化テスト
   - 公開鍵パス解決不可時の起動拒否テスト
   - 監査ログ記録のテスト
   - _Requirements: 9.1, 9.2, 9.3_
 
-- [ ] 9.10 (P) Property テストの追加
+- [x] 9.10 (P) Property テストの追加
   - MagiSettings の任意の有効な設定値でのバリデーション成功を検証
   - PluginLoader の任意のタイムアウト値での動作を検証
   - ConcurrencyController の任意の同時実行数での動作を検証

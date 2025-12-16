@@ -1,17 +1,52 @@
-"""クオーラム管理とストリーミング再送出のテスト"""
+"""クオーラム管理とストリーミング再送出のテスト（DI注入パターン）"""
 
 import asyncio
 import unittest
 import unittest.mock
 from unittest.mock import AsyncMock, MagicMock
 
-from magi.config.manager import Config
-from magi.core.consensus import ConsensusEngine
+from magi.config.settings import MagiSettings
+from magi.core.consensus import ConsensusEngineFactory
+from magi.core.context import ContextManager
 from magi.models import Decision, PersonaType, Vote, VoteOutput
+
+# test_consensus_di_mocks.py から共通モックをインポート
+from .test_consensus_di_mocks import (
+    FakeConcurrencyController,
+    FakeGuardrailsAdapter,
+    FakeLLMClient,
+    FakePersonaManager,
+    FakeStreamingEmitter,
+    FakeTemplateLoader,
+    FakeTokenBudgetManager,
+)
 
 
 class TestQuorumManagerAndFailSafe(unittest.TestCase):
-    """クオーラム不足時のフェイルセーフ挙動を検証する"""
+    """クオーラム不足時のフェイルセーフ挙動を検証する（DI注入パターン）"""
+
+    def _create_engine(self, **settings_overrides):
+        """DIファクトリを使用してエンジンを作成するヘルパー."""
+        settings = MagiSettings(
+            api_key="test-api-key",
+            streaming_enabled=True,
+            debate_rounds=1,
+            quorum_threshold=settings_overrides.get("quorum_threshold", 3),
+            retry_count=settings_overrides.get("retry_count", 1),
+            stream_retry_count=1,
+        )
+        factory = ConsensusEngineFactory()
+        return factory.create(
+            settings,
+            persona_manager=FakePersonaManager(),
+            context_manager=ContextManager(),
+            template_loader=FakeTemplateLoader(),
+            llm_client_factory=lambda: FakeLLMClient(),
+            guardrails_adapter=FakeGuardrailsAdapter(),
+            streaming_emitter=FakeStreamingEmitter(),
+            concurrency_controller=FakeConcurrencyController(),
+            token_budget_manager=FakeTokenBudgetManager(),
+        )
 
     def _vote_output(self, persona: PersonaType, vote: Vote = Vote.APPROVE):
         return VoteOutput(
@@ -23,13 +58,7 @@ class TestQuorumManagerAndFailSafe(unittest.TestCase):
 
     def test_voting_phase_returns_fail_safe_when_below_quorum(self):
         """クオーラム未達ならフェイルセーフ応答を返し部分結果を公開しない"""
-        config = Config(
-            api_key="test-api-key",
-            quorum_threshold=3,
-            retry_count=1,
-            stream_retry_count=1,
-        )
-        engine = ConsensusEngine(config)
+        engine = self._create_engine(quorum_threshold=3, retry_count=1)
 
         agents = {
             PersonaType.MELCHIOR: MagicMock(
@@ -56,16 +85,12 @@ class TestQuorumManagerAndFailSafe(unittest.TestCase):
         self.assertIn("quorum", result["reason"])
         self.assertIn("casper", result["excluded_agents"])
         self.assertTrue(result["partial_results"])
+        # DI注入されたモックが使用されたことを確認
+        self.assertGreater(len(engine.streaming_emitter.events), 0)
 
     def test_voting_phase_retries_failed_agent_and_succeeds(self):
         """リトライ上限内で成功すればクオーラムを満たし通常結果を返す"""
-        config = Config(
-            api_key="test-api-key",
-            quorum_threshold=2,
-            retry_count=1,
-            stream_retry_count=1,
-        )
-        engine = ConsensusEngine(config)
+        engine = self._create_engine(quorum_threshold=2, retry_count=1)
 
         mel = self._vote_output(PersonaType.MELCHIOR)
         bal = self._vote_output(PersonaType.BALTHASAR)
@@ -92,6 +117,8 @@ class TestQuorumManagerAndFailSafe(unittest.TestCase):
         self.assertEqual(0, result["exit_code"])
         # 成功した2名のみが集計される
         self.assertEqual(2, len(result["voting_results"]))
+        # DI注入されたモックが使用されたことを確認
+        self.assertGreater(len(engine.streaming_emitter.events), 0)
 
 
 if __name__ == "__main__":
