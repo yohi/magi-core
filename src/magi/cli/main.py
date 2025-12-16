@@ -136,7 +136,7 @@ class MagiCLI:
         try:
             provider = self._select_provider(options)
             concurrency_controller = ConcurrencyController(
-                max_concurrent=getattr(self.config, "llm_concurrency_limit", 1)
+                max_concurrent=getattr(self.config, "llm_concurrency_limit", 5)
             )
             llm_client = self._build_llm_client(
                 provider,
