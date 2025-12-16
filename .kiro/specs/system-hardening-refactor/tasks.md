@@ -160,7 +160,7 @@
 
 ## 7. 依存性注入 (DI) によるテスト容易性向上
 
-- [ ] 7.1 ConsensusEngine の DI 対応
+- [x] 7.1 ConsensusEngine の DI 対応
   - `ConsensusEngineFactory.create()` で主要依存 (PersonaManager, ContextManager, LLMClient, StreamingEmitter, GuardrailsAdapter, TokenBudgetManager) を外部注入可能に変更
   - 各依存は Optional 引数とし、None の場合はデフォルト実装を使用
   - デフォルト実装はファクトリ関数または既存クラスのインスタンス化で提供

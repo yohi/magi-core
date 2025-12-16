@@ -133,6 +133,8 @@ class ConsensusEngine:
     def __init__(
         self,
         config: Config,
+        persona_manager: Optional[PersonaManager] = None,
+        context_manager: Optional[ContextManager] = None,
         schema_validator: Optional[SchemaValidator] = None,
         template_loader: Optional[TemplateLoader] = None,
         llm_client_factory: Optional[Callable[[], LLMClient]] = None,
@@ -148,8 +150,8 @@ class ConsensusEngine:
             config: MAGI設定
         """
         self.config = config
-        self.persona_manager = PersonaManager()
-        self.context_manager = ContextManager()
+        self.persona_manager = persona_manager or PersonaManager()
+        self.context_manager = context_manager or ContextManager()
         self.current_phase = ConsensusPhase.THINKING
         self.schema_validator = schema_validator or SchemaValidator()
         self._events: List[Dict[str, Any]] = []
@@ -1438,3 +1440,40 @@ class ConsensusEngine:
             return {}
         allowed_keys = {"provider", "missing_fields", "auth_error"}
         return {k: v for k, v in context.items() if k in allowed_keys}
+
+
+class ConsensusEngineFactory:
+    """ConsensusEngine を生成するファクトリ。
+
+    依存注入のエントリポイントを集約し、テストで依存を差し替えやすくする。
+    """
+
+    def create(
+        self,
+        config: Config,
+        *,
+        persona_manager: Optional[PersonaManager] = None,
+        context_manager: Optional[ContextManager] = None,
+        schema_validator: Optional[SchemaValidator] = None,
+        template_loader: Optional[TemplateLoader] = None,
+        llm_client_factory: Optional[Callable[[], LLMClient]] = None,
+        guardrails_adapter: Optional[GuardrailsAdapter] = None,
+        streaming_emitter: Optional[Any] = None,
+        event_context: Optional[Dict[str, Any]] = None,
+        concurrency_controller: Optional[ConcurrencyController] = None,
+        token_budget_manager: Optional[TokenBudgetManagerProtocol] = None,
+    ) -> "ConsensusEngine":
+        """依存を注入して ConsensusEngine を生成する。"""
+        return ConsensusEngine(
+            config,
+            persona_manager=persona_manager,
+            context_manager=context_manager,
+            schema_validator=schema_validator,
+            template_loader=template_loader,
+            llm_client_factory=llm_client_factory,
+            guardrails_adapter=guardrails_adapter,
+            streaming_emitter=streaming_emitter,
+            event_context=event_context,
+            concurrency_controller=concurrency_controller,
+            token_budget_manager=token_budget_manager,
+        )
