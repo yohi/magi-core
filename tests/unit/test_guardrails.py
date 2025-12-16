@@ -50,6 +50,24 @@ class BlockingProvider:
         return GuardrailsDecision(blocked=True, reason="blocked_by_test")
 
 
+class SanitizingProvider:
+    """サニタイズ結果を返すプロバイダ."""
+
+    name = "sanitizing"
+    enabled = True
+
+    def __init__(self, sanitized_prompt: str = "sanitized") -> None:
+        self.sanitized_prompt = sanitized_prompt
+
+    async def evaluate(self, prompt: str) -> GuardrailsDecision:
+        return GuardrailsDecision(
+            blocked=False,
+            reason="sanitize_required",
+            metadata={"original": prompt},
+            sanitized_prompt=self.sanitized_prompt,
+        )
+
+
 class TestGuardrailsAdapter(unittest.IsolatedAsyncioTestCase):
     """GuardrailsAdapter の単体テスト."""
 
@@ -252,3 +270,42 @@ class TestConsensusGuardrails(unittest.IsolatedAsyncioTestCase):
             await engine.execute("safe")
 
         self.assertEqual(ctx.exception.error.code, ErrorCode.GUARDRAILS_TIMEOUT.value)
+
+    async def test_guardrails_sanitize_applies_and_logs(self) -> None:
+        """サニタイズ結果が適用され、イベントが記録される."""
+        config = Config(api_key="k", enable_guardrails=True)
+        adapter = GuardrailsAdapter(
+            providers=[SanitizingProvider(sanitized_prompt="sanitized_input")],
+            enabled=True,
+        )
+        engine = ConsensusEngine(config, guardrails_adapter=adapter)
+
+        detection = DetectionResult(blocked=False, matched_rules=[])
+        with patch.object(
+            engine.security_filter, "detect_abuse", return_value=detection
+        ) as detect_mock, patch.object(
+            engine,
+            "_run_thinking_phase",
+            AsyncMock(return_value={}),
+        ), patch.object(
+            engine,
+            "_run_debate_phase",
+            AsyncMock(return_value=[]),
+        ), patch.object(
+            engine,
+            "_run_voting_phase",
+            AsyncMock(
+                return_value={
+                    "voting_results": {},
+                    "decision": Decision.APPROVED,
+                    "exit_code": 0,
+                    "all_conditions": [],
+                }
+            ),
+        ):
+            await engine.execute("unsafe_input")
+
+        detect_mock.assert_called_once_with("sanitized_input")
+        self.assertTrue(
+            any(evt["type"] == "guardrails.sanitized" for evt in engine.events)
+        )

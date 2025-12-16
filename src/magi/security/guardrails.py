@@ -18,6 +18,7 @@ class GuardrailsDecision:
     blocked: bool
     reason: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    sanitized_prompt: Optional[str] = None
 
 
 @dataclass
@@ -30,6 +31,7 @@ class GuardrailsResult:
     failure: Optional[str] = None  # "timeout" | "error" | None
     fail_open: bool = False
     metadata: Dict[str, Any] = field(default_factory=dict)
+    sanitized_prompt: Optional[str] = None
 
 
 class GuardrailsProvider(Protocol):
@@ -184,6 +186,16 @@ class GuardrailsAdapter:
                     metadata=decision.metadata,
                     failure=None,
                     fail_open=False,
+                )
+            if decision.sanitized_prompt:
+                return GuardrailsResult(
+                    blocked=False,
+                    reason=decision.reason,
+                    provider=provider_name,
+                    metadata=decision.metadata,
+                    failure=None,
+                    fail_open=False,
+                    sanitized_prompt=decision.sanitized_prompt,
                 )
 
         return GuardrailsResult(
