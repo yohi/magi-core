@@ -290,7 +290,7 @@
 
 ## 11. 最終統合とリグレッションテスト
 
-- [ ] 11.1 全コンポーネントの統合
+- [x] 11.1 全コンポーネントの統合
   - MagiSettings, PluginLoader, ConcurrencyController, StreamingEmitter, GuardrailsAdapter, PluginPermissionGuard を MagiCLI および ConsensusEngine に統合
   - CLI の起動時に全設定をロードし、バリデーションエラーを適切にハンドリング
   - 合議フローの全フェーズで新機能が正しく動作することを確認
