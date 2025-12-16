@@ -266,7 +266,7 @@
   - 監査ログ記録のテスト
   - _Requirements: 9.1, 9.2, 9.3_
 
-- [ ] 9.10 (P) Property テストの追加
+- [x] 9.10 (P) Property テストの追加
   - MagiSettings の任意の有効な設定値でのバリデーション成功を検証
   - PluginLoader の任意のタイムアウト値での動作を検証
   - ConcurrencyController の任意の同時実行数での動作を検証
