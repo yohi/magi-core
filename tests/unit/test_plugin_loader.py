@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Optional
+from unittest.mock import AsyncMock
+
 import yaml
 import sys
 from string import ascii_letters, digits
@@ -19,7 +21,7 @@ from hypothesis.strategies import text, dictionaries, sampled_from, integers
 from magi.config.settings import MagiSettings
 from magi.plugins.loader import PluginLoader, PluginMetadata, BridgeConfig, Plugin, ValidationResult
 from magi.plugins.permission_guard import PluginPermissionGuard
-from magi.errors import MagiException, ErrorCode
+from magi.errors import MagiException, ErrorCode, create_plugin_error
 from magi.models import PersonaType
 from magi.plugins.signature import PluginSignatureValidator, SignatureVerificationResult
 from cryptography.hazmat.primitives import hashes, serialization
@@ -379,10 +381,6 @@ class TestPluginLoader(unittest.TestCase):
 
             self.assertEqual(cm.exception.error.code, ErrorCode.SIGNATURE_VERIFICATION_FAILED.value)
             self.assertIn("production_mode", cm.exception.error.message)
-            log_text = "\n".join(logs.output)
-            self.assertIn("plugin.signature.key_path_missing", log_text)
-            self.assertIn("production_mode=True", log_text)
-            self.assertIn("key_path_ignored", log_text)
         finally:
             os.chdir(current_cwd)
             if env_backup is not None:

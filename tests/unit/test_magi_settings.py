@@ -101,6 +101,26 @@ class TestMagiSettings(unittest.TestCase):
         with self.assertRaises(ValidationError):
             MagiSettings(api_key="test", unknown_field="value")
 
+    def test_env_overrides_init_settings(self):
+        """env が init 引数より優先される (settings_customise_sources の検証)"""
+        with patch.dict(
+            os.environ,
+            {"MAGI_MODEL": "env-model", "MAGI_API_KEY": "env-key"},
+            clear=True,
+        ):
+            settings = MagiSettings(api_key="init-key", model="init-model")
+
+        self.assertEqual(settings.api_key, "env-key")
+        self.assertEqual(settings.model, "env-model")
+
+    def test_dump_masked_short_api_key_is_redacted(self):
+        """短い API キーは '***' にマスクされる"""
+        settings = MagiSettings(api_key="short-key")
+
+        masked = settings.dump_masked()
+
+        self.assertEqual(masked["api_key"], "***")
+
 
 if __name__ == "__main__":
     unittest.main()
