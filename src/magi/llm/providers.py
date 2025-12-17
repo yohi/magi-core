@@ -11,6 +11,7 @@ from magi.errors import ErrorCode, MagiError, MagiException, create_api_error
 from magi.llm.client import LLMClient, LLMRequest, LLMResponse
 
 if TYPE_CHECKING:
+    from magi.core.concurrency import ConcurrencyController
     from magi.core.providers import ProviderContext
 
 
@@ -58,7 +59,9 @@ class AnthropicAdapter:
     def __init__(
         self,
         context: ProviderContext,
+        *,
         llm_client: Optional[LLMClient] = None,
+        concurrency_controller: Optional[ConcurrencyController] = None,
     ) -> None:
         self.context = context
         self.provider_id = context.provider_id
@@ -69,6 +72,7 @@ class AnthropicAdapter:
         self._llm_client = llm_client or LLMClient(
             api_key=context.api_key,
             model=context.model,
+            concurrency_controller=concurrency_controller,
         )
 
     async def send(self, request: LLMRequest) -> LLMResponse:
@@ -105,6 +109,7 @@ class OpenAIAdapter:
         *,
         http_client: Optional[Any] = None,
         timeout: float = 30.0,
+        concurrency_controller: Optional[ConcurrencyController] = None,
     ) -> None:
         self.context = context
         self.provider_id = context.provider_id
@@ -114,6 +119,7 @@ class OpenAIAdapter:
         self._httpx = _require_httpx()
         self._owns_client = http_client is None
         self._client = http_client or self._httpx.AsyncClient(timeout=timeout)
+        self._concurrency_controller = concurrency_controller
         self._validate_required_fields(["api_key", "model"])
 
     def _validate_prompts(self, request: LLMRequest) -> None:
@@ -303,6 +309,7 @@ class GeminiAdapter:
         *,
         http_client: Optional[Any] = None,
         timeout: float = 30.0,
+        concurrency_controller: Optional[ConcurrencyController] = None,
     ) -> None:
         self.context = context
         self.provider_id = context.provider_id
@@ -314,6 +321,7 @@ class GeminiAdapter:
         # http_client が提供されない場合のみ、内部で httpx.AsyncClient を作成
         self._owns_client = http_client is None
         self._client = http_client or self._httpx.AsyncClient(timeout=timeout)
+        self._concurrency_controller = concurrency_controller
         self._validate_required_fields(["api_key", "model", "endpoint"])
 
     async def send(self, request: LLMRequest) -> LLMResponse:

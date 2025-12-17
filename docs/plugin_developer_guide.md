@@ -170,5 +170,3 @@ plugin_trusted_signatures:
 -   **Async Compatibility**: Plugins are loaded asynchronously. Ensure your initialization doesn't block significantly.
 -   **Error Handling**: If your bridge command fails or times out, the plugin will be isolated. Design your plugin to fail gracefully.
 -   **Production Mode**: In `production_mode=True`, the system will **NOT** search for `plugins/public_key.pem` in the current directory. You must explicitly configure the public key path.
-
-```

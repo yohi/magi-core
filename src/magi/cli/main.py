@@ -660,7 +660,9 @@ class MagiCLI:
     ):
         """選択されたプロバイダに応じたLLMクライアント/アダプタを構築する"""
         if self.provider_factory:
-            return self.provider_factory.build(provider)
+            return self.provider_factory.build(
+                provider, concurrency_controller=concurrency_controller
+            )
         return LLMClient(
             api_key=provider.api_key,
             model=provider.model,

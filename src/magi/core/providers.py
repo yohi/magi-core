@@ -2,8 +2,10 @@
 プロバイダレジストリとセレクタ
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, Optional, Set, Type
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Set, Type
 
 from magi.config.provider import (
     DEFAULT_PROVIDER_ID,
@@ -14,6 +16,9 @@ from magi.config.provider import (
 )
 from magi.errors import ErrorCode, MagiError, MagiException
 from magi.llm.providers import AnthropicAdapter, GeminiAdapter, OpenAIAdapter, ProviderAdapter
+
+if TYPE_CHECKING:
+    from magi.core.concurrency import ConcurrencyController
 
 
 @dataclass
@@ -160,7 +165,12 @@ class ProviderAdapterFactory:
             "gemini": GeminiAdapter,
         }
 
-    def build(self, context: ProviderContext) -> ProviderAdapter:
+    def build(
+        self,
+        context: ProviderContext,
+        *,
+        concurrency_controller: Optional["ConcurrencyController"] = None,
+    ) -> ProviderAdapter:
         """Contextに対応するアダプタを生成"""
         key = context.provider_id.lower()
         adapter_cls = self._adapter_mapping.get(key)
@@ -173,4 +183,4 @@ class ProviderAdapterFactory:
                     recoverable=False,
                 )
             )
-        return adapter_cls(context)
+        return adapter_cls(context, concurrency_controller=concurrency_controller)

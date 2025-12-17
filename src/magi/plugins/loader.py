@@ -139,7 +139,7 @@ class PluginLoader:
         LOGGER.info("plugin.load.started path=%s timeout=%.3f", path, effective_timeout)
         try:
             plugin = await asyncio.wait_for(self._load_async_impl(path), timeout=effective_timeout)
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as e:
             duration = time.monotonic() - start
             LOGGER.error(
                 "plugin.load.timeout path=%s effective_timeout=%.3f duration=%.3f",
@@ -153,7 +153,7 @@ class PluginLoader:
                     ErrorCode.PLUGIN_LOAD_TIMEOUT,
                     f"Plugin load timed out for {path} after {effective_timeout:.3f}s",
                 )
-            )
+            ) from e
         except Exception:
             LOGGER.exception("plugin.load.failed path=%s", path)
             raise

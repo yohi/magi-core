@@ -61,7 +61,7 @@ class ConfigManager:
         try:
             settings = MagiSettings(**file_config)
         except ValidationError as exc:  # Pydantic バリデーション失敗
-            raise self._convert_validation_error(exc)
+            raise self._convert_validation_error(exc) from exc
 
         if not settings.api_key:
             raise MagiException(
@@ -116,7 +116,7 @@ class ConfigManager:
                     message=f"設定ファイルの読み込みに失敗しました: {exc}",
                     details={"path": str(config_path)},
                 )
-            )
+            ) from exc
 
     def _get_default_config_paths(self) -> List[Path]:
         """デフォルトの設定ファイルパスを取得"""

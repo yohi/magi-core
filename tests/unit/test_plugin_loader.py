@@ -438,6 +438,11 @@ class TestPluginLoader(unittest.TestCase):
             with self.assertLogs("magi.plugins.loader", level="INFO") as logs, self.assertRaises(MagiException) as cm:
                 loader.load(plugin_file)
 
+            # ログに production_mode に関する記録があることを確認
+            self.assertTrue(
+                any("production_mode" in m.lower() for m in logs.output),
+                "Expected 'production_mode' in log output"
+            )
             self.assertEqual(cm.exception.error.code, ErrorCode.SIGNATURE_VERIFICATION_FAILED.value)
             self.assertIn("production_mode", cm.exception.error.message)
         finally:

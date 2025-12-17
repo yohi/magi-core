@@ -52,6 +52,9 @@ class TokenBudgetManagerProtocol(Protocol):
     def consume(self, actual_tokens: int) -> None:
         """実際に消費したトークン数を記録する."""
 
+    def enforce(self, context: str, phase: ConsensusPhase) -> BudgetResult:
+        """コンテキストに予算を適用し、必要なら要約/圧縮する."""
+
 
 class SimpleTokenBudgetManager(TokenBudgetManagerProtocol):
     """推定/実測トークンを追跡する軽量マネージャ."""
@@ -75,6 +78,15 @@ class SimpleTokenBudgetManager(TokenBudgetManagerProtocol):
         if self.max_tokens is None:
             return
         self._consumed += actual_tokens
+
+    def enforce(self, context: str, phase: ConsensusPhase) -> BudgetResult:
+        """コンテキストをそのまま返す（圧縮なし）."""
+        return BudgetResult(
+            context=context,
+            summary_applied=False,
+            reduced_tokens=0,
+            logs=[],
+        )
 
     @property
     def consumed(self) -> int:

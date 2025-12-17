@@ -268,7 +268,7 @@ class QueueStreamingEmitter(BaseStreamingEmitter):
             raise StreamingTimeoutError(
                 f"streaming queue is full (policy=backpressure) "
                 f"for persona={stream_chunk.persona}"
-            )
+            ) from None
 
     async def _drain(self) -> None:
         while not self._closed:

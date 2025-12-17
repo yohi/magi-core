@@ -71,7 +71,7 @@ class FakeTokenBudgetManager(TokenBudgetManagerProtocol):
     def consume(self, actual_tokens: int) -> None:
         self.consume_calls.append(actual_tokens)
 
-    def enforce(self, context: str, phase: ConsensusPhase) -> BudgetResult:  # type: ignore[override]
+    def enforce(self, context: str, phase: ConsensusPhase) -> BudgetResult:
         return BudgetResult(
             context=context,
             summary_applied=False,
