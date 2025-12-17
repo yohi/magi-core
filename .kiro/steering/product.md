@@ -33,7 +33,7 @@ MAGI System は 3 賢者（MELCHIOR/BALTHASAR/CASPER）の合議プロセスで�
 
 ## 参考情報
 - 必須環境: Python 3.11+, uv
-- 主要依存: anthropic, jsonschema, pyyaml, cryptography, hypothesis, pytest, httpx (OpenAI/Gemini 利用時), pydantic
+- 主要依存: anthropic, jsonschema, pyyaml, cryptography, hypothesis, pytest, httpx (OpenAI/Gemini 利用時), pydantic, pydantic-settings
 - エントリーポイント: `magi`（`pyproject.toml` の scripts 定義）
 
 updated_at: 2025-12-18
