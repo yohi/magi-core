@@ -421,13 +421,14 @@ class PluginLoader:
     def _get_load_timeout(self, timeout: Optional[float]) -> float:
         """ロードタイムアウトを解決する"""
         if timeout is not None:
-            return timeout
+            return max(float(timeout), 0.02)
 
         config_timeout = None
         if self.config is not None:
             config_timeout = getattr(self.config, "plugin_load_timeout", None)
 
-        return float(config_timeout) if config_timeout is not None else 30.0
+        base_timeout = float(config_timeout) if config_timeout is not None else 30.0
+        return max(base_timeout, 0.02)
 
     def _get_concurrency_limit(self, concurrency_limit: Optional[int]) -> int:
         """プラグインロードの同時実行上限を解決する"""
