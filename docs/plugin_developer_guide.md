@@ -32,21 +32,21 @@ agent_overrides:
 ### Sections
 
 - **plugin**: Metadata about the plugin.
-    - `name` (required): Unique identifier.
-    - `version`: SemVer string (default: "1.0.0").
-    - `description`: Human-readable description.
-    - `signature` (recommended): Base64 encoded signature (RSA-PSS or ECDSA).
-    - `hash` (legacy): SHA256 digest of the canonicalized YAML.
+  - `name` (required): Unique identifier.
+  - `version`: SemVer string (default: "1.0.0").
+  - `description`: Human-readable description.
+  - `signature` (recommended): Base64 encoded signature (RSA-PSS or ECDSA).
+  - `hash` (legacy): SHA256 digest of the canonicalized YAML.
 
 - **bridge**: Configuration for the external process.
-    - `command` (required): Shell command to execute.
-    - `interface`: `stdio` (standard input/output) or `file` (file-based exchange).
-    - `timeout`: Execution timeout in seconds (default: 30).
+  - `command` (required): Shell command to execute.
+  - `interface`: `stdio` (standard input/output) or `file` (file-based exchange).
+  - `timeout`: Execution timeout in seconds (default: 30).
 
 - **agent_overrides** (optional): Custom instructions appended to agent system prompts.
-    - Keys: `melchior`, `balthasar`, `casper`.
-    - Values: String containing the additional instructions.
-    - **Note**: This feature is restricted by default. See "Permissions & Security".
+  - Keys: `melchior`, `balthasar`, `casper`.
+  - Values: String containing the additional instructions.
+  - **Note**: This feature is restricted by default. See "Permissions & Security".
 
 ## Permissions & Security
 

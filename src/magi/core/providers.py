@@ -183,4 +183,7 @@ class ProviderAdapterFactory:
                     recoverable=False,
                 )
             )
-        return adapter_cls(context, concurrency_controller=concurrency_controller)
+        # AnthropicAdapterのみconcurrency_controllerを必要とする
+        if key == "anthropic":
+            return adapter_cls(context, concurrency_controller=concurrency_controller)
+        return adapter_cls(context)

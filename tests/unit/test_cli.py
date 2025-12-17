@@ -444,7 +444,9 @@ class TestMagiCLI(unittest.TestCase):
             def __init__(self):
                 self.calls: List[ProviderContext] = []
 
-            def build(self, context: ProviderContext):
+            def build(self, context: ProviderContext, *, concurrency_controller=None):
+                # 未使用パラメータを参照してARG002を回避
+                _ = concurrency_controller
                 self.calls.append(context)
                 return object()
 
