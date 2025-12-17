@@ -18,6 +18,7 @@ from magi import __version__
 from magi.cli.parser import ArgumentParser, ParsedCommand, VALID_COMMANDS
 from magi.config.manager import Config
 from magi.config.provider import DEFAULT_PROVIDER_ID, SUPPORTED_PROVIDERS
+from magi.core.concurrency import ConcurrencyController
 from magi.core.consensus import ConsensusEngine
 from magi.core.providers import ProviderAdapterFactory, ProviderContext, ProviderSelector
 from magi.errors import MagiError, MagiException, ErrorCode
@@ -134,7 +135,13 @@ class MagiCLI:
 
         try:
             provider = self._select_provider(options)
-            llm_client = self._build_llm_client(provider)
+            concurrency_controller = ConcurrencyController(
+                max_concurrent=getattr(self.config, "llm_concurrency_limit", 5)
+            )
+            llm_client = self._build_llm_client(
+                provider,
+                concurrency_controller=concurrency_controller,
+            )
         except MagiException as exc:
             print(f"プロバイダ選択エラー: {exc.error.message}", file=sys.stderr)
             return 1
@@ -167,6 +174,7 @@ class MagiCLI:
             self.config,
             llm_client_factory=lambda: llm_client,
             event_context={"provider": provider.provider_id},
+            concurrency_controller=concurrency_controller,
         )
         formatter = OutputFormatter()
 
@@ -644,7 +652,12 @@ class MagiCLI:
             used_default=provider_flag is None,
         )
 
-    def _build_llm_client(self, provider: ProviderContext):
+    def _build_llm_client(
+        self,
+        provider: ProviderContext,
+        *,
+        concurrency_controller: Optional[ConcurrencyController] = None,
+    ):
         """選択されたプロバイダに応じたLLMクライアント/アダプタを構築する"""
         if self.provider_factory:
             return self.provider_factory.build(provider)
@@ -653,6 +666,7 @@ class MagiCLI:
             model=provider.model,
             retry_count=self.config.retry_count,
             timeout=self.config.timeout,
+            concurrency_controller=concurrency_controller,
         )
 
     def _print_provider_selection(self, provider: ProviderContext) -> None:

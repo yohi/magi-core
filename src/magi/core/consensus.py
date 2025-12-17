@@ -191,7 +191,7 @@ class ConsensusEngine:
                 enabled=getattr(self.config, "enable_guardrails", False),
             )
         # 同時実行制御
-        limit = getattr(self.config, "llm_concurrency_limit", 1)
+        limit = getattr(self.config, "llm_concurrency_limit", 5)
         self.concurrency_controller = concurrency_controller or ConcurrencyController(
             max_concurrent=limit
         )
