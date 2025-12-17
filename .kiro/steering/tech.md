@@ -3,7 +3,7 @@
 ## 基本技術
 - 言語/ランタイム: Python 3.11+
 - パッケージ管理: uv（ビルドは hatchling）
-- 主要依存: anthropic (LLM API), jsonschema (スキーマ検証), pyyaml (設定), cryptography (署名検証), hypothesis/pytest (テスト)
+- 主要依存: anthropic (LLM API), jsonschema (スキーマ検証), pyyaml (設定), cryptography (署名検証), hypothesis/pytest (テスト), pydantic/pydantic-settings (設定検証)
 - オプション依存: httpx (OpenAI/Gemini プロバイダ利用時に必要)
 - 配布形態: `pyproject.toml` の scripts で `magi` を提供
 
@@ -14,6 +14,8 @@
 - GuardrailsAdapter を SecurityFilter 前段に挿入し、fail-open/fail-closed を設定で切替。遮断/失敗はイベントにコード付きで記録。
 - ストリーミングは QueueStreamingEmitter でバッファリングし、ドロップ/TTFB/elapsed を計測しつつ fail-safe にフォールバック。
 - セキュリティフィルタとプラグインガードで入力サニタイズ・メタ文字検証を実施。
+- `BridgeAdapter` により外部 CLI 実行時の環境変数分離と stderr マスク（シークレット漏洩防止）を実現。
+- `ConcurrencyController` により LLM/Plugin の同時実行数をセマフォ管理。
 - spec_sync で `spec.json` と `tasks.md` を原子的に同期し、残タスクとメタ情報を一貫させる。
 
 ## 開発環境
@@ -50,6 +52,9 @@ uv run coverage html
 - StreamingEmitter: ストリーミング出力と再接続リトライ（MAGI_CLI_STREAM_RETRY_COUNT）、ドロップ計測と fail-safe イベント付与を実施。
 - GuardrailsAdapter: 前段でプロンプト難読化や jailbreak を検知し、タイムアウト/例外は fail-open/closed ポリシーで処理。
 - SecurityFilter/PluginGuard/PluginSignatureValidator: マーカー付与・制御文字エスケープ・禁止パターン検知・メタ文字拒否、プラグイン YAML を正規化した上で署名/ハッシュ検証。
+- ConcurrencyController: `asyncio.Semaphore` を用いた同時実行数制御とタイムアウト、レートリミット計測。
+- BridgeAdapter: 外部プロセス実行時の `MAGI_PROVIDER_*` 環境変数注入と、エラー出力からのシークレット自動マスク。
+- PluginPermissionGuard: プラグインによるプロンプト上書きを `CONTEXT_ONLY` / `FULL_OVERRIDE` のスコープで制御し、署名信頼度と組み合わせて検証。
 
 ## 環境変数・設定
 
@@ -62,7 +67,7 @@ uv run coverage html
 - `MAGI_DEFAULT_PROVIDER`: デフォルトで使用するプロバイダ ID (既定: `anthropic`)
 - 従来互換: `MAGI_API_KEY`, `MAGI_MODEL` は `MAGI_DEFAULT_PROVIDER` (Anthropic) の設定として読み込まれます。
 
-### 一般設定
+### 一般設定 (Pydantic V2 `MagiSettings` 対応)
 - `MAGI_DEBATE_ROUNDS`: Debate ラウンド数（既定 1）
 - `MAGI_VOTING_THRESHOLD`: `majority` / `unanimous`
 - `MAGI_OUTPUT_FORMAT`: `json` / `markdown`
@@ -83,10 +88,15 @@ uv run coverage html
 - `CONSENSUS_GUARDRAILS_ENABLED`: Guardrails の有効化
 - `CONSENSUS_GUARDRAILS_TIMEOUT`: Guardrails タイムアウト秒数
 - `CONSENSUS_GUARDRAILS_TIMEOUT_BEHAVIOR` / `CONSENSUS_GUARDRAILS_ERROR_POLICY`: fail-open / fail-closed ポリシー
-- `MAGI_PLUGIN_PUBKEY_PATH`: プラグイン署名検証に用いる公開鍵パス（config > env > plugins/public_key.pem の順で解決）
+- `MAGI_PLUGIN_PUBKEY_PATH`: プラグイン署名検証に用いる公開鍵パス
+- `MAGI_PRODUCTION_MODE`: 本番モードフラグ（公開鍵設定を必須化）
+- `MAGI_LLM_CONCURRENCY_LIMIT`: LLM 同時実行数制限
+- `MAGI_PLUGIN_CONCURRENCY_LIMIT`: プラグイン同時実行数制限
+- `MAGI_PLUGIN_LOAD_TIMEOUT`: プラグインロードタイムアウト
+- `MAGI_PLUGIN_PROMPT_OVERRIDE_ALLOWED`: プラグインによるプロンプト完全上書きの許可
 - `magi.yaml`: 上記設定をファイルで上書き可能。`providers` セクションで複数プロバイダを記述可能。
 
 ## ポート/サービス
 - CLI ツールのため固定ポートなし。外部通信は設定された LLM プロバイダへの HTTPS のみ。
 
-updated_at: 2025-12-13
+updated_at: 2025-12-18
