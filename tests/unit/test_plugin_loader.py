@@ -252,6 +252,65 @@ class TestPluginLoader(unittest.TestCase):
         logs = "\n".join(cm.output)
         self.assertIn("plugin.override.applied", logs)
 
+    def test_load_async_timeout_logs_and_raises(self):
+        """load_async がタイムアウト時にログを出力し例外を送出する"""
+        loader = PluginLoader()
+        plugin_file = self.temp_path / "slow.yaml"
+        plugin_file.write_text("plugin: {name: slow, hash: sha256:" + ("a" * 64) + "}\nbridge: {command: echo, interface: stdio}")
+
+        async def slow_impl(path):
+            await asyncio.sleep(0.05)
+            return None
+
+        loader._load_async_impl = slow_impl  # type: ignore[attr-defined]
+
+        with self.assertLogs("magi.plugins.loader", level="ERROR") as cm:
+            with self.assertRaises(MagiException) as exc:
+                asyncio.run(loader.load_async(plugin_file, timeout=0.01))
+
+        self.assertIn("plugin.load.timeout", "\n".join(cm.output))
+        self.assertEqual(exc.exception.error.code, ErrorCode.PLUGIN_LOAD_TIMEOUT.value)
+
+    def test_signature_failure_logs_and_raises(self):
+        """署名検証失敗時に警告ログが出力される"""
+
+        class _RejectSignatureValidator:
+            def verify_signature(self, content, signature_b64, public_key_path):
+                return SignatureVerificationResult(
+                    ok=False,
+                    mode="signature",
+                    key_path=public_key_path,
+                    reason="invalid",
+                )
+
+            def verify_hash(self, content, digest):
+                return SignatureVerificationResult(
+                    ok=False,
+                    mode="hash",
+                    reason="invalid",
+                )
+
+        loader = PluginLoader(signature_validator=_RejectSignatureValidator())
+        plugin_file = self.temp_path / "invalid_sig.yaml"
+        plugin_file.write_text(
+            yaml.dump(
+                {
+                    "plugin": {
+                        "name": "invalid",
+                        "signature": "deadbeef",
+                    },
+                    "bridge": {"command": "echo", "interface": "stdio"},
+                },
+                allow_unicode=True,
+            )
+        )
+
+        with self.assertLogs("magi.plugins.loader", level="WARNING") as cm:
+            with self.assertRaises(MagiException):
+                loader.load(plugin_file)
+
+        self.assertIn("plugin.load.signature_failed", "\n".join(cm.output))
+
     def test_missing_signature_or_hash_is_rejected(self):
         """署名またはハッシュが欠落したプラグインは拒否される"""
         plugin_data = {
