@@ -421,7 +421,7 @@ class PluginLoader:
     def _get_load_timeout(self, timeout: Optional[float]) -> float:
         """ロードタイムアウトを解決する"""
         if timeout is not None:
-            return max(float(timeout), 0.02)
+            return float(timeout)
 
         config_timeout = None
         if self.config is not None:
