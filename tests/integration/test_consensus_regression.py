@@ -126,6 +126,9 @@ class TestConsensusFlagMatrix(unittest.IsolatedAsyncioTestCase):
                     )
                 )
                 engine = ConsensusEngine(config, guardrails_adapter=guardrails)
+                # アサーション失敗時にもストリーミングエミッタを確実にクリーンアップ
+                if engine.streaming_emitter:
+                    self.addAsyncCleanup(engine.streaming_emitter.aclose)
 
                 detection = DetectionResult(blocked=False, matched_rules=[])
                 with patch.object(
@@ -185,6 +188,8 @@ class TestConsensusEventCodes(unittest.IsolatedAsyncioTestCase):
         )
         emitter = RecordingEmitter()
         engine_stream = ConsensusEngine(streaming_config, streaming_emitter=emitter)
+        # アサーション失敗時にもストリーミングエミッタを確実にクリーンアップ
+        self.addAsyncCleanup(engine_stream.streaming_emitter.aclose)
         long_text = "x" * 100
         outputs = {
             PersonaType.MELCHIOR: DebateOutput(
@@ -303,6 +308,8 @@ class TestStreamingMetrics(unittest.IsolatedAsyncioTestCase):
         )
         emitter = RecordingEmitter(emit_delay=0.01)
         engine = ConsensusEngine(config, streaming_emitter=emitter)
+        # アサーション失敗時にもストリーミングエミッタを確実にクリーンアップ
+        self.addAsyncCleanup(engine.streaming_emitter.aclose)
 
         outputs = {
             PersonaType.MELCHIOR: DebateOutput(

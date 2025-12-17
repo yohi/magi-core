@@ -18,6 +18,7 @@ class GuardrailsDecision:
     blocked: bool
     reason: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    sanitized_prompt: Optional[str] = None
 
 
 @dataclass
@@ -30,6 +31,7 @@ class GuardrailsResult:
     failure: Optional[str] = None  # "timeout" | "error" | None
     fail_open: bool = False
     metadata: Dict[str, Any] = field(default_factory=dict)
+    sanitized_prompt: Optional[str] = None
 
 
 class GuardrailsProvider(Protocol):
@@ -56,6 +58,9 @@ class HeuristicGuardrailsProvider:
         r"(?i)(ignore\s+all\s+previous|system\s*prompt|jailbreak|do\s+anything\s+now)"
     )
     _jp_ignore_pattern = re.compile(r"(前の指示をすべて無視|すべての指示を無視)")
+    _email_pattern = re.compile(
+        r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"
+    )
 
     async def evaluate(self, prompt: str) -> GuardrailsDecision:
         normalized = (prompt or "").strip()
@@ -80,6 +85,16 @@ class HeuristicGuardrailsProvider:
                 metadata={"matched_rule": "jp_ignore_all"},
             )
 
+        # サニタイズ処理 (PII Masking)
+        sanitized = self._email_pattern.sub("[EMAIL_REDACTED]", normalized)
+        if sanitized != normalized:
+            return GuardrailsDecision(
+                blocked=False,
+                reason="pii_sanitized",
+                metadata={"sanitized_fields": ["email"]},
+                sanitized_prompt=sanitized,
+            )
+
         return GuardrailsDecision(blocked=False, reason=None)
 
 
@@ -102,6 +117,16 @@ class GuardrailsAdapter:
         self.on_timeout_behavior = on_timeout_behavior
         self.on_error_policy = on_error_policy
         self.enabled = enabled
+
+    def register_provider(self, provider: GuardrailsProvider) -> None:
+        """追加の Guardrails プロバイダを登録する。"""
+        if not hasattr(provider, "evaluate"):
+            raise ValueError("provider must implement evaluate(prompt: str)")
+        name = getattr(provider, "name", provider.__class__.__name__)
+        enabled = getattr(provider, "enabled", True)
+        if not enabled:
+            logger.warning("guardrails.provider.disabled name=%s", name)
+        self.providers.append(provider)
 
     async def check(self, prompt: str) -> GuardrailsResult:
         """プロンプトに対し Guardrails を実行する."""
@@ -131,6 +156,12 @@ class GuardrailsAdapter:
                     provider_name,
                     self.on_timeout_behavior,
                 )
+                logger.warning(
+                    "guardrails.policy_applied provider=%s failure=timeout policy=%s fail_open=%s",
+                    provider_name,
+                    self.on_timeout_behavior,
+                    fail_open,
+                )
                 return GuardrailsResult(
                     blocked=False,
                     reason="timeout",
@@ -145,6 +176,12 @@ class GuardrailsAdapter:
                     provider_name,
                     self.on_error_policy,
                     exc,
+                )
+                logger.warning(
+                    "guardrails.policy_applied provider=%s failure=error policy=%s fail_open=%s",
+                    provider_name,
+                    self.on_error_policy,
+                    fail_open,
                 )
                 return GuardrailsResult(
                     blocked=False,
@@ -162,6 +199,16 @@ class GuardrailsAdapter:
                     metadata=decision.metadata,
                     failure=None,
                     fail_open=False,
+                )
+            if decision.sanitized_prompt:
+                return GuardrailsResult(
+                    blocked=False,
+                    reason=decision.reason,
+                    provider=provider_name,
+                    metadata=decision.metadata,
+                    failure=None,
+                    fail_open=False,
+                    sanitized_prompt=decision.sanitized_prompt,
                 )
 
         return GuardrailsResult(

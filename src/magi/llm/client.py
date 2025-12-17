@@ -6,6 +6,7 @@ Anthropic APIとの通信を管理するクライアント。
 Requirements: 2.1, 2.2, 2.3, 2.4
 """
 import asyncio
+import logging
 import random
 from dataclasses import dataclass
 from enum import Enum
@@ -22,6 +23,9 @@ from anthropic import (
 )
 
 from magi.errors import ErrorCode, MagiError, MagiException, create_api_error
+from magi.core.concurrency import ConcurrencyController
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -89,6 +93,8 @@ class LLMClient:
         default_backoff_cap: float = 10.0,
         rate_limit_retry_count: Optional[int] = None,
         default_retry_count: Optional[int] = None,
+        min_rate_limit_backoff_seconds: float = 0.05,
+        concurrency_controller: Optional[ConcurrencyController] = None,
     ):
         """LLMClientを初期化
 
@@ -102,6 +108,8 @@ class LLMClient:
             default_backoff_cap: その他エラー時の待機上限秒数
             rate_limit_retry_count: レート制限時の最大試行回数（未指定時は6回以上を保証）
             default_retry_count: その他エラー時の最大試行回数（未指定時はretry_countを3回上限で使用）
+            min_rate_limit_backoff_seconds: レート制限時に必ず待機する最小秒数
+            concurrency_controller: 同時実行制御およびレート制限記録を行うコントローラ
         """
         self.api_key = api_key
         self.model = model
@@ -110,6 +118,8 @@ class LLMClient:
         self.base_delay_seconds = base_delay_seconds
         self.rate_limit_backoff_cap = rate_limit_backoff_cap
         self.default_backoff_cap = default_backoff_cap
+        self.min_rate_limit_backoff_seconds = min_rate_limit_backoff_seconds
+        self._concurrency_controller = concurrency_controller
 
         # レート制限時は少なくとも6回まで試行し、その他は最大3回までに制限
         configured_rate_limit_retry = (
@@ -167,6 +177,10 @@ class LLMClient:
                 # エラーを分類
                 error_type = self._classify_error(e)
 
+                # レート制限発生を記録
+                if error_type == APIErrorType.RATE_LIMIT and self._concurrency_controller:
+                    self._concurrency_controller.note_rate_limit()
+
                 # MagiErrorを作成
                 magi_error = self._create_error_for_type(error_type, e)
 
@@ -180,6 +194,15 @@ class LLMClient:
                 max_attempts = self._max_attempts_for(error_type)
                 if self._should_retry(error_type, attempt, max_attempts):
                     wait_time = self._calculate_backoff(error_type, attempt)
+                    if error_type == APIErrorType.RATE_LIMIT:
+                        logger.warning(
+                            "Rate limit detected; backing off before retry",
+                            extra={
+                                "attempt": attempt + 1,
+                                "max_attempts": max_attempts,
+                                "backoff_seconds": wait_time,
+                            },
+                        )
                     await asyncio.sleep(wait_time)
                     attempt += 1
                 else:
@@ -317,7 +340,10 @@ class LLMClient:
             else self.default_backoff_cap
         )
         exponential = self.base_delay_seconds * (2 ** attempt)
-        return random.uniform(0, min(cap, exponential))
+        wait = random.uniform(0, min(cap, exponential))
+        if error_type == APIErrorType.RATE_LIMIT:
+            return max(self.min_rate_limit_backoff_seconds, wait)
+        return wait
 
     async def close(self) -> None:
         """AsyncAnthropic クライアントをクリーンアップ"""

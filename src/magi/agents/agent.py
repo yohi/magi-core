@@ -16,6 +16,10 @@ from magi.core.schema_validator import (
     SchemaValidator,
 )
 from magi.core.template_loader import TemplateLoader
+from magi.core.token_budget import (
+    TokenBudgetExceeded,
+    TokenBudgetManagerProtocol,
+)
 from magi.errors import MagiException, create_agent_error
 from magi.llm.client import LLMClient, LLMRequest
 from magi.models import (
@@ -48,6 +52,7 @@ class Agent:
         schema_validator: Optional[SchemaValidator] = None,
         template_loader: Optional[TemplateLoader] = None,
         security_filter: Optional[SecurityFilter] = None,
+        token_budget_manager: Optional[TokenBudgetManagerProtocol] = None,
     ):
         """Agentを初期化
 
@@ -60,6 +65,41 @@ class Agent:
         self.schema_validator = schema_validator or SchemaValidator()
         self.template_loader = template_loader
         self.security_filter = security_filter or SecurityFilter()
+        self.token_budget_manager = token_budget_manager
+
+    def _estimate_tokens(self, text: str) -> int:
+        """トークン数を推定する."""
+        if self.token_budget_manager and hasattr(
+            self.token_budget_manager, "estimate_tokens"
+        ):
+            try:
+                return int(self.token_budget_manager.estimate_tokens(text))
+            except Exception:  # pragma: no cover - フォールバック用途
+                logger.debug("estimate_tokens failed; fallback to len", exc_info=True)
+        return len(text)
+
+    def _enforce_budget(self, request_text: str) -> None:
+        """予算超過時に例外を送出する."""
+        if self.token_budget_manager is None:
+            return
+        estimated = self._estimate_tokens(request_text)
+        allowed = self.token_budget_manager.check_budget(estimated)
+        if not allowed:
+            max_tokens = getattr(self.token_budget_manager, "max_tokens", None)
+            raise TokenBudgetExceeded(
+                estimated_tokens=estimated,
+                max_tokens=max_tokens,
+            )
+
+    def _record_consumption(self, response_text: str) -> None:
+        """レスポンスの消費トークンを記録する."""
+        if self.token_budget_manager is None:
+            return
+        try:
+            tokens = self._estimate_tokens(response_text)
+            self.token_budget_manager.consume(tokens)
+        except Exception:  # pragma: no cover - 記録失敗は致命的でない
+            logger.debug("token consume failed; ignoring", exc_info=True)
 
     async def think(self, prompt: str) -> ThinkingOutput:
         """独立した思考を生成
@@ -86,7 +126,9 @@ class Agent:
             user_prompt=self._build_thinking_prompt(sanitized.safe)
         )
 
+        self._enforce_budget(f"{request.system_prompt}\n{request.user_prompt}")
         response = await self.llm_client.send(request)
+        self._record_consumption(response.content)
 
         return ThinkingOutput(
             persona_type=self.persona.type,
@@ -116,7 +158,9 @@ class Agent:
             user_prompt=self._build_debate_prompt(others_thoughts, round_num)
         )
 
+        self._enforce_budget(f"{request.system_prompt}\n{request.user_prompt}")
         response = await self.llm_client.send(request)
+        self._record_consumption(response.content)
 
         # レスポンスをパースして各エージェントへの反論を抽出
         responses = self._parse_debate_response(response.content, others_thoughts)
@@ -145,7 +189,9 @@ class Agent:
             user_prompt=self._build_vote_prompt(context)
         )
 
+        self._enforce_budget(f"{request.system_prompt}\n{request.user_prompt}")
         response = await self.llm_client.send(request)
+        self._record_consumption(response.content)
 
         # レスポンスをパースして投票結果を抽出
         return self._parse_vote_response(response.content)

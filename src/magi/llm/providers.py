@@ -11,6 +11,7 @@ from magi.errors import ErrorCode, MagiError, MagiException, create_api_error
 from magi.llm.client import LLMClient, LLMRequest, LLMResponse
 
 if TYPE_CHECKING:
+    from magi.core.concurrency import ConcurrencyController
     from magi.core.providers import ProviderContext
 
 
@@ -58,7 +59,9 @@ class AnthropicAdapter:
     def __init__(
         self,
         context: ProviderContext,
+        *,
         llm_client: Optional[LLMClient] = None,
+        concurrency_controller: Optional[ConcurrencyController] = None,
     ) -> None:
         self.context = context
         self.provider_id = context.provider_id
@@ -69,6 +72,7 @@ class AnthropicAdapter:
         self._llm_client = llm_client or LLMClient(
             api_key=context.api_key,
             model=context.model,
+            concurrency_controller=concurrency_controller,
         )
 
     async def send(self, request: LLMRequest) -> LLMResponse:

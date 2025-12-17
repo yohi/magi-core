@@ -12,13 +12,18 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 import asyncio
 from datetime import datetime
+from contextlib import asynccontextmanager
 
-from magi.core.consensus import ConsensusEngine
+from magi.core.concurrency import ConcurrencyLimitError, ConcurrencyMetrics
+from magi.core.consensus import ConsensusEngine, ConsensusEngineFactory
 from magi.core.context import ContextManager
+from magi.core.streaming import NullStreamingEmitter
+from magi.core.token_budget import TokenBudgetManager
 from magi.agents.persona import PersonaManager
 from magi.agents.agent import Agent
 from magi.config.manager import Config
 from magi.errors import MagiException
+from magi.security.guardrails import GuardrailsAdapter, GuardrailsResult
 from magi.models import (
     ConsensusPhase,
     ConsensusResult,
@@ -30,6 +35,50 @@ from magi.models import (
     Decision,
     PersonaType,
 )
+
+
+class _StubConcurrencyController:
+    """テスト用のシンプルな ConcurrencyController スタブ."""
+
+    def __init__(self, fail: bool = False):
+        self.fail = fail
+        self.calls = []
+
+    @asynccontextmanager
+    async def acquire(self, timeout=None):
+        self.calls.append(timeout)
+        if self.fail:
+            raise ConcurrencyLimitError("acquire failed in stub")
+        yield
+
+    def get_metrics(self) -> ConcurrencyMetrics:
+        return ConcurrencyMetrics(
+            active_count=0,
+            waiting_count=0,
+            total_acquired=len(self.calls),
+            total_timeouts=1 if self.fail else 0,
+            total_rate_limits=0,
+        )
+
+
+class _SanitizingGuardrailsAdapter:
+    """サニタイズ結果を返すガードレールモック."""
+
+    def __init__(self, sanitized: str = "sanitized-input") -> None:
+        self.sanitized = sanitized
+        self.calls: list[str] = []
+
+    async def check(self, prompt: str) -> GuardrailsResult:
+        self.calls.append(prompt)
+        return GuardrailsResult(
+            blocked=False,
+            reason="sanitize",
+            provider="sanitizer",
+            failure=None,
+            fail_open=False,
+            metadata={"original": prompt},
+            sanitized_prompt=self.sanitized,
+        )
 
 
 class TestConsensusEngineInit(unittest.TestCase):
@@ -405,6 +454,143 @@ class TestConsensusTokenBudget(unittest.TestCase):
         self.assertFalse(result["summary_applied"])
         self.assertEqual([], self.engine.context_reduction_logs)
         self.assertEqual(short_context, result["context"])
+
+
+class TestConsensusConcurrencyIntegration(unittest.TestCase):
+    """ConcurrencyController との統合テスト."""
+
+    def test_thinking_phase_acquires_concurrency(self):
+        """Thinking Phase が acquire を呼び出す."""
+        controller = _StubConcurrencyController()
+        config = Config(api_key="test-api-key")
+        engine = ConsensusEngine(config, concurrency_controller=controller)
+        thinking_output = ThinkingOutput(
+            persona_type=PersonaType.MELCHIOR,
+            content="ok",
+            timestamp=datetime.now(),
+        )
+        agent = MagicMock(think=AsyncMock(return_value=thinking_output))
+
+        with patch.object(
+            engine,
+            "_create_agents",
+            return_value={PersonaType.MELCHIOR: agent},
+        ):
+            result = asyncio.run(engine._run_thinking_phase("hello"))
+
+        self.assertEqual(len(controller.calls), 1)
+        self.assertEqual(controller.calls[0], config.timeout)
+        agent.think.assert_awaited_once()
+        self.assertIn(PersonaType.MELCHIOR, result)
+        self.assertEqual(result[PersonaType.MELCHIOR].content, "ok")
+
+    def test_concurrency_timeout_is_handled(self):
+        """ConcurrencyLimitError を捕捉して結果を欠落として扱う."""
+        controller = _StubConcurrencyController(fail=True)
+        engine = ConsensusEngine(
+            Config(api_key="test-api-key"), concurrency_controller=controller
+        )
+        agent = MagicMock(think=AsyncMock())
+
+        with patch.object(
+            engine,
+            "_create_agents",
+            return_value={PersonaType.MELCHIOR: agent},
+        ):
+            result = asyncio.run(engine._run_thinking_phase("hello"))
+
+        agent.think.assert_not_awaited()
+        self.assertEqual(result, {})
+        self.assertTrue(
+            any(
+                err.get("phase") == ConsensusPhase.THINKING.value
+                for err in engine.errors
+            )
+        )
+
+
+class TestConsensusEngineFactoryDI(unittest.TestCase):
+    """ConsensusEngineFactory で依存を注入できることを確認するテスト."""
+
+    def test_factory_allows_dependency_injection(self):
+        """主要依存が工場経由で差し替えられる。"""
+        config = Config(api_key="test-api-key")
+        persona_manager = MagicMock()
+        context_manager = MagicMock()
+        guardrails_adapter = MagicMock(spec=GuardrailsAdapter)
+        streaming_emitter = MagicMock()
+        token_budget_manager = MagicMock(spec=TokenBudgetManager)
+        llm_client = object()
+
+        def llm_factory():
+            return llm_client
+
+        factory = ConsensusEngineFactory()
+        engine = factory.create(
+            config,
+            persona_manager=persona_manager,
+            context_manager=context_manager,
+            llm_client_factory=llm_factory,
+            guardrails_adapter=guardrails_adapter,
+            streaming_emitter=streaming_emitter,
+            token_budget_manager=token_budget_manager,
+            concurrency_controller=_StubConcurrencyController(),
+        )
+
+        self.assertIs(engine.persona_manager, persona_manager)
+        self.assertIs(engine.context_manager, context_manager)
+        self.assertIs(engine.guardrails, guardrails_adapter)
+        self.assertIs(engine.streaming_emitter, streaming_emitter)
+        self.assertIs(engine.token_budget_manager, token_budget_manager)
+        self.assertIs(engine.llm_client_factory, llm_factory)
+
+    def test_factory_uses_defaults_when_dependencies_not_provided(self):
+        """依存を渡さない場合はデフォルト実装が利用される。"""
+        config = Config(api_key="test-api-key")
+        engine = ConsensusEngineFactory().create(config)
+
+        self.assertIsInstance(engine.persona_manager, PersonaManager)
+        self.assertIsInstance(engine.context_manager, ContextManager)
+        self.assertIsInstance(engine.guardrails, GuardrailsAdapter)
+        self.assertIsInstance(engine.streaming_emitter, NullStreamingEmitter)
+        self.assertIsInstance(engine.token_budget_manager, TokenBudgetManager)
+
+    def test_factory_guardrails_sanitizes_before_security_filter(self):
+        """工場経由のガードレールが SecurityFilter 前にサニタイズを適用する."""
+        config = Config(api_key="test-api-key", enable_guardrails=True)
+        adapter = _SanitizingGuardrailsAdapter(sanitized="cleaned")
+        factory = ConsensusEngineFactory()
+        engine = factory.create(config, guardrails_adapter=adapter)
+
+        detection = MagicMock(blocked=False, matched_rules=[])
+        with patch.object(
+            engine.security_filter,
+            "detect_abuse",
+            return_value=detection,
+        ) as detect_mock, patch.object(
+            engine,
+            "_run_thinking_phase",
+            AsyncMock(return_value={}),
+        ), patch.object(
+            engine,
+            "_run_debate_phase",
+            AsyncMock(return_value=[]),
+        ), patch.object(
+            engine,
+            "_run_voting_phase",
+            AsyncMock(
+                return_value={
+                    "voting_results": {},
+                    "decision": Decision.APPROVED,
+                    "exit_code": 0,
+                    "all_conditions": [],
+                }
+            ),
+        ):
+            asyncio.run(engine.execute("unsafe input"))
+
+        self.assertEqual(adapter.calls, ["unsafe input"])
+        detect_mock.assert_called_once_with("cleaned")
 
 
 class TestConsensusSecurityFilter(unittest.TestCase):

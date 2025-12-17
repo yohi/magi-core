@@ -15,6 +15,8 @@ from unittest.mock import patch
 
 # テスト対象のモジュールをインポート
 from magi.cli.parser import ArgumentParser, ParsedCommand, ValidationResult
+from magi.core.concurrency import ConcurrencyController
+from magi.core.providers import ProviderContext
 from magi.output.formatter import OutputFormat
 from magi.plugins.executor import CommandResult
 from magi.models import (
@@ -442,7 +444,9 @@ class TestMagiCLI(unittest.TestCase):
             def __init__(self):
                 self.calls: List[ProviderContext] = []
 
-            def build(self, context: ProviderContext):
+            def build(self, context: ProviderContext, *, concurrency_controller=None):
+                # 未使用パラメータを参照してARG002を回避
+                _ = concurrency_controller
                 self.calls.append(context)
                 return object()
 

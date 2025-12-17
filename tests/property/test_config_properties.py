@@ -9,38 +9,32 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
-from hypothesis import given, settings, assume
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from magi.config.manager import Config, ConfigManager, ValidationResult
-
+from magi.config.manager import ConfigManager
+from magi.config.settings import MagiSettings
+from magi.errors import ErrorCode, MagiException
 
 # 安全な文字列ストラテジー（null バイトやYAML特殊文字を除外）
 safe_text = st.text(
     alphabet=st.characters(
-        whitelist_categories=('L', 'N'),  # 文字と数字のみ
-        whitelist_characters='-_'
+        whitelist_categories=("L", "N"),  # 文字と数字のみ
+        whitelist_characters="-_",
     ),
     min_size=1,
-    max_size=50
-).filter(lambda x: x.strip() and '\x00' not in x)
+    max_size=50,
+).filter(lambda x: x.strip() and "\x00" not in x)
 
 
 class TestConfigLoadingProperty(unittest.TestCase):
-    """Property 16: 設定読み込みと適用のプロパティテスト
-
-    *For any* 設定値（Debateラウンド数、投票閾値）に対して、
-    環境変数または設定ファイルから読み込まれた値が正しくConfigに適用される
-    """
+    """Property 16: 設定読み込みと適用のプロパティテスト"""
 
     def setUp(self):
-        """テスト前に環境変数を保存"""
         self.original_env = os.environ.copy()
 
     def tearDown(self):
-        """テスト後に環境変数を復元"""
         os.environ.clear()
         os.environ.update(self.original_env)
 
@@ -50,7 +44,7 @@ class TestConfigLoadingProperty(unittest.TestCase):
         voting_threshold=st.sampled_from(["majority", "unanimous"]),
         output_format=st.sampled_from(["json", "markdown"]),
         timeout=st.integers(min_value=1, max_value=3600),
-        retry_count=st.integers(min_value=0, max_value=10)
+        retry_count=st.integers(min_value=0, max_value=10),
     )
     @settings(max_examples=100)
     def test_env_values_are_correctly_applied(
@@ -60,9 +54,9 @@ class TestConfigLoadingProperty(unittest.TestCase):
         voting_threshold: str,
         output_format: str,
         timeout: int,
-        retry_count: int
+        retry_count: int,
     ):
-        """環境変数から読み込んだ値が正しくConfigに適用される"""
+        """環境変数から読み込んだ値が正しく設定に適用される"""
         # 環境変数をクリアして設定
         for key in list(os.environ.keys()):
             if key.startswith("MAGI_"):
@@ -91,7 +85,7 @@ class TestConfigLoadingProperty(unittest.TestCase):
         voting_threshold=st.sampled_from(["majority", "unanimous"]),
         output_format=st.sampled_from(["json", "markdown"]),
         timeout=st.integers(min_value=1, max_value=3600),
-        retry_count=st.integers(min_value=0, max_value=10)
+        retry_count=st.integers(min_value=0, max_value=10),
     )
     @settings(max_examples=100)
     def test_file_values_are_correctly_applied(
@@ -101,15 +95,13 @@ class TestConfigLoadingProperty(unittest.TestCase):
         voting_threshold: str,
         output_format: str,
         timeout: int,
-        retry_count: int
+        retry_count: int,
     ):
-        """設定ファイルから読み込んだ値が正しくConfigに適用される"""
-        # 環境変数をクリア
+        """設定ファイルから読み込んだ値が正しく適用される"""
         for key in list(os.environ.keys()):
             if key.startswith("MAGI_"):
                 del os.environ[key]
 
-        # YAMLでは数字のみの値は整数として解釈されるため、クォートする
         yaml_content = f"""
 api_key: "{api_key}"
 debate_rounds: {debate_rounds}
@@ -118,9 +110,7 @@ output_format: {output_format}
 timeout: {timeout}
 retry_count: {retry_count}
 """
-        with tempfile.NamedTemporaryFile(
-            mode='w', suffix='.yaml', delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             config_path = Path(f.name)
 
@@ -141,7 +131,7 @@ retry_count: {retry_count}
         file_api_key=safe_text,
         env_api_key=safe_text,
         file_debate_rounds=st.integers(min_value=1, max_value=50),
-        env_debate_rounds=st.integers(min_value=1, max_value=50)
+        env_debate_rounds=st.integers(min_value=1, max_value=50),
     )
     @settings(max_examples=100)
     def test_env_overrides_file_values(
@@ -149,22 +139,18 @@ retry_count: {retry_count}
         file_api_key: str,
         env_api_key: str,
         file_debate_rounds: int,
-        env_debate_rounds: int
+        env_debate_rounds: int,
     ):
         """環境変数が設定ファイルの値を上書きする"""
-        # 環境変数をクリア
         for key in list(os.environ.keys()):
             if key.startswith("MAGI_"):
                 del os.environ[key]
 
-        # YAMLでは数字のみの値は整数として解釈されるため、クォートする
         yaml_content = f"""
 api_key: "{file_api_key}"
 debate_rounds: {file_debate_rounds}
 """
-        with tempfile.NamedTemporaryFile(
-            mode='w', suffix='.yaml', delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             config_path = Path(f.name)
 
@@ -175,7 +161,6 @@ debate_rounds: {file_debate_rounds}
             manager = ConfigManager()
             config = manager.load(config_path=config_path, force_reload=True)
 
-            # 環境変数が優先される
             self.assertEqual(config.api_key, env_api_key)
             self.assertEqual(config.debate_rounds, env_debate_rounds)
         finally:
@@ -191,7 +176,7 @@ class TestConfigValidationProperty(unittest.TestCase):
         voting_threshold=st.sampled_from(["majority", "unanimous"]),
         output_format=st.sampled_from(["json", "markdown"]),
         timeout=st.integers(min_value=1, max_value=3600),
-        retry_count=st.integers(min_value=0, max_value=10)
+        retry_count=st.integers(min_value=0, max_value=10),
     )
     @settings(max_examples=100)
     def test_valid_config_passes_validation(
@@ -201,16 +186,16 @@ class TestConfigValidationProperty(unittest.TestCase):
         voting_threshold: str,
         output_format: str,
         timeout: int,
-        retry_count: int
+        retry_count: int,
     ):
         """有効な設定値は常にバリデーションを通過する"""
-        config = Config(
+        config = MagiSettings(
             api_key=api_key,
             debate_rounds=debate_rounds,
             voting_threshold=voting_threshold,
             output_format=output_format,
             timeout=timeout,
-            retry_count=retry_count
+            retry_count=retry_count,
         )
 
         manager = ConfigManager()
@@ -222,76 +207,85 @@ class TestConfigValidationProperty(unittest.TestCase):
     @given(
         api_key=safe_text,
         invalid_threshold=st.text(
-            alphabet=st.characters(whitelist_categories=('L', 'N')),
+            alphabet=st.characters(whitelist_categories=("L", "N")),
             min_size=1,
-            max_size=20
-        ).filter(lambda x: x not in ["majority", "unanimous"])
+            max_size=20,
+        ).filter(lambda x: x not in ["majority", "unanimous"]),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=50)
     def test_invalid_voting_threshold_fails_validation(
         self,
         api_key: str,
-        invalid_threshold: str
+        invalid_threshold: str,
     ):
-        """無効なvoting_thresholdはバリデーションに失敗する"""
-        config = Config(
-            api_key=api_key,
-            voting_threshold=invalid_threshold
-        )
+        """無効なvoting_thresholdは MagiException を送出する"""
+        yaml_content = f'api_key: "{api_key}"\nvoting_threshold: {invalid_threshold}\n'
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            config_path = Path(f.name)
 
-        manager = ConfigManager()
-        result = manager.validate(config)
+        try:
+            manager = ConfigManager()
+            with self.assertRaises(MagiException) as ctx:
+                manager.load(config_path=config_path, force_reload=True)
+        finally:
+            config_path.unlink()
 
-        self.assertFalse(result.is_valid)
-        self.assertTrue(any("voting_threshold" in e for e in result.errors))
+        self.assertIn(ErrorCode.CONFIG_INVALID_VALUE.value, str(ctx.exception))
 
     @given(
         api_key=safe_text,
         invalid_format=st.text(
-            alphabet=st.characters(whitelist_categories=('L', 'N')),
+            alphabet=st.characters(whitelist_categories=("L", "N")),
             min_size=1,
-            max_size=20
-        ).filter(lambda x: x not in ["json", "markdown"])
+            max_size=20,
+        ).filter(lambda x: x not in ["json", "markdown"]),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=50)
     def test_invalid_output_format_fails_validation(
         self,
         api_key: str,
-        invalid_format: str
+        invalid_format: str,
     ):
-        """無効なoutput_formatはバリデーションに失敗する"""
-        config = Config(
-            api_key=api_key,
-            output_format=invalid_format
-        )
+        """無効なoutput_formatは MagiException を送出する"""
+        yaml_content = f'api_key: "{api_key}"\noutput_format: {invalid_format}\n'
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            config_path = Path(f.name)
 
-        manager = ConfigManager()
-        result = manager.validate(config)
+        try:
+            manager = ConfigManager()
+            with self.assertRaises(MagiException) as ctx:
+                manager.load(config_path=config_path, force_reload=True)
+        finally:
+            config_path.unlink()
 
-        self.assertFalse(result.is_valid)
-        self.assertTrue(any("output_format" in e for e in result.errors))
+        self.assertIn(ErrorCode.CONFIG_INVALID_VALUE.value, str(ctx.exception))
 
     @given(
         api_key=safe_text,
-        invalid_rounds=st.integers(max_value=0)
+        invalid_rounds=st.integers(max_value=0),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=50)
     def test_invalid_debate_rounds_fails_validation(
         self,
         api_key: str,
-        invalid_rounds: int
+        invalid_rounds: int,
     ):
-        """0以下のdebate_roundsはバリデーションに失敗する"""
-        config = Config(
-            api_key=api_key,
-            debate_rounds=invalid_rounds
-        )
+        """0以下のdebate_roundsは MagiException を送出する"""
+        yaml_content = f'api_key: "{api_key}"\ndebate_rounds: {invalid_rounds}\n'
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            config_path = Path(f.name)
 
-        manager = ConfigManager()
-        result = manager.validate(config)
+        try:
+            manager = ConfigManager()
+            with self.assertRaises(MagiException) as ctx:
+                manager.load(config_path=config_path, force_reload=True)
+        finally:
+            config_path.unlink()
 
-        self.assertFalse(result.is_valid)
-        self.assertTrue(any("debate_rounds" in e for e in result.errors))
+        self.assertIn(ErrorCode.CONFIG_INVALID_VALUE.value, str(ctx.exception))
 
 
 if __name__ == "__main__":

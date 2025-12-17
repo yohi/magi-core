@@ -50,6 +50,11 @@ class TestErrorCode(unittest.TestCase):
         from magi.errors import ErrorCode
         self.assertEqual(ErrorCode.PLUGIN_COMMAND_TIMEOUT.value, "PLUGIN_003")
 
+    def test_plugin_load_timeout(self):
+        """PLUGIN_LOAD_TIMEOUTが定義されていること"""
+        from magi.errors import ErrorCode
+        self.assertEqual(ErrorCode.PLUGIN_LOAD_TIMEOUT.value, "PLUGIN_004")
+
     def test_agent_thinking_failed(self):
         """AGENT_THINKING_FAILEDが定義されていること"""
         from magi.errors import ErrorCode
