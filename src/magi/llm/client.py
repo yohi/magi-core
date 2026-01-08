@@ -229,12 +229,29 @@ class LLMClient:
         Returns:
             LLMResponse: APIからのレスポンス
         """
+        import base64
+        
+        # contentを配列形式で構築: テキスト + 添付ファイル
+        content_blocks = [{"type": "text", "text": request.user_prompt}]
+        
+        # 添付ファイルがある場合、image content blockとして追加
+        if request.attachments:
+            for attachment in request.attachments:
+                content_blocks.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": attachment.mime_type,
+                        "data": base64.b64encode(attachment.data).decode("utf-8"),
+                    }
+                })
+        
         response = await self._client.messages.create(
             model=self.model,
             max_tokens=request.max_tokens,
             system=request.system_prompt,
             messages=[
-                {"role": "user", "content": request.user_prompt}
+                {"role": "user", "content": content_blocks}
             ],
             temperature=request.temperature
         )
