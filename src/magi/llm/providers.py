@@ -322,6 +322,8 @@ class GeminiAdapter:
 
     async def send(self, request: LLMRequest) -> LLMResponse:
         """Gemini generateContent API を呼び出す"""
+        import base64
+        
         if not request.system_prompt or not isinstance(request.system_prompt, str) or not request.system_prompt.strip():
             raise MagiException(
                 MagiError(
@@ -341,12 +343,24 @@ class GeminiAdapter:
                 )
             )
         url = f"{self.endpoint}/v1beta/models/{self.model}:generateContent"
+        
+        # partsを構築: テキスト + 添付ファイル
+        parts = [{"text": request.user_prompt}]
+        
+        # 添付ファイルがある場合、inline_dataとして追加
+        if request.attachments:
+            for attachment in request.attachments:
+                parts.append({
+                    "inline_data": {
+                        "mime_type": attachment.mime_type,
+                        "data": base64.b64encode(attachment.data).decode("utf-8"),
+                    }
+                })
+        
         payload = {
             "contents": [
                 {
-                    "parts": [
-                        {"text": request.user_prompt},
-                    ]
+                    "parts": parts
                 }
             ],
             "system_instruction": {"parts": [{"text": request.system_prompt}]},
