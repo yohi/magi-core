@@ -16,6 +16,7 @@ from magi.llm.providers import (
     HealthStatus,
     OpenAIAdapter,
 )
+from magi.models import Attachment
 
 
 class DummyLLMClient:
@@ -70,6 +71,51 @@ class TestAnthropicAdapter(unittest.TestCase):
         self.assertEqual(result.content, "delegated")
         self.assertEqual(llm_client.calls[0].user_prompt, "hello")
         self.assertEqual(llm_client.calls[0].max_tokens, 32)
+
+    def test_send_with_attachments_delegates_to_llm_client(self):
+        """添付ファイルを含むリクエストがLLMClientに正しく委譲される"""
+        ctx = ProviderContext(
+            provider_id="anthropic",
+            api_key="key",
+            model="claude-3",
+        )
+        response = LLMResponse(
+            content="画像を確認しました",
+            usage={"input_tokens": 100, "output_tokens": 20},
+            model="claude-3",
+        )
+        llm_client = DummyLLMClient(response)
+        adapter = AnthropicAdapter(ctx, llm_client=llm_client)
+        
+        # テスト用の画像データ
+        image_data = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+        attachment = Attachment(
+            mime_type="image/png",
+            data=image_data,
+            filename="test.png"
+        )
+        
+        request = LLMRequest(
+            system_prompt="sys",
+            user_prompt="この画像を説明してください",
+            max_tokens=64,
+            temperature=0.2,
+            attachments=[attachment]
+        )
+
+        result = asyncio.run(adapter.send(request))
+
+        # LLMClientに委譲されたことを確認
+        self.assertEqual(len(llm_client.calls), 1)
+        delegated_request = llm_client.calls[0]
+        self.assertEqual(delegated_request.user_prompt, "この画像を説明してください")
+        self.assertEqual(len(delegated_request.attachments), 1)
+        self.assertEqual(delegated_request.attachments[0].mime_type, "image/png")
+        self.assertEqual(delegated_request.attachments[0].data, image_data)
+        
+        # レスポンスを確認
+        self.assertEqual(result.content, "画像を確認しました")
+
 
 
 class TestOpenAIAdapter(unittest.TestCase):
@@ -274,6 +320,66 @@ class TestOpenAIAdapter(unittest.TestCase):
 
         self.assertEqual(exc.exception.error.code, ErrorCode.API_ERROR.value)
         self.assertEqual(http_client.get.await_count, 1)
+
+    def test_openai_send_with_attachments(self):
+        """添付ファイルを含むリクエストが正しく処理される"""
+        ctx = ProviderContext(
+            provider_id="openai",
+            api_key="openai-key",
+            model="gpt-4o",
+        )
+        http_client = AsyncMock()
+        response = MagicMock()
+        response.status_code = 200
+        response.json.return_value = {
+            "choices": [{"message": {"content": "画像を確認しました"}}],
+            "usage": {"prompt_tokens": 100, "completion_tokens": 20},
+            "model": "gpt-4o",
+        }
+        http_client.post.return_value = response
+        adapter = OpenAIAdapter(ctx, http_client=http_client)
+        
+        # テスト用の画像データ
+        image_data = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+        attachment = Attachment(
+            mime_type="image/png",
+            data=image_data,
+            filename="test.png"
+        )
+        
+        request = LLMRequest(
+            system_prompt="sys",
+            user_prompt="この画像を説明してください",
+            max_tokens=64,
+            temperature=0.2,
+            attachments=[attachment]
+        )
+
+        result = asyncio.run(adapter.send(request))
+
+        # リクエストが送信されたことを確認
+        http_client.post.assert_awaited_once()
+        call_args = http_client.post.call_args
+        payload = call_args.kwargs["json"]
+        
+        # メッセージのcontentが配列形式であることを確認
+        user_message = payload["messages"][1]
+        self.assertIsInstance(user_message["content"], list)
+        self.assertEqual(len(user_message["content"]), 2)  # テキスト + 画像
+        
+        # テキストパートを確認
+        text_part = user_message["content"][0]
+        self.assertEqual(text_part["type"], "text")
+        self.assertEqual(text_part["text"], "この画像を説明してください")
+        
+        # 画像パートを確認
+        image_part = user_message["content"][1]
+        self.assertEqual(image_part["type"], "image_url")
+        self.assertIn("data:image/png;base64,", image_part["image_url"]["url"])
+        
+        # レスポンスを確認
+        self.assertEqual(result.content, "画像を確認しました")
+
 
 
 class TestGeminiAdapter(unittest.TestCase):

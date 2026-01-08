@@ -440,7 +440,9 @@ class ConsensusEngine:
             ),
         )
 
-    async def _run_thinking_phase(self, prompt: str) -> Dict[PersonaType, ThinkingOutput]:
+    async def _run_thinking_phase(
+        self, prompt: str, attachments: list = None
+    ) -> Dict[PersonaType, ThinkingOutput]:
         """Thinking Phaseを実行
 
         各エージェントに対して独立した思考生成を要求し、結果を収集する。
@@ -455,6 +457,7 @@ class ConsensusEngine:
 
         Args:
             prompt: ユーザーからのプロンプト
+            attachments: マルチモーダル添付ファイル（オプション）
 
         Returns:
             各ペルソナタイプに対応するThinkingOutputの辞書
@@ -481,7 +484,7 @@ class ConsensusEngine:
                 return await self._run_with_concurrency(
                     ConsensusPhase.THINKING,
                     persona_type,
-                    lambda: agent.think(prompt),
+                    lambda: agent.think(prompt, attachments=attachments),
                 )
             except Exception as e:
                 if isinstance(e, (KeyboardInterrupt, SystemExit)):
@@ -1340,8 +1343,18 @@ class ConsensusEngine:
         self,
         prompt: str,
         plugin: Optional[object] = None,
+        attachments: list = None,
     ) -> ConsensusResult:
-        """合議プロセスを実行."""
+        """合議プロセスを実行.
+
+        Args:
+            prompt: ユーザーからのプロンプト
+            plugin: プラグインオブジェクト（オプション）
+            attachments: マルチモーダル添付ファイル（オプション）
+
+        Returns:
+            ConsensusResult: 合議結果
+        """
         prompt = await self._run_guardrails(prompt)
 
         detection = self.security_filter.detect_abuse(prompt)
@@ -1361,7 +1374,9 @@ class ConsensusEngine:
             self.persona_manager.apply_overrides(plugin.agent_overrides)
 
         try:
-            thinking_results = await self._run_thinking_phase(prompt)
+            thinking_results = await self._run_thinking_phase(
+                prompt, attachments=attachments
+            )
             debate_results = await self._run_debate_phase(
                 thinking_results, close_streaming=False
             )

@@ -14,6 +14,7 @@ from magi.llm.client import (
     APIErrorType,
 )
 from magi.errors import ErrorCode, MagiError, MagiException
+from magi.models import Attachment
 
 
 class TestLLMRequest(unittest.TestCase):
@@ -466,6 +467,68 @@ class TestLLMClientAsync(unittest.TestCase):
                 call(0, 0.4),
             ]
         )
+
+
+    def test_send_with_attachments(self):
+        """添付ファイルを含むリクエストが正しく処理される"""
+        client = LLMClient(api_key="test-key")
+
+        # モックレスポンスを作成
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="画像を確認しました")]
+        mock_response.usage.input_tokens = 150
+        mock_response.usage.output_tokens = 30
+        mock_response.model = "claude-sonnet-4-20250514"
+
+        # テスト用の画像データ
+        image_data = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+        attachment = Attachment(
+            mime_type="image/png",
+            data=image_data,
+            filename="test.png"
+        )
+
+        with patch.object(
+            client._client.messages, "create",
+            new_callable=AsyncMock,
+            return_value=mock_response
+        ) as mock_create:
+            request = LLMRequest(
+                system_prompt="システム",
+                user_prompt="この画像を説明してください",
+                attachments=[attachment]
+            )
+
+            async def run_test():
+                response = await client.send(request)
+                self.assertEqual(response.content, "画像を確認しました")
+                self.assertEqual(response.usage["input_tokens"], 150)
+                
+                # messages.createが正しい引数で呼ばれたことを確認
+                call_args = mock_create.call_args
+                messages = call_args.kwargs["messages"]
+                self.assertEqual(len(messages), 1)
+                
+                # メッセージのcontentが配列形式であることを確認
+                content = messages[0]["content"]
+                self.assertIsInstance(content, list)
+                self.assertEqual(len(content), 2)  # テキスト + 画像
+                
+                # テキストパートを確認
+                text_part = content[0]
+                self.assertEqual(text_part["type"], "text")
+                self.assertEqual(text_part["text"], "この画像を説明してください")
+                
+                # 画像パートを確認
+                image_part = content[1]
+                self.assertEqual(image_part["type"], "image")
+                self.assertEqual(image_part["source"]["type"], "base64")
+                self.assertEqual(image_part["source"]["media_type"], "image/png")
+                # base64エンコードされたデータが含まれていることを確認
+                self.assertIn("data", image_part["source"])
+
+            asyncio.run(run_test())
+
 
 
 if __name__ == "__main__":

@@ -143,12 +143,31 @@ class OpenAIAdapter:
 
     async def send(self, request: LLMRequest) -> LLMResponse:
         """Chat Completions エンドポイントへ送信"""
+        import base64
+        
         self._validate_prompts(request)
+        
+        # user messageのcontentを構築: テキスト + 添付ファイル
+        user_content = [{"type": "text", "text": request.user_prompt}]
+        
+        # 添付ファイルがある場合、image_url content partとして追加
+        if request.attachments:
+            for attachment in request.attachments:
+                # base64エンコードしてdata URL形式で追加
+                encoded_data = base64.b64encode(attachment.data).decode("utf-8")
+                data_url = f"data:{attachment.mime_type};base64,{encoded_data}"
+                user_content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": data_url
+                    }
+                })
+        
         payload = {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": request.system_prompt},
-                {"role": "user", "content": request.user_prompt},
+                {"role": "user", "content": user_content},
             ],
             "max_tokens": request.max_tokens,
             "temperature": request.temperature,
@@ -322,6 +341,8 @@ class GeminiAdapter:
 
     async def send(self, request: LLMRequest) -> LLMResponse:
         """Gemini generateContent API を呼び出す"""
+        import base64
+        
         if not request.system_prompt or not isinstance(request.system_prompt, str) or not request.system_prompt.strip():
             raise MagiException(
                 MagiError(
@@ -341,12 +362,24 @@ class GeminiAdapter:
                 )
             )
         url = f"{self.endpoint}/v1beta/models/{self.model}:generateContent"
+        
+        # partsを構築: テキスト + 添付ファイル
+        parts = [{"text": request.user_prompt}]
+        
+        # 添付ファイルがある場合、inline_dataとして追加
+        if request.attachments:
+            for attachment in request.attachments:
+                parts.append({
+                    "inline_data": {
+                        "mime_type": attachment.mime_type,
+                        "data": base64.b64encode(attachment.data).decode("utf-8"),
+                    }
+                })
+        
         payload = {
             "contents": [
                 {
-                    "parts": [
-                        {"text": request.user_prompt},
-                    ]
+                    "parts": parts
                 }
             ],
             "system_instruction": {"parts": [{"text": request.system_prompt}]},

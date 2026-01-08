@@ -264,7 +264,7 @@ class TestThinkingPhase(unittest.TestCase):
 
             # 各エージェントのthinkメソッドが同じプロンプトで呼ばれていることを確認
             for agent in mock_agents.values():
-                agent.think.assert_called_once_with("テストプロンプト")
+                agent.think.assert_called_once_with("テストプロンプト", attachments=None)
 
     def test_thinking_phase_transitions_to_debate(self):
         """Thinking Phase完了後にDEBATEフェーズに遷移することを確認

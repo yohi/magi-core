@@ -9,6 +9,23 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+__all__ = [
+    "Vote",
+    "Decision",
+    "PersonaType",
+    "ConsensusPhase",
+    "VotingTally",
+    "ThinkingOutput",
+    "DebateOutput",
+    "VoteOutput",
+    "DebateRound",
+    "ConsensusResult",
+    "QuorumState",
+    "StreamingEmitResult",
+    "Attachment",
+]
+
+
 
 class Vote(Enum):
     """エージェントの投票結果"""
@@ -189,3 +206,18 @@ class StreamingEmitResult:
     success: bool
     attempts: int
     last_error: Optional[Exception] = None
+
+
+@dataclass
+class Attachment:
+    """マルチモーダル添付ファイル
+
+    Attributes:
+        mime_type: MIMEタイプ (例: "image/jpeg", "application/pdf")
+        data: バイナリデータ
+        filename: ファイル名（オプション）
+    """
+    mime_type: str
+    data: bytes
+    filename: Optional[str] = None
+

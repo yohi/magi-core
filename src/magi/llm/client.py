@@ -8,9 +8,9 @@ Requirements: 2.1, 2.2, 2.3, 2.4
 import asyncio
 import logging
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
 
 import anthropic
 from anthropic import (
@@ -25,6 +25,9 @@ from anthropic import (
 from magi.errors import ErrorCode, MagiError, MagiException, create_api_error
 from magi.core.concurrency import ConcurrencyController
 
+if TYPE_CHECKING:
+    from magi.models import Attachment
+
 logger = logging.getLogger(__name__)
 
 
@@ -37,11 +40,13 @@ class LLMRequest:
         user_prompt: ユーザープロンプト
         max_tokens: 最大トークン数
         temperature: 温度パラメータ
+        attachments: マルチモーダル添付ファイル（オプション）
     """
     system_prompt: str
     user_prompt: str
     max_tokens: int = 4096
     temperature: float = 0.7
+    attachments: Optional[List["Attachment"]] = None
 
 
 @dataclass
@@ -224,12 +229,29 @@ class LLMClient:
         Returns:
             LLMResponse: APIからのレスポンス
         """
+        import base64
+        
+        # contentを配列形式で構築: テキスト + 添付ファイル
+        content_blocks = [{"type": "text", "text": request.user_prompt}]
+        
+        # 添付ファイルがある場合、image content blockとして追加
+        if request.attachments:
+            for attachment in request.attachments:
+                content_blocks.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": attachment.mime_type,
+                        "data": base64.b64encode(attachment.data).decode("utf-8"),
+                    }
+                })
+        
         response = await self._client.messages.create(
             model=self.model,
             max_tokens=request.max_tokens,
             system=request.system_prompt,
             messages=[
-                {"role": "user", "content": request.user_prompt}
+                {"role": "user", "content": content_blocks}
             ],
             temperature=request.temperature
         )

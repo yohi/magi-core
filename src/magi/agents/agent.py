@@ -101,7 +101,7 @@ class Agent:
         except Exception:  # pragma: no cover - 記録失敗は致命的でない
             logger.debug("token consume failed; ignoring", exc_info=True)
 
-    async def think(self, prompt: str) -> ThinkingOutput:
+    async def think(self, prompt: str, attachments: list = None) -> ThinkingOutput:
         """独立した思考を生成
 
         Thinking Phaseで使用。他のエージェントの出力を参照せず、
@@ -109,6 +109,7 @@ class Agent:
 
         Args:
             prompt: ユーザーからのプロンプト
+            attachments: マルチモーダル添付ファイル（オプション）
 
         Returns:
             ThinkingOutput: 思考結果
@@ -123,7 +124,8 @@ class Agent:
             )
         request = LLMRequest(
             system_prompt=self.persona.system_prompt,
-            user_prompt=self._build_thinking_prompt(sanitized.safe)
+            user_prompt=self._build_thinking_prompt(sanitized.safe),
+            attachments=attachments,
         )
 
         self._enforce_budget(f"{request.system_prompt}\n{request.user_prompt}")
