@@ -93,11 +93,12 @@ class TestThinkingPhaseIndependence(unittest.TestCase):
         # エージェントのthinkメソッドへの呼び出しを記録
         think_calls = []
 
-        async def mock_think(agent_self, prompt_arg: str) -> ThinkingOutput:
+        async def mock_think(agent_self, prompt_arg: str, attachments: list = None) -> ThinkingOutput:
             """thinkメソッドのモック"""
             think_calls.append({
                 "persona_type": agent_self.persona.type,
                 "prompt": prompt_arg,
+                "attachments": attachments,
             })
             return create_mock_thinking_output(
                 agent_self.persona.type,
@@ -132,7 +133,7 @@ class TestThinkingPhaseIndependence(unittest.TestCase):
         think_start_times = {}
         think_end_times = {}
 
-        async def mock_think_with_timing(agent_self, prompt_arg: str) -> ThinkingOutput:
+        async def mock_think_with_timing(agent_self, prompt_arg: str, attachments: list = None) -> ThinkingOutput:
             """タイミング付きthinkメソッドのモック"""
             think_start_times[agent_self.persona.type] = datetime.now()
             # 非常に短い遅延をシミュレート
@@ -182,7 +183,7 @@ class TestPhaseTransitionAccuracy(unittest.TestCase):
         # 初期フェーズを確認
         self.assertEqual(engine.current_phase, ConsensusPhase.THINKING)
 
-        async def mock_think(agent_self, prompt_arg: str) -> ThinkingOutput:
+        async def mock_think(agent_self, prompt_arg: str, attachments: list = None) -> ThinkingOutput:
             """thinkメソッドのモック"""
             return create_mock_thinking_output(
                 agent_self.persona.type,
@@ -207,7 +208,7 @@ class TestPhaseTransitionAccuracy(unittest.TestCase):
 
         engine = ConsensusEngine(self.config)
 
-        async def mock_think(agent_self, prompt_arg: str) -> ThinkingOutput:
+        async def mock_think(agent_self, prompt_arg: str, attachments: list = None) -> ThinkingOutput:
             """thinkメソッドのモック"""
             return create_mock_thinking_output(
                 agent_self.persona.type,
@@ -258,7 +259,7 @@ class TestAgentFailureContinuity(unittest.TestCase):
 
         engine = ConsensusEngine(self.config)
 
-        async def mock_think(agent_self, prompt_arg: str) -> ThinkingOutput:
+        async def mock_think(agent_self, prompt_arg: str, attachments: list = None) -> ThinkingOutput:
             """thinkメソッドのモック（一部が失敗）"""
             if agent_self.persona.type in failing_agents:
                 raise Exception(f"エージェント {agent_self.persona.type.value} の思考生成に失敗")
@@ -298,7 +299,7 @@ class TestAgentFailureContinuity(unittest.TestCase):
 
         engine = ConsensusEngine(self.config)
 
-        async def mock_think(agent_self, prompt_arg: str) -> ThinkingOutput:
+        async def mock_think(agent_self, prompt_arg: str, attachments: list = None) -> ThinkingOutput:
             """thinkメソッドのモック（一部が失敗）"""
             if agent_self.persona.type in failing_agents:
                 raise Exception(f"エージェント {agent_self.persona.type.value} の思考生成に失敗")
@@ -333,7 +334,7 @@ class TestAgentFailureContinuity(unittest.TestCase):
         engine = ConsensusEngine(self.config)
 
         # 全エージェントが失敗するケース
-        async def mock_think(agent_self, prompt_arg: str) -> ThinkingOutput:
+        async def mock_think(agent_self, prompt_arg: str, attachments: list = None) -> ThinkingOutput:
             """thinkメソッドのモック（全て失敗）"""
             raise Exception(f"エージェント {agent_self.persona.type.value} の思考生成に失敗")
 

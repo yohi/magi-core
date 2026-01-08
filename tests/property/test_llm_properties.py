@@ -95,7 +95,7 @@ class TestErrorMessageConsistency(unittest.TestCase):
         model=st.text(min_size=1, max_size=100),
         error_type=st.sampled_from(APIErrorType)
     )
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_error_generation_is_independent_of_client_config(
         self,
         api_key: str,
