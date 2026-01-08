@@ -29,6 +29,7 @@ __all__ = [
 
 class Vote(Enum):
     """エージェントの投票結果"""
+
     APPROVE = "approve"
     DENY = "deny"
     CONDITIONAL = "conditional"
@@ -36,6 +37,7 @@ class Vote(Enum):
 
 class Decision(Enum):
     """合議の最終判定"""
+
     APPROVED = "approved"
     DENIED = "denied"
     CONDITIONAL = "conditional"
@@ -43,6 +45,7 @@ class Decision(Enum):
 
 class PersonaType(Enum):
     """3賢者のペルソナタイプ"""
+
     MELCHIOR = "melchior"
     BALTHASAR = "balthasar"
     CASPER = "casper"
@@ -50,10 +53,26 @@ class PersonaType(Enum):
 
 class ConsensusPhase(Enum):
     """合議プロセスのフェーズ"""
+
     THINKING = "thinking"
     DEBATE = "debate"
     VOTING = "voting"
     COMPLETED = "completed"
+
+
+@dataclass
+class Attachment:
+    """マルチモーダル入力用の添付ファイル
+
+    Attributes:
+        mime_type: MIMEタイプ（例: "image/png", "application/pdf"）
+        data: ファイルのバイナリデータ
+        filename: ファイル名（オプション）
+    """
+
+    mime_type: str
+    data: bytes
+    filename: Optional[str] = None
 
 
 @dataclass
@@ -65,6 +84,7 @@ class VotingTally:
         deny_count: DENY票の数
         conditional_count: CONDITIONAL票の数
     """
+
     approve_count: int
     deny_count: int
     conditional_count: int
@@ -118,6 +138,7 @@ class ThinkingOutput:
         content: 思考内容
         timestamp: タイムスタンプ
     """
+
     persona_type: PersonaType
     content: str
     timestamp: datetime
@@ -133,6 +154,7 @@ class DebateOutput:
         responses: 他エージェントへの反論
         timestamp: タイムスタンプ
     """
+
     persona_type: PersonaType
     round_number: int
     responses: Dict[PersonaType, str]
@@ -149,6 +171,7 @@ class VoteOutput:
         reason: 理由
         conditions: CONDITIONALの場合の条件
     """
+
     persona_type: PersonaType
     vote: Vote
     reason: str
@@ -164,6 +187,7 @@ class DebateRound:
         outputs: 各ペルソナの出力
         timestamp: タイムスタンプ
     """
+
     round_number: int
     outputs: Dict[PersonaType, DebateOutput]
     timestamp: datetime
@@ -180,6 +204,7 @@ class ConsensusResult:
         final_decision: 最終判定
         exit_code: 終了コード
     """
+
     thinking_results: Dict[str, ThinkingOutput]
     debate_results: List[DebateRound]
     voting_results: Dict[PersonaType, VoteOutput]
