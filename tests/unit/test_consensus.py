@@ -27,10 +27,7 @@ from magi.errors import MagiException
 from magi.security.guardrails import GuardrailsAdapter, GuardrailsResult
 from magi.models import (
     ConsensusPhase,
-    ConsensusResult,
     ThinkingOutput,
-    DebateOutput,
-    DebateRound,
     VoteOutput,
     Vote,
     Decision,
@@ -261,7 +258,7 @@ class TestThinkingPhase(unittest.TestCase):
         }
 
         with patch.object(self.engine, '_create_agents', return_value=mock_agents):
-            result = asyncio.run(self.engine._run_thinking_phase("テストプロンプト"))
+            asyncio.run(self.engine._run_thinking_phase("テストプロンプト"))
 
             # 各エージェントのthinkメソッドが同じプロンプトで呼ばれていることを確認
             for agent in mock_agents.values():
