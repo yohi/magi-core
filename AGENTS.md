@@ -24,8 +24,13 @@ Project memory keeps persistent guidance (steering, specs notes, component docs)
 - Check `.kiro/specs/` for active specifications
 - Use `/prompts:kiro-spec-status [feature-name]` to check progress
 
-## Development Guidelines
-- Think in English, generate responses in Japanese. All Markdown content written to project files (e.g., requirements.md, design.md, tasks.md, research.md, validation reports) MUST be written in the target language configured for this specification (see spec.json.language).
+## 開発ガイドライン
+- **言語ポリシー**: 常に日本語で応答してください。技術的な正確性のために英語で考えることは構いませんが、すべての出力（応答、ドキュメント、コメント、コミットメッセージ）は、明示的に要求されない限り日本語で記述する必要があります。
+  - **適用範囲**: このポリシーはAIの応答、新規作成するドキュメント、コード内のコメント、コミットメッセージに適用されます。
+  - **例外**: このドキュメント（AGENTS.md）内の一部セクション（プロジェクト構造定義、ワークフローコマンド、技術用語など）は、国際的な互換性やツールチェーンとの統合のため英語で記述されている場合があります。
+- プロジェクトファイルに書き込まれるすべてのMarkdownコンテンツ（例: requirements.md、design.md、tasks.md、research.md、検証レポート）は日本語で記述する必要があります。
+- コードコメントは可読性向上のため日本語で記述することを推奨します。
+- Gitコミットメッセージは日本語で記述することを推奨します。
 
 ## Minimal Workflow
 - Phase 0 (optional): `/prompts:kiro-steering`, `/prompts:kiro-steering-custom`
@@ -50,3 +55,77 @@ Project memory keeps persistent guidance (steering, specs notes, component docs)
 - Load entire `.kiro/steering/` as project memory
 - Default files: `product.md`, `tech.md`, `structure.md`
 - Custom files are supported (managed via `/prompts:kiro-steering-custom`)
+
+---
+
+# 技術標準とコマンド
+
+## 環境
+- **Python**: 3.11+
+- **パッケージマネージャ**: `uv`（依存関係管理に必須）
+
+## 主要コマンド
+
+### セットアップ
+```bash
+uv sync
+```
+
+### テスト
+このプロジェクトは主要なフレームワークとして `unittest` を使用しています。
+
+**全テストを実行:**
+```bash
+uv run python -m unittest discover -s tests -v
+```
+
+**特定のテストファイルを実行:**
+```bash
+uv run python -m unittest tests/unit/test_cli.py
+```
+
+**特定のテストケースを実行:**
+```bash
+# フォーマット: path.to.module.Class.method
+uv run python -m unittest magi.tests.unit.test_cli.TestArgumentParser.test_parse_help_short
+```
+
+**カバレッジ:**
+```bash
+uv run coverage run -m unittest discover -s tests
+uv run coverage report
+```
+
+## コードスタイルガイドライン
+
+### 言語とドキュメント
+- **ドックストリング**: **日本語**で記述する必要があります。
+  - ドックストリングにはトリプルクォート `"""` を使用してください。
+  - 構造: 簡潔な要約行、空行、詳細な説明。
+- **コメント**: **日本語**で記述する必要があります。
+- **コミットメッセージ**: **日本語**で記述する必要があります。
+
+### 型ヒント
+- **厳密な型付け**: すべての関数引数と戻り値に型ヒントを使用してください。
+- `typing` モジュール（`List`、`Dict`、`Any`、`Optional`）またはサポートされている場合はモダンなユニオン構文（`str | None`）を使用してください。
+
+### 命名規則
+- **ファイル/モジュール**: `snake_case`（例: `consensus_engine.py`）
+- **クラス**: `CamelCase`（例: `ConsensusEngine`）
+- **関数/メソッド**: `snake_case`（例: `execute_voting_process`）
+- **変数**: `snake_case`
+- **定数**: `UPPER_SNAKE_CASE`
+
+### アーキテクチャとパターン
+- **インポート**:
+  1. 標準ライブラリ
+  2. サードパーティライブラリ
+  3. ローカルアプリケーションのインポート（絶対インポートを推奨、例: `from magi.core import ...`）
+- **エラーハンドリング**:
+  - 該当する場合は `magi.core.errors` で定義された特定の例外を使用してください。
+  - 明確なエラーメッセージ（日本語）で適切に失敗させてください。
+
+### テスト標準
+- テストはソース構造をミラーリングした `tests/` ディレクトリに配置してください。
+- `unittest.TestCase` を使用してください。
+- 外部依存関係（LLM呼び出し、ファイルI/O）はモックしてください。
