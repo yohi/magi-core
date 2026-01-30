@@ -181,7 +181,7 @@ class SessionManager:
         elif event_type == "log":
             lines = event.get("lines", [])
             if isinstance(lines, list):
-                session.logs.extend([str(l) for l in lines])
+                session.logs.extend([str(line) for line in lines])
                 if len(session.logs) > 200:
                     session.logs = session.logs[-200:]
 
