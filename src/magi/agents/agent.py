@@ -126,6 +126,7 @@ class Agent:
             system_prompt=self.persona.system_prompt,
             user_prompt=self._build_thinking_prompt(sanitized.safe),
             attachments=attachments,
+            temperature=self.llm_client.temperature,
         )
 
         self._enforce_budget(f"{request.system_prompt}\n{request.user_prompt}")
@@ -157,7 +158,8 @@ class Agent:
         """
         request = LLMRequest(
             system_prompt=self.persona.system_prompt,
-            user_prompt=self._build_debate_prompt(others_thoughts, round_num)
+            user_prompt=self._build_debate_prompt(others_thoughts, round_num),
+            temperature=self.llm_client.temperature,
         )
 
         self._enforce_budget(f"{request.system_prompt}\n{request.user_prompt}")
@@ -188,7 +190,8 @@ class Agent:
         """
         request = LLMRequest(
             system_prompt=self.persona.system_prompt,
-            user_prompt=self._build_vote_prompt(context)
+            user_prompt=self._build_vote_prompt(context),
+            temperature=self.llm_client.temperature,
         )
 
         self._enforce_budget(f"{request.system_prompt}\n{request.user_prompt}")

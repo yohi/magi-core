@@ -15,14 +15,24 @@ from magi.errors import ErrorCode
 from magi.models import PersonaType, Vote, VoteOutput
 
 # test_consensus_di_mocks.py から共通モックをインポート
-from .test_consensus_di_mocks import (
-    FakeConcurrencyController,
-    FakeGuardrailsAdapter,
-    FakeLLMClient,
-    FakePersonaManager,
-    FakeStreamingEmitter,
-    FakeTokenBudgetManager,
-)
+try:
+    from .test_consensus_di_mocks import (
+        FakeConcurrencyController,
+        FakeGuardrailsAdapter,
+        FakeLLMClient,
+        FakePersonaManager,
+        FakeStreamingEmitter,
+        FakeTokenBudgetManager,
+    )
+except ImportError:
+    from test_consensus_di_mocks import (
+        FakeConcurrencyController,
+        FakeGuardrailsAdapter,
+        FakeLLMClient,
+        FakePersonaManager,
+        FakeStreamingEmitter,
+        FakeTokenBudgetManager,
+    )
 
 
 class TestConsensusSchemaRetry(unittest.TestCase):

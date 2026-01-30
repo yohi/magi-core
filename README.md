@@ -138,6 +138,18 @@ voting_threshold: majority
 output_format: markdown
 timeout: 120
 retry_count: 3
+
+# ペルソナ個別設定 (オプション)
+# キーは melchior / balthasar / casper (小文字) を推奨
+personas:
+  melchior:
+    llm:
+      model: claude-3-opus-20240229  # 論理担当に高性能モデルを割り当て
+      temperature: 0.0            # 厳密な論理的整合性のために低く設定 (0.0-1.0)
+  casper:
+    llm:
+      timeout: 180  # 複雑な処理のためにタイムアウトを延長
+# 個別設定がない項目はグローバル設定が使用されます
 ```
 
 ## プラグイン開発
