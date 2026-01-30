@@ -72,7 +72,7 @@ class SessionManager:
         adapter = MockMagiAdapter()
         
         # ブロードキャスターを作成
-        broadcaster = EventBroadcaster(session_id)
+        broadcaster = EventBroadcaster(queue_maxsize=100)
         
         # セッション情報を保存
         session_info = SessionInfo(
@@ -139,7 +139,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             session_info.options
         ):
             # ブロードキャスターを通じてイベントを送信
-            enriched_event = session_info.broadcaster.enrich(event)
+            enriched_event = session_info.broadcaster.enrich(session_id, event)
             await websocket.send_json(enriched_event)
             
     except WebSocketDisconnect:
@@ -147,5 +147,5 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     except Exception as e:
         logger.exception(f"WebSocket error for session {session_id}: {e}")
     finally:
-        # クリーンアップ（必要に応じて）
-        pass
+        # セッションリソースをクリーンアップ
+        session_manager.remove_session(session_id)
