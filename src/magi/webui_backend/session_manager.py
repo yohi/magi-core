@@ -50,8 +50,7 @@ class SessionManager:
             options = SessionOptions()
 
         async with self._lock:
-            # 期限切れセッションの掃除（opportunistic cleanup）
-            self._cleanup_expired_sessions_unsafe()
+            await self._cleanup_expired_sessions()
 
             if len(self.sessions) >= self.max_concurrency:
                 raise RuntimeError("Max concurrency limit reached")
@@ -103,9 +102,10 @@ class SessionManager:
             logger.info(f"Session cancelled: {session_id}")
             return True
 
-    def _cleanup_expired_sessions_unsafe(self):
+    async def _cleanup_expired_sessions(self):
         """
-        期限切れセッションを削除する（ロック内から呼ぶこと）。
+        期限切れセッションを削除する(ロック内から呼ぶこと)。
+        タスクのキャンセルを適切に待機してから削除する。
         """
         now = datetime.now()
         expired_ids = []
@@ -119,10 +119,19 @@ class SessionManager:
                 expired_ids.append(sid)
         
         for sid in expired_ids:
-            # タスクが生きていればキャンセル
+            # タスクが生きていればキャンセルし、完了を待つ
             task = self.sessions[sid].get_task()
             if task and not task.done():
                 task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    # キャンセルは正常な終了
+                    pass
+                except Exception as e:
+                    # その他のエラーはログに記録
+                    logger.warning(f"Error while cancelling task for session {sid}: {e}")
+            
             del self.sessions[sid]
             logger.info(f"Session expired and removed: {sid}")
 
@@ -181,7 +190,7 @@ class SessionManager:
         elif event_type == "log":
             lines = event.get("lines", [])
             if isinstance(lines, list):
-                session.logs.extend([str(l) for l in lines])
+                session.logs.extend([str(line) for line in lines])
                 if len(session.logs) > 200:
                     session.logs = session.logs[-200:]
 

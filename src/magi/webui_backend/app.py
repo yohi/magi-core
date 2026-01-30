@@ -1,23 +1,27 @@
 """
 WebUIバックエンドアプリケーション
 
-FastAPIを使用したWebUI用バックエンドサーバーの骨格実装。
+FastAPIを使用したWebUI用バックエンドサーバーの実装。
 セッション管理、状態監視、リアルタイム通信のエンドポイントを提供する。
 """
 
 import asyncio
+import logging
 from typing import Optional
 
 from fastapi import FastAPI, WebSocket, APIRouter, status, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from magi.webui_backend.models import SessionOptions, SessionPhase
 from magi.webui_backend.session_manager import SessionManager
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(
     title="MAGI WebUI Backend",
     description="MAGIシステムのWebUI用バックエンドAPI",
-    version="0.1.0",
+    version="1.0.0",
 )
 
 # セッションマネージャーのインスタンス化
@@ -91,7 +95,7 @@ async def create_session(request: CreateSessionRequest) -> CreateSessionResponse
         return CreateSessionResponse(
             session_id=session_id,
             ws_url=f"/ws/sessions/{session_id}",
-            status="QUEUED"
+            status="created"
         )
     except RuntimeError as e:
         # 同時実行数制限など
@@ -150,6 +154,11 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         try:
             while True:
                 data = await queue.get()
+                
+                # イベントのエンリッチメント（session_idの付与など）
+                if "session_id" not in data:
+                    data["session_id"] = session_id
+                
                 await websocket.send_json(data)
                 
                 # 終了判定: finalイベント または 特定のフェーズへの遷移
@@ -173,9 +182,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     await websocket.close()
                     break
                     
-        except Exception:
+        except Exception as e:
             # 送信エラー時などはループを抜けて終了処理へ
-            pass
+            logger.exception(f"Sender task error for session {session_id}: {e}")
 
     # 受信タスク（切断検知用）
     async def receiver():
@@ -183,9 +192,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             while True:
                 # クライアントからのデータは受信するが無視する
                 await websocket.receive_text()
-        except Exception:
+        except Exception as e:
             # 切断時
-            pass
+            logger.debug(f"Receiver task ended for session {session_id}: {e}")
 
     sender_task = asyncio.create_task(sender())
     receiver_task = asyncio.create_task(receiver())
@@ -198,8 +207,14 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         )
         for task in pending:
             task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
             
     finally:
-        # 購読解除とセッションキャンセル
+        # 購読解除とセッションリソースのクリーンアップ
         await session_manager.broadcaster.unsubscribe(session_id, queue)
+        # セッションの削除（必要に応じてキャンセルも実行）
         await session_manager.cancel_session(session_id)
+        logger.info(f"WebSocket connection closed for session: {session_id}")
