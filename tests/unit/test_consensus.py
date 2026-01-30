@@ -411,13 +411,14 @@ class TestConsensusEngineAgentCreation(unittest.TestCase):
             self.assertEqual(len(melchior_call), 1)
             self.assertEqual(melchior_call[0].kwargs['model'], 'melchior-model')
             
-            # 他のペルソナのフォールバック確認（デフォルト値が使われる）
+            # 他のペルソナのフォールバック確認(デフォルト値が使われる)
             default_calls = [
                 call for call in mock_llm_cls.call_args_list 
                 if call.kwargs.get('api_key') == 'default-key'
             ]
             self.assertEqual(len(default_calls), 2)
-            self.assertEqual(default_calls[0].kwargs['model'], 'default-model')
+            for call_obj in default_calls:
+                self.assertEqual(call_obj.kwargs['model'], 'default-model')
 
     def test_create_agents_passes_concurrency_controller(self):
         """ConcurrencyControllerが正しく渡されることを確認"""
