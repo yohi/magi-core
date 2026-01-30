@@ -151,7 +151,8 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
         
         run_config = self.config
         if options.max_rounds is not None:
-            pass
+            # UIオプションのmax_roundsをrun_configに反映
+            run_config.debate_rounds = int(options.max_rounds)
 
         async def _run_engine():
             engine = None
@@ -214,13 +215,24 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
 
         task = asyncio.create_task(_run_engine())
         
-        while True:
-            item = await queue.get()
-            if item is None:
-                break
-            yield item
-            
-        await task
+        try:
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                yield item
+        finally:
+            # ジェネレータが早期終了した場合でもタスクをクリーンアップ
+            if not task.done():
+                task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                # キャンセルは想定内
+                pass
+            except Exception as e:
+                # その他の例外はログに記録
+                logger.exception("Background task cleanup failed: %s", e)
 
     def _map_persona_to_unit(self, persona: Any) -> Optional[UnitType]:
         val = persona.value if hasattr(persona, "value") else str(persona)

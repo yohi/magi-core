@@ -62,6 +62,26 @@ class EventBroadcaster:
         
         logger.debug(f"Unsubscribed from session {session_id}")
 
+    def enrich(self, session_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        イベントに共通フィールドを付与して返す。
+        publish と異なり、キューへの配信は行わず、エンリッチされたイベントを返すのみ。
+
+        Args:
+            session_id (str): セッションID
+            payload (Dict[str, Any]): イベントペイロード
+
+        Returns:
+            Dict[str, Any]: 共通フィールドが付与されたイベント
+        """
+        event = payload.copy()
+        event.update({
+            "schema_version": "1.0",
+            "session_id": session_id,
+            "ts": datetime.now(timezone.utc).isoformat()
+        })
+        return event
+
     async def publish(self, session_id: str, payload: Dict[str, Any]) -> None:
         """
         セッションに対してイベントを配信する。
