@@ -8,9 +8,9 @@
 - **ファイル**: `/home/y_ohi/program/magi-core/tests/unit/test_consensus.py`
 - **テスト名**: `test_create_agents_uses_injected_llm_client_factory`
 - **原因**: 
-    - 現在、`llm_client_factory` の呼び出し回数 (`factory_calls`) が `1` であることを期待している (`self.assertEqual(factory_calls, 1)`)。
-    - ペルソナ別に生成する場合、この回数は `3` に増加するため、アサーションが失敗する。
-    - また、`factory` のシグネチャに `PersonaType` が追加された場合、呼び出し側での引数不足エラーが発生する。
+  - 現在、`llm_client_factory` の呼び出し回数 (`factory_calls`) が `1` であることを期待している (`self.assertEqual(factory_calls, 1)`)。
+  - ペルソナ別に生成する場合、この回数は `3` に増加するため、アサーションが失敗する。
+  - また、`factory` のシグネチャに `PersonaType` が追加された場合、呼び出し側での引数不足エラーが発生する。
 
 ### 2. モック/パッチの修正が必要な箇所
 - **ファイル**: `/home/y_ohi/program/magi-core/tests/unit/test_consensus.py` 内の `TestConsensusEngineAgentCreation`
@@ -34,14 +34,14 @@
 
 ### 1. 影響を受けるファイル
 - **`src/magi/core/consensus.py`**: 
-    - `_create_agents` 内で `llm_client_factory` を呼び出す回数が1回から3回に増える。
-    - `_resolve_llm_client` が `LLMClient` を直接インスタンス化しており、注入されたファクトリ（テスト用Fake等）を無視する可能性がある。
+  - `_create_agents` 内で `llm_client_factory` を呼び出す回数が1回から3回に増える。
+  - `_resolve_llm_client` が `LLMClient` を直接インスタンス化しており、注入されたファクトリ（テスト用Fake等）を無視する可能性がある。
 - **`src/magi/cli/main.py`**:
-    - `_run_ask_command` 内で `lambda: llm_client` を渡しており、単一インスタンスの注入に固定されている。
+  - `_run_ask_command` 内で `lambda: llm_client` を渡しており、単一インスタンスの注入に固定されている。
 - **`tests/unit/test_consensus.py`**:
-    - `test_create_agents_uses_injected_llm_client_factory` (369行目) が呼び出し回数不一致で失敗する。
+  - `test_create_agents_uses_injected_llm_client_factory` (369行目) が呼び出し回数不一致で失敗する。
 - **`tests/unit/test_consensus_di_mocks.py`**, **`tests/unit/test_consensus_schema_retry.py`**, **`tests/unit/test_quorum_streaming.py`**:
-    - `llm_client_factory=lambda: FakeLLMClient()` というシグネチャを使用しており、ファクトリに引数が追加された場合に破損する。
+  - `llm_client_factory=lambda: FakeLLMClient()` というシグネチャを使用しており、ファクトリに引数が追加された場合に破損する。
 
 ### 2. 懸念事項
 - **ファクトリと直接生成の混在**: `_resolve_llm_client` 内で `PersonaConfig` がある場合に `LLMClient(...)` を直接呼んでいるが、テスト時にこれらを Fake に差し替える仕組みが必要。ファクトリ自体を `persona_type` 引数対応にするのがクリーン。
@@ -55,10 +55,10 @@
 `tests/unit/test_consensus.py` に対して、`_create_agents` の仕様変更に伴う以下の修正とテスト追加を実施し、全てのテストが通過することを確認した。
 
 1. **既存テストの修正**:
-   - `test_create_agents_uses_injected_llm_client_factory`: `llm_client_factory` の呼び出し回数の期待値を `1` から `3` に変更。
+  - `test_create_agents_uses_injected_llm_client_factory`: `llm_client_factory` の呼び出し回数の期待値を `1` から `3` に変更。
 2. **新規テストの追加**:
-   - `test_create_agents_uses_persona_specific_config`: `config.personas` に設定がある場合、モデル名やAPIキーがペルソナ固有の設定で上書きされること、および設定がない場合はデフォルト値にフォールバックすることを確認。
-   - `test_create_agents_passes_concurrency_controller`: `ConsensusEngine` に渡された `concurrency_controller` が、生成される `LLMClient` に正しく引き継がれていることを確認。
+  - `test_create_agents_uses_persona_specific_config`: `config.personas` に設定がある場合、モデル名やAPIキーがペルソナ固有の設定で上書きされること、および設定がない場合はデフォルト値にフォールバックすることを確認。
+  - `test_create_agents_passes_concurrency_controller`: `ConsensusEngine` に渡された `concurrency_controller` が、生成される `LLMClient` に正しく引き継がれていることを確認。
 
 ## テスト修正 (2026-01-30)
 

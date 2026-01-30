@@ -24,11 +24,11 @@ Project memory keeps persistent guidance (steering, specs notes, component docs)
 - Check `.kiro/specs/` for active specifications
 - Use `/prompts:kiro-spec-status [feature-name]` to check progress
 
-## Development Guidelines
-- **Language Policy**: ALWAYS respond in Japanese. Think in English for technical precision, but ALL outputs (responses, documentation, comments, commit messages) MUST be in Japanese unless explicitly requested otherwise.
-- All Markdown content written to project files (e.g., requirements.md, design.md, tasks.md, research.md, validation reports) MUST be written in Japanese.
-- Code comments SHOULD be in Japanese for better readability.
-- Git commit messages SHOULD be in Japanese.
+## 開発ガイドライン
+- **言語ポリシー**: 常に日本語で応答してください。技術的な正確性のために英語で考えることは構いませんが、すべての出力（応答、ドキュメント、コメント、コミットメッセージ）は、明示的に要求されない限り日本語で記述する必要があります。
+- プロジェクトファイルに書き込まれるすべてのMarkdownコンテンツ（例: requirements.md、design.md、tasks.md、research.md、検証レポート）は日本語で記述する必要があります。
+- コードコメントは可読性向上のため日本語で記述することを推奨します。
+- Gitコミットメッセージは日本語で記述することを推奨します。
 
 ## Minimal Workflow
 - Phase 0 (optional): `/prompts:kiro-steering`, `/prompts:kiro-steering-custom`
@@ -56,74 +56,74 @@ Project memory keeps persistent guidance (steering, specs notes, component docs)
 
 ---
 
-# Technical Standards & Commands
+# 技術標準とコマンド
 
-## Environment
+## 環境
 - **Python**: 3.11+
-- **Manager**: `uv` (required for dependency management)
+- **パッケージマネージャ**: `uv`（依存関係管理に必須）
 
-## Key Commands
+## 主要コマンド
 
-### Setup
+### セットアップ
 ```bash
 uv sync
 ```
 
-### Testing
-This project uses `unittest` as the primary framework.
+### テスト
+このプロジェクトは主要なフレームワークとして `unittest` を使用しています。
 
-**Run All Tests:**
+**全テストを実行:**
 ```bash
 uv run python -m unittest discover -s tests -v
 ```
 
-**Run Specific Test File:**
+**特定のテストファイルを実行:**
 ```bash
 uv run python -m unittest tests/unit/test_cli.py
 ```
 
-**Run Specific Test Case:**
+**特定のテストケースを実行:**
 ```bash
-# Format: path.to.module.Class.method
+# フォーマット: path.to.module.Class.method
 uv run python -m unittest magi.tests.unit.test_cli.TestArgumentParser.test_parse_help_short
 ```
 
-**Coverage:**
+**カバレッジ:**
 ```bash
 uv run coverage run -m unittest discover -s tests
 uv run coverage report
 ```
 
-## Code Style Guidelines
+## コードスタイルガイドライン
 
-### Language & Documentation
-- **Docstrings**: MUST be in **Japanese**.
-  - Use triple quotes `"""` for docstrings.
-  - Structure: Brief summary line, blank line, detailed description.
-- **Comments**: MUST be in **Japanese**.
-- **Commit Messages**: MUST be in **Japanese**.
+### 言語とドキュメント
+- **ドックストリング**: **日本語**で記述する必要があります。
+  - ドックストリングにはトリプルクォート `"""` を使用してください。
+  - 構造: 簡潔な要約行、空行、詳細な説明。
+- **コメント**: **日本語**で記述する必要があります。
+- **コミットメッセージ**: **日本語**で記述する必要があります。
 
-### Type Hinting
-- **Strict Typing**: Use type hints for ALL function arguments and return values.
-- Use `typing` module (`List`, `Dict`, `Any`, `Optional`) or modern union syntax (`str | None`) where supported.
+### 型ヒント
+- **厳密な型付け**: すべての関数引数と戻り値に型ヒントを使用してください。
+- `typing` モジュール（`List`、`Dict`、`Any`、`Optional`）またはサポートされている場合はモダンなユニオン構文（`str | None`）を使用してください。
 
-### Naming Conventions
-- **Files/Modules**: `snake_case` (e.g., `consensus_engine.py`)
-- **Classes**: `CamelCase` (e.g., `ConsensusEngine`)
-- **Functions/Methods**: `snake_case` (e.g., `execute_voting_process`)
-- **Variables**: `snake_case`
-- **Constants**: `UPPER_SNAKE_CASE`
+### 命名規則
+- **ファイル/モジュール**: `snake_case`（例: `consensus_engine.py`）
+- **クラス**: `CamelCase`（例: `ConsensusEngine`）
+- **関数/メソッド**: `snake_case`（例: `execute_voting_process`）
+- **変数**: `snake_case`
+- **定数**: `UPPER_SNAKE_CASE`
 
-### Architecture & Patterns
-- **Imports**:
-  1. Standard Library
-  2. Third-party Libraries
-  3. Local Application Imports (absolute imports preferred, e.g., `from magi.core import ...`)
-- **Error Handling**:
-  - Use specific exceptions defined in `magi.core.errors` where applicable.
-  - Fail gracefully with clear error messages (in Japanese).
+### アーキテクチャとパターン
+- **インポート**:
+  1. 標準ライブラリ
+  2. サードパーティライブラリ
+  3. ローカルアプリケーションのインポート（絶対インポートを推奨、例: `from magi.core import ...`）
+- **エラーハンドリング**:
+  - 該当する場合は `magi.core.errors` で定義された特定の例外を使用してください。
+  - 明確なエラーメッセージ（日本語）で適切に失敗させてください。
 
-### Testing Standards
-- Place tests in `tests/` directory mirroring source structure.
-- Use `unittest.TestCase`.
-- Mock external dependencies (LLM calls, File I/O).
+### テスト標準
+- テストはソース構造をミラーリングした `tests/` ディレクトリに配置してください。
+- `unittest.TestCase` を使用してください。
+- 外部依存関係（LLM呼び出し、ファイルI/O）はモックしてください。
