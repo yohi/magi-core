@@ -404,7 +404,7 @@ class TestConsensusEngineAgentCreation(unittest.TestCase):
         # 実際のLLMClient生成をモック化せず、属性をチェックしたいが、
         # 外部通信を防ぐためにLLMClientのコンストラクタをパッチする
         with patch('magi.core.consensus.LLMClient') as mock_llm_cls:
-            agents = engine._create_agents()
+            engine._create_agents()
             
             # MELCHIORの設定確認
             melchior_call = [
