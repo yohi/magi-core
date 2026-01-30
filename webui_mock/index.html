@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAGI System Interface - Code 239</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@700;900&family=Noto+Sans+JP:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="magi-container">
+        <!-- Left Column: Header Info -->
+        <div class="grid-header-left">
+            <div class="header-decorated">
+                <h1 class="header-large">提訴</h1>
+            </div>
+            <div class="code-info">
+                <span class="code-label">CODE:</span> <span class="code-value">239</span>
+            </div>
+            <ul class="file-info">
+                <li>FILE: MAGI_SYS</li>
+                <li>EXTENSION: 4088</li>
+                <li>EX_MODE: OFF</li>
+                <li>PRIORITY: AAA</li>
+            </ul>
+        </div>
+
+        <!-- Center Column Row 1: Balthasar Unit -->
+        <div class="unit unit-balthasar status-approved">
+            <div class="unit-shape">
+                <span class="unit-name">BALTHASAR-2</span>
+            </div>
+        </div>
+
+        <!-- Right Column: Header Info -->
+        <div class="grid-header-right">
+            <div class="header-decorated">
+                <h1 class="header-large">決議</h1>
+            </div>
+            <div class="result-box-container">
+                <div class="result-box status-rejected">
+                    <span class="result-text">否決</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center Column Row 2: MAGI Label -->
+        <div class="magi-label-container">
+            <div class="magi-label">MAGI</div>
+        </div>
+
+        <!-- Bottom Row Left: Casper -->
+        <div class="unit unit-casper status-approved">
+            <div class="unit-shape">
+                <span class="unit-name">CASPER-3</span>
+            </div>
+        </div>
+
+        <!-- Bottom Row Right: Melchior -->
+        <div class="unit unit-melchior status-rejected">
+            <div class="unit-shape">
+                <span class="unit-name">MELCHIOR-1</span>
+            </div>
+        </div>
+
+        <!-- Connectors Layer (Absolute over grid) -->
+        <svg class="connector-svg" viewBox="0 0 200 200" preserveAspectRatio="none">
+            <!-- Simplified abstract connections since positions are now dynamic -->
+            <!-- These are just visual placeholders as requested to remain -->
+            <line x1="100" y1="60" x2="100" y2="30" class="connector-line" />
+            <line x1="100" y1="60" x2="20" y2="95" class="connector-line" />
+            <line x1="100" y1="60" x2="180" y2="95" class="connector-line" />
+            <circle cx="100" cy="60" r="8" fill="#ff6600" class="center-node" />
+        </svg>
+    </div>
+</body>
+</html>

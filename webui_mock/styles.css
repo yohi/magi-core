@@ -1,0 +1,262 @@
+:root {
+    --neon-orange: #ff6600;
+    --neon-blue: #33ccff;
+    --neon-red: #cc0000;
+    --neon-green: #00cc00;
+    --bg-color: #000000;
+    --font-serif: 'Noto Serif JP', serif;
+    --font-sans: 'Noto Sans JP', sans-serif;
+    --font-mono: 'Share Tech Mono', monospace;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--neon-orange);
+    font-family: var(--font-mono);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Grid Container Setup */
+.magi-container {
+    display: grid;
+    /* Left | Fixed Center | Right */
+    grid-template-columns: 1fr 300px 1fr;
+    /* Header/Balthasar | Info/MAGI | Bottom Units */
+    grid-template-rows: auto auto 1fr;
+    width: 95%;
+    max-width: 1200px;
+    height: 90vh;
+    position: relative;
+    padding: 20px;
+    column-gap: 40px;
+    row-gap: 20px;
+    /* CRITICAL: Top alignment ensures elements in Row 1 start at the exact same Y position */
+    align-items: start;
+}
+
+/* Row 1: Headers & Balthasar */
+/* All elements in Row 1 share the same top grid line */
+
+.grid-header-left {
+    grid-column: 1 / 2;
+    grid-row: 1 / 2;
+    display: flex;
+    flex-direction: column;
+}
+
+.grid-header-right {
+    grid-column: 3 / 4;
+    grid-row: 1 / 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* Unit Styles */
+.unit {
+    position: relative; /* Reset from absolute */
+    width: 100%;
+    height: 200px; /* Base height for shape */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+    font-weight: bold;
+    font-size: 1.8rem;
+    font-family: var(--font-sans);
+    color: black;
+    filter: drop-shadow(0 0 8px currentColor);
+}
+
+.unit-shape {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.unit-name {
+    z-index: 2;
+    color: black;
+    text-shadow: none;
+}
+
+/* BALTHASAR: Center Top */
+.unit-balthasar {
+    grid-column: 2 / 3;
+    grid-row: 1 / 2;
+    color: var(--neon-blue);
+    /* Balthasar shape must start at 0% 0% to align with grid top */
+}
+
+.unit-balthasar .unit-shape {
+    background-color: var(--neon-blue);
+    /* Top edge is flat at 0% to ensure alignment, but sides are vertical */
+    /* Updated shape to be more 'House-like'/Pentagon but with deeper cut */
+    /* polygon(0% 0%, 100% 0%, 100% 50%, 50% 100%, 0% 50%) */
+    clip-path: polygon(0% 0%, 100% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
+
+/* Header Decorated Lines */
+/* These MUST align with Balthasar top */
+.header-decorated {
+    border-top: 6px double var(--neon-green);
+    border-bottom: 6px double var(--neon-green);
+    padding: 10px 0;
+    margin-bottom: 20px;
+    box-shadow: 0 0 10px var(--neon-green);
+    width: 100%;
+    text-align: center;
+    /* Ensure no top margin disrupts alignment */
+    margin-top: 0; 
+}
+
+.header-large {
+    font-family: var(--font-serif);
+    font-size: 3.5rem;
+    font-weight: 900;
+    letter-spacing: 0.5rem;
+    line-height: 1.2;
+    text-shadow: 0 0 10px var(--neon-orange);
+    padding: 0;
+}
+
+/* Row 2: MAGI Label */
+.magi-label-container {
+    grid-column: 2 / 3;
+    grid-row: 2 / 3;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 20;
+}
+
+.magi-label {
+    font-size: 2rem;
+    font-weight: bold;
+    letter-spacing: 0.5rem;
+    border: 2px solid var(--neon-orange);
+    background-color: #000;
+    padding: 5px 20px;
+    box-shadow: 0 0 10px var(--neon-orange);
+}
+
+/* Row 3: Bottom Units (Casper/Melchior) */
+.unit-casper {
+    grid-column: 1 / 2;
+    grid-row: 3 / 4;
+    align-self: end; /* Align to bottom of container */
+    color: var(--neon-blue);
+    width: 80%; /* Adjust width slightly for aesthetics */
+    justify-self: center; /* Center in column */
+}
+
+.unit-melchior {
+    grid-column: 3 / 4;
+    grid-row: 3 / 4;
+    align-self: end; /* Align to bottom of container */
+    color: var(--neon-red);
+    width: 80%;
+    justify-self: center;
+}
+
+.unit-melchior .unit-shape {
+    background-color: var(--neon-red);
+    /* Distinct shape for Melchior */
+    clip-path: polygon(30% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 40%);
+}
+
+/* Default shape for Casper (Rectangle-ish) */
+.unit-casper .unit-shape {
+    background-color: var(--neon-blue);
+    clip-path: polygon(0% 0%, 70% 0%, 100% 40%, 100% 100%, 0% 100%);
+}
+
+/* Connectors Overlay */
+.connector-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0; /* Behind units */
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+.connector-line {
+    stroke: var(--neon-orange);
+    stroke-width: 4;
+    stroke-linecap: square;
+    filter: drop-shadow(0 0 5px var(--neon-orange));
+}
+
+.center-node {
+    filter: drop-shadow(0 0 5px var(--neon-orange));
+}
+
+/* Info Text Styling */
+.code-info {
+    font-size: 1.5rem;
+    margin-top: 10px;
+    font-family: var(--font-sans);
+    font-weight: bold;
+}
+
+.file-info {
+    list-style: none;
+    margin-top: 10px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--neon-orange);
+    opacity: 0.8;
+}
+
+/* Result Box */
+.result-box-container {
+    margin-top: 10px;
+    display: flex;
+    justify-content: center;
+    width: 100%;
+}
+
+.result-box {
+    border: 6px solid var(--neon-red);
+    padding: 10px 30px;
+    box-shadow: 0 0 20px var(--neon-red), inset 0 0 20px var(--neon-red);
+    background: rgba(0, 0, 0, 0.9);
+}
+
+.result-text {
+    font-family: var(--font-serif);
+    font-size: 3rem;
+    color: var(--neon-red);
+    font-weight: 900;
+    text-shadow: 0 0 10px var(--neon-red);
+}
+
+@media (max-width: 768px) {
+    .magi-container {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto auto auto;
+        height: auto;
+        overflow-y: auto;
+    }
+    
+    .unit-balthasar { grid-row: 2; grid-column: 1; margin: 20px 0; }
+    .magi-label-container { grid-row: 3; grid-column: 1; }
+    .unit-casper { grid-row: 4; grid-column: 1; }
+    .unit-melchior { grid-row: 5; grid-column: 1; }
+    .grid-header-right { grid-row: 6; grid-column: 1; margin-top: 20px; }
+}

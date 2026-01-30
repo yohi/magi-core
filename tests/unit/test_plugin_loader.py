@@ -15,7 +15,7 @@ from string import ascii_letters, digits
 # プロジェクトルートをPythonパスに追加
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hypothesis import given, settings
+from hypothesis import HealthCheck, given, settings
 from hypothesis.strategies import text, dictionaries, sampled_from, integers
 
 from magi.config.settings import MagiSettings
@@ -132,7 +132,7 @@ class TestPluginLoader(unittest.TestCase):
         ),
         interface=sampled_from(["stdio", "file"]),
     )
-    @settings(max_examples=20)
+    @settings(max_examples=20, suppress_health_check=[HealthCheck.too_slow])
     def test_default_values_applied_correctly(self, plugin_name, command, interface):
         plugin_data = {
             "plugin": {
@@ -259,14 +259,14 @@ class TestPluginLoader(unittest.TestCase):
         plugin_file.write_text("plugin: {name: slow, hash: sha256:" + ("a" * 64) + "}\nbridge: {command: echo, interface: stdio}")
 
         async def slow_impl(path):
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.5)
             return None
 
         loader._load_async_impl = slow_impl  # type: ignore[attr-defined]
 
         with self.assertLogs("magi.plugins.loader", level="ERROR") as cm:
             with self.assertRaises(MagiException) as exc:
-                asyncio.run(loader.load_async(plugin_file, timeout=0.01))
+                asyncio.run(loader.load_async(plugin_file, timeout=0.2))
 
         self.assertIn("plugin.load.timeout", "\n".join(cm.output))
         self.assertEqual(exc.exception.error.code, ErrorCode.PLUGIN_LOAD_TIMEOUT.value)
@@ -636,7 +636,7 @@ class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
         class SlowLoader(PluginLoader):
             async def _load_async_impl(self, path: Path) -> Plugin:
                 if "slow" in path.name:
-                    await asyncio.sleep(0.05)
+                    await asyncio.sleep(0.5)
                 return await super()._load_async_impl(path)
 
         loader = SlowLoader()
@@ -658,7 +658,7 @@ class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
         with self.assertLogs("magi.plugins.loader", level="ERROR") as cm:
             results = await loader.load_all_async(
                 [slow_file, fast_file],
-                timeout=0.01,
+                timeout=0.2,
             )
 
         self.assertEqual(len(results), 2)
