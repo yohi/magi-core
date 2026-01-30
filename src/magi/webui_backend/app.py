@@ -213,8 +213,27 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 pass
             
     finally:
-        # 購読解除とセッションリソースのクリーンアップ
+        # 購読解除
         await session_manager.broadcaster.unsubscribe(session_id, queue)
-        # セッションの削除（必要に応じてキャンセルも実行）
-        await session_manager.cancel_session(session_id)
-        logger.info(f"WebSocket connection closed for session: {session_id}")
+        
+        # セッションのクリーンアップ判定
+        # 以下の条件を満たす場合のみcancel_sessionを呼び出す:
+        # 1. セッションがまだアクティブ(未完了)である
+        # 2. 他にアクティブなサブスクライバーが残っていない
+        try:
+            is_active = session_manager.is_session_active(session_id)
+            subscriber_count = await session_manager.broadcaster.get_subscriber_count(session_id)
+            
+            if is_active and subscriber_count == 0:
+                # セッションが未完了で、かつ他のサブスクライバーがいない場合のみキャンセル
+                await session_manager.cancel_session(session_id)
+                logger.info(f"Session cancelled due to no remaining subscribers: {session_id}")
+            else:
+                logger.info(
+                    f"WebSocket connection closed for session: {session_id} "
+                    f"(active={is_active}, subscribers={subscriber_count})"
+                )
+        except Exception as e:
+            # クリーンアップ処理でのエラーはログに記録するが、例外は伝播させない
+            logger.exception(f"Error during session cleanup for {session_id}: {e}")
+
