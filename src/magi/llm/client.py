@@ -85,6 +85,7 @@ class LLMClient:
         model: 使用するモデル名
         retry_count: リトライ回数
         timeout: タイムアウト秒数
+        temperature: デフォルトの温度パラメータ
     """
 
     def __init__(
@@ -93,6 +94,7 @@ class LLMClient:
         model: str = "claude-sonnet-4-20250514",
         retry_count: int = 3,
         timeout: int = 60,
+        temperature: float = 0.7,
         base_delay_seconds: float = 0.5,
         rate_limit_backoff_cap: float = 60.0,
         default_backoff_cap: float = 10.0,
@@ -108,6 +110,7 @@ class LLMClient:
             model: 使用するモデル名
             retry_count: リトライ回数
             timeout: タイムアウト秒数
+            temperature: デフォルトの温度パラメータ (0.0-1.0)
             base_delay_seconds: バックオフ計算の基準秒数
             rate_limit_backoff_cap: レート制限時の待機上限秒数
             default_backoff_cap: その他エラー時の待機上限秒数
@@ -120,6 +123,7 @@ class LLMClient:
         self.model = model
         self.retry_count = retry_count
         self.timeout = timeout
+        self.temperature = temperature
         self.base_delay_seconds = base_delay_seconds
         self.rate_limit_backoff_cap = rate_limit_backoff_cap
         self.default_backoff_cap = default_backoff_cap

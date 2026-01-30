@@ -104,8 +104,9 @@ class FakeTemplateLoader:
 class FakeLLMClient:
     """LLMClientのモック。ネットワークを使用しない."""
 
-    def __init__(self) -> None:
+    def __init__(self, temperature: float = 0.7) -> None:
         self.sent_prompts: List[str] = []
+        self.temperature = temperature
 
     async def send(self, request) -> LLMResponse:
         self.sent_prompts.append(request.user_prompt)

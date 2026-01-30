@@ -22,6 +22,7 @@ from magi.core.token_budget import TokenBudgetManager
 from magi.agents.persona import PersonaManager
 from magi.agents.agent import Agent
 from magi.config.manager import Config
+from magi.config.settings import PersonaConfig, LLMConfig
 from magi.errors import MagiException
 from magi.security.guardrails import GuardrailsAdapter, GuardrailsResult
 from magi.models import (
@@ -379,9 +380,59 @@ class TestConsensusEngineAgentCreation(unittest.TestCase):
         engine = ConsensusEngine(self.config, llm_client_factory=factory)
         agents = engine._create_agents()
 
-        self.assertEqual(factory_calls, 1)
+        # 各ペルソナごとに呼ばれるため3回
+        self.assertEqual(factory_calls, 3)
         for agent in agents.values():
             self.assertIs(agent.llm_client, injected_client)
+
+    def test_create_agents_uses_persona_specific_config(self):
+        """ペルソナごとの設定が反映されることを確認"""
+        config = Config(
+            api_key="default-key",
+            model="default-model",
+            personas={
+                "melchior": PersonaConfig(
+                    llm=LLMConfig(
+                        model="melchior-model",
+                        api_key="melchior-key"
+                    )
+                )
+            }
+        )
+        engine = ConsensusEngine(config)
+        
+        # 実際のLLMClient生成をモック化せず、属性をチェックしたいが、
+        # 外部通信を防ぐためにLLMClientのコンストラクタをパッチする
+        with patch('magi.core.consensus.LLMClient') as mock_llm_cls:
+            agents = engine._create_agents()
+            
+            # MELCHIORの設定確認
+            melchior_call = [
+                call for call in mock_llm_cls.call_args_list 
+                if call.kwargs.get('api_key') == 'melchior-key'
+            ]
+            self.assertEqual(len(melchior_call), 1)
+            self.assertEqual(melchior_call[0].kwargs['model'], 'melchior-model')
+            
+            # 他のペルソナのフォールバック確認（デフォルト値が使われる）
+            default_calls = [
+                call for call in mock_llm_cls.call_args_list 
+                if call.kwargs.get('api_key') == 'default-key'
+            ]
+            self.assertEqual(len(default_calls), 2)
+            self.assertEqual(default_calls[0].kwargs['model'], 'default-model')
+
+    def test_create_agents_passes_concurrency_controller(self):
+        """ConcurrencyControllerが正しく渡されることを確認"""
+        controller = _StubConcurrencyController()
+        engine = ConsensusEngine(self.config, concurrency_controller=controller)
+        
+        with patch('magi.core.consensus.LLMClient') as mock_llm_cls:
+            engine._create_agents()
+            
+            for call in mock_llm_cls.call_args_list:
+                self.assertIs(call.kwargs['concurrency_controller'], controller)
+
 
 
 class TestConsensusTokenBudget(unittest.TestCase):
@@ -616,6 +667,56 @@ class TestConsensusSecurityFilter(unittest.TestCase):
             exc.error.message,
         )
         self.assertEqual(["ruleX"], exc.error.details["rules"])
+
+
+class TestConsensusEngineTemperatureResolution(unittest.TestCase):
+    """温度パラメータ解決のテスト"""
+
+    def test_default_temperature_used(self):
+        """デフォルトで設定値のtemperatureが使用される"""
+        config = Config(api_key="test-key", temperature=0.7)
+        engine = ConsensusEngine(config)
+
+        with patch('magi.core.consensus.LLMClient') as mock_llm_cls:
+            engine._create_agents()
+
+            for call in mock_llm_cls.call_args_list:
+                self.assertEqual(call.kwargs['temperature'], 0.7)
+
+    def test_global_temperature_override(self):
+        """グローバル設定のtemperatureが反映される"""
+        config = Config(api_key="test-key", temperature=0.5)
+        engine = ConsensusEngine(config)
+
+        with patch('magi.core.consensus.LLMClient') as mock_llm_cls:
+            engine._create_agents()
+
+            for call in mock_llm_cls.call_args_list:
+                self.assertEqual(call.kwargs['temperature'], 0.5)
+
+    def test_persona_temperature_override(self):
+        """ペルソナごとのtemperature設定が優先される"""
+        config = Config(
+            api_key="test-key",
+            temperature=0.7,
+            personas={
+                "melchior": PersonaConfig(
+                    llm=LLMConfig(temperature=0.2)
+                ),
+                "casper": PersonaConfig(
+                    llm=LLMConfig(temperature=0.9)
+                )
+            }
+        )
+        engine = ConsensusEngine(config)
+
+        with patch('magi.core.consensus.LLMClient') as mock_llm_cls:
+            engine._create_agents()
+            
+            temps = [call.kwargs['temperature'] for call in mock_llm_cls.call_args_list]
+            self.assertIn(0.2, temps)
+            self.assertIn(0.9, temps)
+            self.assertIn(0.7, temps)
 
 if __name__ == '__main__':
     unittest.main()

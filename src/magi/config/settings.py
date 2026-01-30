@@ -4,10 +4,26 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Literal, Optional, Tuple
 
-from pydantic import Field, ValidationInfo, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
+
+
+class LLMConfig(BaseModel):
+    """LLMプロバイダ設定"""
+
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    timeout: Optional[int] = None
+    retry_count: Optional[int] = None
+    temperature: Optional[float] = Field(None, ge=0.0, le=1.0)
+
+
+class PersonaConfig(BaseModel):
+    """ペルソナ個別設定"""
+
+    llm: Optional[LLMConfig] = None
 
 
 class MagiSettings(BaseSettings):
@@ -16,6 +32,7 @@ class MagiSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="MAGI_",
         env_file=".env",
+        env_nested_delimiter="__",
         extra="forbid",
     )
 
@@ -28,6 +45,10 @@ class MagiSettings(BaseSettings):
     model: str = Field(default="claude-sonnet-4-20250514")
     timeout: int = Field(default=60, ge=1)
     retry_count: int = Field(default=3, ge=0, le=10)
+    temperature: float = Field(default=0.7, ge=0.0, le=1.0)
+
+    # ペルソナ設定
+    personas: Dict[str, PersonaConfig] = Field(default_factory=dict)
 
     # 合議設定
     debate_rounds: int = Field(default=1, ge=1)

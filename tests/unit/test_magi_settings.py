@@ -121,6 +121,45 @@ class TestMagiSettings(unittest.TestCase):
 
         self.assertEqual(masked["api_key"], "***")
 
+    @patch.dict(
+        os.environ,
+        {
+            "MAGI_API_KEY": "test-api-key",
+            "MAGI_PERSONAS": '{"melchior": {"llm": {"model": "m1", "timeout": 120}}}',
+        },
+        clear=True,
+    )
+    def test_personas_env_parsing(self):
+        """MAGI_PERSONAS 環境変数（JSON文字列）が正しくパースされる"""
+        settings = MagiSettings()
+
+        self.assertIn("melchior", settings.personas)
+        melchior = settings.personas["melchior"]
+        self.assertIsNotNone(melchior.llm)
+        assert melchior.llm is not None  # 型絞り込み
+        self.assertEqual(melchior.llm.model, "m1")
+        self.assertEqual(melchior.llm.timeout, 120)
+
+    @patch.dict(
+        os.environ,
+        {
+            "MAGI_API_KEY": "test-api-key",
+            "MAGI_PERSONAS__melchior__llm__model": "m2",
+            "MAGI_PERSONAS__melchior__llm__timeout": "180",
+        },
+        clear=True,
+    )
+    def test_personas_nested_env_parsing(self):
+        """MAGI_PERSONAS__... 形式のネスト環境変数が正しくパースされる"""
+        settings = MagiSettings()
+
+        self.assertIn("melchior", settings.personas)
+        melchior = settings.personas["melchior"]
+        self.assertIsNotNone(melchior.llm)
+        assert melchior.llm is not None
+        self.assertEqual(melchior.llm.model, "m2")
+        self.assertEqual(melchior.llm.timeout, 180)
+
 
 if __name__ == "__main__":
     unittest.main()

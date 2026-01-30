@@ -49,6 +49,7 @@ class TestAgentThink(unittest.IsolatedAsyncioTestCase):
         )
 
         mock_client = MagicMock(spec=LLMClient)
+        mock_client.temperature = 0.7
         mock_client.send = AsyncMock(return_value=LLMResponse(
             content="これは論理的な分析です。",
             usage={"input_tokens": 100, "output_tokens": 50},
@@ -76,6 +77,7 @@ class TestAgentThink(unittest.IsolatedAsyncioTestCase):
         )
 
         mock_client = MagicMock(spec=LLMClient)
+        mock_client.temperature = 0.7
         mock_client.send = AsyncMock(return_value=LLMResponse(
             content="分析結果",
             usage={"input_tokens": 100, "output_tokens": 50},
@@ -94,6 +96,33 @@ class TestAgentThink(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(request, LLMRequest)
         self.assertEqual(request.system_prompt, "基本プロンプト\n\n追加指示")
 
+    async def test_think_uses_configured_temperature(self):
+        """thinkはLLMClientのtemperatureを使用する"""
+        from magi.agents.agent import Agent
+        from magi.agents.persona import Persona
+        from magi.llm.client import LLMClient, LLMResponse, LLMRequest
+
+        persona = Persona(
+            type=PersonaType.MELCHIOR,
+            name="MELCHIOR-1",
+            base_prompt="prompt"
+        )
+
+        mock_client = MagicMock(spec=LLMClient)
+        mock_client.temperature = 0.1
+        mock_client.send = AsyncMock(return_value=LLMResponse(
+            content="content",
+            usage={},
+            model="model"
+        ))
+
+        agent = Agent(persona=persona, llm_client=mock_client)
+        await agent.think("prompt")
+
+        call_args = mock_client.send.call_args
+        request = call_args[0][0]
+        self.assertEqual(request.temperature, 0.1)
+
 
 class TestAgentDebate(unittest.IsolatedAsyncioTestCase):
     """Agent.debateメソッドのテスト"""
@@ -111,6 +140,7 @@ class TestAgentDebate(unittest.IsolatedAsyncioTestCase):
         )
 
         mock_client = MagicMock(spec=LLMClient)
+        mock_client.temperature = 0.7
         mock_client.send = AsyncMock(return_value=LLMResponse(
             content="MELCHIORの意見に対して：リスクがあります。",
             usage={"input_tokens": 150, "output_tokens": 75},
@@ -144,6 +174,7 @@ class TestAgentDebate(unittest.IsolatedAsyncioTestCase):
         )
 
         mock_client = MagicMock(spec=LLMClient)
+        mock_client.temperature = 0.7
         mock_client.send = AsyncMock(return_value=LLMResponse(
             content="反論",
             usage={"input_tokens": 150, "output_tokens": 75},
@@ -186,6 +217,7 @@ class TestAgentVote(unittest.IsolatedAsyncioTestCase):
 
         # APPROVE投票を返すようモック
         mock_client = MagicMock(spec=LLMClient)
+        mock_client.temperature = 0.7
         mock_client.send = AsyncMock(return_value=LLMResponse(
             content='{"vote": "APPROVE", "reason": "論理的に問題ありません。"}',
             usage={"input_tokens": 200, "output_tokens": 50},
@@ -212,6 +244,7 @@ class TestAgentVote(unittest.IsolatedAsyncioTestCase):
         )
 
         mock_client = MagicMock(spec=LLMClient)
+        mock_client.temperature = 0.7
         mock_client.send = AsyncMock(return_value=LLMResponse(
             content='{"vote": "DENY", "reason": "重大なリスクがあります。"}',
             usage={"input_tokens": 200, "output_tokens": 50},
@@ -237,6 +270,7 @@ class TestAgentVote(unittest.IsolatedAsyncioTestCase):
         )
 
         mock_client = MagicMock(spec=LLMClient)
+        mock_client.temperature = 0.7
         mock_client.send = AsyncMock(return_value=LLMResponse(
             content='{"vote": "CONDITIONAL", "reason": "条件付きで承認します。", "conditions": ["条件1", "条件2"]}',
             usage={"input_tokens": 200, "output_tokens": 75},
@@ -266,6 +300,7 @@ class TestAgentVote(unittest.IsolatedAsyncioTestCase):
 
         # 不正なJSONを返すようモック
         mock_client = MagicMock(spec=LLMClient)
+        mock_client.temperature = 0.7
         mock_client.send = AsyncMock(return_value=LLMResponse(
             content="これは有効なJSONではありません。APPROVE します。",
             usage={"input_tokens": 200, "output_tokens": 50},

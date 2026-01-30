@@ -22,6 +22,7 @@
 | `model` | `MAGI_MODEL` | 使用するモデル | `claude-sonnet-4-20250514` |
 | `timeout` | `MAGI_TIMEOUT` | APIタイムアウト(秒) | 60 |
 | `retry_count` | `MAGI_RETRY_COUNT` | リトライ回数 | 3 |
+| `personas` | `MAGI_PERSONAS` | ペルソナ別設定 (JSON文字列) | `{}` |
 | **並行処理 (New)** | | | |
 | `llm_concurrency_limit` | `MAGI_LLM_CONCURRENCY_LIMIT` | LLM同時リクエスト数上限 | 5 |
 | `plugin_concurrency_limit` | `MAGI_PLUGIN_CONCURRENCY_LIMIT` | プラグイン同時ロード数上限 | 3 |
@@ -37,6 +38,32 @@
 | `production_mode` | `MAGI_PRODUCTION_MODE` | 本番運用モード (Trueで厳格化) | `False` |
 | `plugin_public_key_path` | `MAGI_PLUGIN_PUBLIC_KEY_PATH` | プラグイン検証用公開鍵パス | `None` (本番時必須) |
 | `plugin_prompt_override_allowed`| `MAGI_PLUGIN_PROMPT_OVERRIDE_ALLOWED` | プラグインによるプロンプト上書き許可 | `False` |
+
+### 構造化データの環境変数指定
+
+`personas` などの辞書型設定は、環境変数では以下の2通りの方法で指定できます。
+
+#### 1. JSON 文字列 (推奨)
+
+環境変数に JSON 文字列として指定します。`temperature` (0.0-1.0) などの詳細設定も可能です。
+
+```bash
+# ペルソナごとのモデルやパラメータをJSONで指定する例（未指定項目はグローバル設定が使用されます）
+export MAGI_PERSONAS='{"melchior": {"llm": {"model": "claude-3-opus-20240229", "temperature": 0.0}}, "balthasar": {"llm": {"timeout": 120}}}'
+```
+
+#### 2. ネストされた環境変数 (上級者向け/任意)
+
+`__` (ダブルアンダースコア) を区切り文字として使用することで、個別の値をオーバーライドできます。
+JSON形式と併用した場合、この**ネスト形式の設定が優先**されます。
+
+```bash
+# MELCHIORのモデルのみをピンポイントで変更する場合
+export MAGI_PERSONAS__melchior__llm__model="claude-3-opus-20240229"
+
+# temperature を設定する場合
+export MAGI_PERSONAS__casper__llm__temperature=0.7
+```
 
 ### 廃止・変更された環境変数 (自動変換されます)
 

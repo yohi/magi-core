@@ -261,10 +261,9 @@ class ConsensusEngine:
         Returns:
             ペルソナタイプをキーとするAgentの辞書
         """
-        llm_client = self.llm_client_factory()
-
         agents = {}
         for persona_type in PersonaType:
+            llm_client = self._resolve_llm_client(persona_type)
             persona = self.persona_manager.get_persona(persona_type)
             agents[persona_type] = Agent(
                 persona,
@@ -277,6 +276,32 @@ class ConsensusEngine:
 
         return agents
 
+    def _resolve_llm_client(self, persona_type: PersonaType) -> LLMClient:
+        """ペルソナ固有の設定に基づいてLLMクライアントを解決する
+
+        Args:
+            persona_type: ペルソナタイプ
+
+        Returns:
+            解決されたLLMClientインスタンス
+        """
+        persona_key = persona_type.value
+        persona_config = self.config.personas.get(persona_key)
+
+        if not persona_config or not persona_config.llm:
+            return self.llm_client_factory()
+
+        llm_config = persona_config.llm
+        
+        return LLMClient(
+            api_key=llm_config.api_key if llm_config.api_key is not None else self.config.api_key,
+            model=llm_config.model if llm_config.model is not None else self.config.model,
+            retry_count=llm_config.retry_count if llm_config.retry_count is not None else self.config.retry_count,
+            timeout=llm_config.timeout if llm_config.timeout is not None else self.config.timeout,
+            temperature=llm_config.temperature if llm_config.temperature is not None else self.config.temperature,
+            concurrency_controller=self.concurrency_controller,
+        )
+
     def _build_default_llm_client_factory(self) -> Callable[[], LLMClient]:
         """設定値に基づくデフォルトLLMクライアントファクトリを構築"""
         def _factory() -> LLMClient:
@@ -285,6 +310,7 @@ class ConsensusEngine:
                 model=self.config.model,
                 retry_count=self.config.retry_count,
                 timeout=self.config.timeout,
+                temperature=self.config.temperature,
                 concurrency_controller=self.concurrency_controller,
             )
 

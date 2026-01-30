@@ -11,15 +11,26 @@ from magi.core.context import ContextManager
 from magi.models import Decision, PersonaType, Vote, VoteOutput
 
 # test_consensus_di_mocks.py から共通モックをインポート
-from .test_consensus_di_mocks import (
-    FakeConcurrencyController,
-    FakeGuardrailsAdapter,
-    FakeLLMClient,
-    FakePersonaManager,
-    FakeStreamingEmitter,
-    FakeTemplateLoader,
-    FakeTokenBudgetManager,
-)
+try:
+    from .test_consensus_di_mocks import (
+        FakeConcurrencyController,
+        FakeGuardrailsAdapter,
+        FakeLLMClient,
+        FakePersonaManager,
+        FakeStreamingEmitter,
+        FakeTemplateLoader,
+        FakeTokenBudgetManager,
+    )
+except (ImportError, ValueError):
+    from test_consensus_di_mocks import (
+        FakeConcurrencyController,
+        FakeGuardrailsAdapter,
+        FakeLLMClient,
+        FakePersonaManager,
+        FakeStreamingEmitter,
+        FakeTemplateLoader,
+        FakeTokenBudgetManager,
+    )
 
 
 class TestQuorumManagerAndFailSafe(unittest.TestCase):
