@@ -200,6 +200,8 @@ magi spec "ユーザー認証APIの仕様書を作成してください"
 
 ## 開発
 
+詳細な開発ガイドライン（コーディング規約、言語ポリシー等）については [AGENTS.md](AGENTS.md) を参照してください。
+
 ### 開発環境のセットアップ
 
 ```bash
@@ -228,6 +230,9 @@ uv run python -m unittest discover -s tests/integration -v
 
 # 全テスト実行
 uv run python -m unittest discover -s tests -v
+
+# 特定のテストケースを実行
+uv run python -m unittest tests.unit.test_cli.TestArgumentParser.test_parse_help_short
 
 # カバレッジ付きテスト
 uv run coverage run -m unittest discover -s tests

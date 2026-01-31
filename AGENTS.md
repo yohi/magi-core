@@ -16,7 +16,6 @@ Project memory keeps persistent guidance (steering, specs notes, component docs)
 - Specs: `.kiro/specs/`
 
 ### Steering vs Specification
-
 **Steering** (`.kiro/steering/`) - Guide AI with project-wide rules and context
 **Specs** (`.kiro/specs/`) - Formalize development process for individual features
 
@@ -24,108 +23,107 @@ Project memory keeps persistent guidance (steering, specs notes, component docs)
 - Check `.kiro/specs/` for active specifications
 - Use `/prompts:kiro-spec-status [feature-name]` to check progress
 
-## 開発ガイドライン
-- **言語ポリシー**: 常に日本語で応答してください。技術的な正確性のために英語で考えることは構いませんが、すべての出力（応答、ドキュメント、コメント、コミットメッセージ）は、明示的に要求されない限り日本語で記述する必要があります。
-  - **適用範囲**: このポリシーはAIの応答、新規作成するドキュメント、コード内のコメント、コミットメッセージに適用されます。
-  - **例外**: このドキュメント（AGENTS.md）内の一部セクション（プロジェクト構造定義、ワークフローコマンド、技術用語など）は、国際的な互換性やツールチェーンとの統合のため英語で記述されている場合があります。
-- プロジェクトファイルに書き込まれるすべてのMarkdownコンテンツ（例: requirements.md、design.md、tasks.md、research.md、検証レポート）は日本語で記述する必要があります。
-- コードコメントは可読性向上のため日本語で記述することを推奨します。
-- Gitコミットメッセージは日本語で記述することを推奨します。
+## 開発ガイドライン (Development Guidelines)
 
-## Minimal Workflow
-- Phase 0 (optional): `/prompts:kiro-steering`, `/prompts:kiro-steering-custom`
-- Phase 1 (Specification):
-  - `/prompts:kiro-spec-init "description"`
-  - `/prompts:kiro-spec-requirements {feature}`
-  - `/prompts:kiro-validate-gap {feature}` (optional: for existing codebase)
-  - `/prompts:kiro-spec-design {feature} [-y]`
-  - `/prompts:kiro-validate-design {feature}` (optional: design review)
-  - `/prompts:kiro-spec-tasks {feature} [-y]`
-- Phase 2 (Implementation): `/prompts:kiro-spec-impl {feature} [tasks]`
-  - `/prompts:kiro-validate-impl {feature}` (optional: after implementation)
-- Progress check: `/prompts:kiro-spec-status {feature}` (use anytime)
+### 言語ポリシー (Language Policy)
+- **基本原則**: 常に**日本語**で応答してください。
+- **思考プロセス**: 技術的な正確性のために英語で考えることは推奨されますが、出力は日本語で行ってください。
+- **適用範囲**:
+  - AIの応答、説明
+  - ドキュメント (Markdown)
+  - コード内のコメント、ドックストリング
+  - Gitコミットメッセージ
+- **例外**: 技術用語、コマンド、国際標準（プロトコル名など）、およびこのファイルのシステム定義部分。
+
+### コンテンツ作成
+- プロジェクトファイルに書き込まれるすべてのMarkdownコンテンツ（requirements.md, design.md, tasks.md, research.md, 検証レポート等）は日本語で記述する必要があります。
 
 ## Development Rules
 - 3-phase approval workflow: Requirements → Design → Tasks → Implementation
 - Human review required each phase; use `-y` only for intentional fast-track
 - Keep steering current and verify alignment with `/prompts:kiro-spec-status`
-- Follow the user's instructions precisely, and within that scope act autonomously: gather the necessary context and complete the requested work end-to-end in this run, asking questions only when essential information is missing or the instructions are critically ambiguous.
-
-## Steering Configuration
-- Load entire `.kiro/steering/` as project memory
-- Default files: `product.md`, `tech.md`, `structure.md`
-- Custom files are supported (managed via `/prompts:kiro-steering-custom`)
+- Follow the user's instructions precisely, and within that scope act autonomously.
 
 ---
 
-# 技術標準とコマンド
+# 技術標準とコマンド (Technical Standards & Commands)
 
-## 環境
+## 環境 (Environment)
 - **Python**: 3.11+
-- **パッケージマネージャ**: `uv`（依存関係管理に必須）
+- **Package Manager**: `uv` (Required)
+- **Test Framework**: `unittest`
 
-## 主要コマンド
+## 主要コマンド (Key Commands)
 
-### セットアップ
+### セットアップ & ビルド (Setup & Build)
 ```bash
+# 依存関係の同期
 uv sync
+
+# パッケージの追加
+uv add <package_name>
 ```
 
-### テスト
-このプロジェクトは主要なフレームワークとして `unittest` を使用しています。
+### テスト実行 (Testing)
+**重要**: 変更を加えた後は必ず関連するテストを実行してください。
 
-**全テストを実行:**
+**全テストを実行 (Run All Tests):**
 ```bash
 uv run python -m unittest discover -s tests -v
 ```
 
-**特定のテストファイルを実行:**
+**特定のテストファイルを実行 (Run Single File):**
 ```bash
 uv run python -m unittest tests/unit/test_cli.py
 ```
 
-**特定のテストケースを実行:**
+**特定のテストケースを実行 (Run Single Case):**
 ```bash
 # フォーマット: path.to.module.Class.method
-uv run python -m unittest magi.tests.unit.test_cli.TestArgumentParser.test_parse_help_short
+# 例: tests.unit.test_cli モジュールの TestArgumentParser.test_parse_help_short
+uv run python -m unittest tests.unit.test_cli.TestArgumentParser.test_parse_help_short
 ```
 
-**カバレッジ:**
+**カバレッジ計測 (Coverage):**
 ```bash
 uv run coverage run -m unittest discover -s tests
 uv run coverage report
 ```
 
-## コードスタイルガイドライン
+## コードスタイルガイドライン (Code Style Guidelines)
 
-### 言語とドキュメント
-- **ドックストリング**: **日本語**で記述する必要があります。
-  - ドックストリングにはトリプルクォート `"""` を使用してください。
-  - 構造: 簡潔な要約行、空行、詳細な説明。
-- **コメント**: **日本語**で記述する必要があります。
-- **コミットメッセージ**: **日本語**で記述する必要があります。
+### Python実装ルール
+- **ドックストリング (Docstrings)**:
+  - **日本語**で記述。
+  - トリプルクォート `"""` を使用。
+  - 形式: `要約行` -> `空行` -> `詳細説明` -> `Args/Returns/Raises`。
+- **型ヒント (Type Hints)**:
+  - **必須**。すべての関数引数と戻り値に型ヒントを付与。
+  - `typing` (List, Dict, Optional, Any) または `str | None` 形式を使用。
+- **インポート順序**:
+  1. 標準ライブラリ (`import os`, `from typing import ...`)
+  2. サードパーティ (`import anthropic`)
+  3. ローカル (`from magi.core import ...`) - **絶対インポート推奨**
 
-### 型ヒント
-- **厳密な型付け**: すべての関数引数と戻り値に型ヒントを使用してください。
-- `typing` モジュール（`List`、`Dict`、`Any`、`Optional`）またはサポートされている場合はモダンなユニオン構文（`str | None`）を使用してください。
+### 命名規則 (Naming Conventions)
+- **ファイル/モジュール**: `snake_case` (例: `consensus_engine.py`)
+- **クラス**: `CamelCase` (例: `ConsensusEngine`)
+- **関数/メソッド/変数**: `snake_case` (例: `execute_voting_process`)
+- **定数**: `UPPER_SNAKE_CASE` (例: `DEFAULT_TIMEOUT`)
 
-### 命名規則
-- **ファイル/モジュール**: `snake_case`（例: `consensus_engine.py`）
-- **クラス**: `CamelCase`（例: `ConsensusEngine`）
-- **関数/メソッド**: `snake_case`（例: `execute_voting_process`）
-- **変数**: `snake_case`
-- **定数**: `UPPER_SNAKE_CASE`
+### エラーハンドリング (Error Handling)
+- カスタム例外は `magi.core.errors` 等で定義。
+- ユーザー向けのエラーメッセージは**日本語**で記述することを強く推奨。
+  - 開発者向けの内部エラー (`ValueError` 等) は英語でも可とするが、可能な限り日本語を含めるか、分かりやすく記述する。
 
-### アーキテクチャとパターン
-- **インポート**:
-  1. 標準ライブラリ
-  2. サードパーティライブラリ
-  3. ローカルアプリケーションのインポート（絶対インポートを推奨、例: `from magi.core import ...`）
-- **エラーハンドリング**:
-  - 該当する場合は `magi.core.errors` で定義された特定の例外を使用してください。
-  - 明確なエラーメッセージ（日本語）で適切に失敗させてください。
+### ディレクトリ構造 (Structure)
+- `src/magi/`: ソースコード
+  - `core/`: 合議エンジン、コンテキスト
+  - `agents/`: ペルソナ定義、エージェントロジック
+  - `plugins/`: プラグインシステム
+- `tests/`: テストコード (ソースコードの構造をミラーリング)
 
-### テスト標準
-- テストはソース構造をミラーリングした `tests/` ディレクトリに配置してください。
-- `unittest.TestCase` を使用してください。
-- 外部依存関係（LLM呼び出し、ファイルI/O）はモックしてください。
+## エージェントへの指示 (Instructions for Agents)
+1. **実装前確認**: 既存のコードスタイル（特に日本語ドキュメントと型ヒント）を確認し、それに従うこと。
+2. **テスト駆動**: 新機能追加時はテストケースを作成し、単体テスト (`Run Single Case`) で検証しながら進めること。
+3. **自律性**: 必要なコンテキストは自分で収集し、タスク完了まで自律的に行動すること。不明点は質問すること。
