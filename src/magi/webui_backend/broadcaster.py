@@ -62,6 +62,19 @@ class EventBroadcaster:
         
         logger.debug(f"Unsubscribed from session {session_id}")
 
+    async def get_subscriber_count(self, session_id: str) -> int:
+        """
+        指定されたセッションのアクティブなサブスクライバー数を取得する。
+
+        Args:
+            session_id (str): セッションID
+
+        Returns:
+            int: アクティブなサブスクライバー数
+        """
+        async with self._lock:
+            return len(self._subscribers.get(session_id, []))
+
     def enrich(self, session_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         イベントに共通フィールドを付与して返す。

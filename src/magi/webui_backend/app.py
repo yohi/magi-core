@@ -1,151 +1,239 @@
 """
-WebUI Backend FastAPI Application
+WebUIバックエンドアプリケーション
 
-WebUIのバックエンドアプリケーションを提供する。
-テストで使用されるFastAPIアプリケーションとセッションマネージャーを定義する。
+FastAPIを使用したWebUI用バックエンドサーバーの実装。
+セッション管理、状態監視、リアルタイム通信のエンドポイントを提供する。
 """
+
 import asyncio
 import logging
-import uuid
-from typing import Any, Dict, Optional
+from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, status
+from fastapi import FastAPI, WebSocket, APIRouter, status, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from magi.webui_backend.adapter import MagiAdapter, MockMagiAdapter
-from magi.webui_backend.broadcaster import EventBroadcaster
-from magi.webui_backend.models import SessionOptions
+from magi.webui_backend.models import SessionOptions, SessionPhase
+from magi.webui_backend.session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
 
-# FastAPIアプリケーションインスタンス
-app = FastAPI(title="MAGI WebUI Backend", version="1.0.0")
+app = FastAPI(
+    title="MAGI WebUI Backend",
+    description="MAGIシステムのWebUI用バックエンドAPI",
+    version="1.0.0",
+)
+
+# セッションマネージャーのインスタンス化
+# 設定値は環境変数等から読み込むのが望ましいが、一旦デフォルト値で初期化
+session_manager = SessionManager(max_concurrency=10, ttl_sec=600)
+
+# APIルーターの定義
+api_router = APIRouter(prefix="/api")
 
 
-class SessionCreateRequest(BaseModel):
-    """セッション作成リクエスト"""
-    prompt: str
-    options: Optional[Dict[str, Any]] = None
-
-
-class SessionCreateResponse(BaseModel):
-    """セッション作成レスポンス"""
-    session_id: str
+class HealthResponse(BaseModel):
+    """ヘルスチェックレスポンスモデル"""
     status: str
 
 
-class SessionInfo:
-    """セッション情報を保持するクラス"""
-    def __init__(
-        self,
-        session_id: str,
-        prompt: str,
-        options: SessionOptions,
-        adapter: MagiAdapter,
-        broadcaster: EventBroadcaster
-    ):
-        self.session_id = session_id
-        self.prompt = prompt
-        self.options = options
-        self.adapter = adapter
-        self.broadcaster = broadcaster
-        self.task: Optional[asyncio.Task] = None
+class CreateSessionRequest(BaseModel):
+    """セッション作成リクエストモデル"""
+    prompt: str
+    options: Optional[SessionOptions] = None
 
 
-class SessionManager:
-    """セッション管理クラス"""
-    def __init__(self):
-        self.sessions: Dict[str, SessionInfo] = {}
-    
-    def create_session(
-        self,
-        prompt: str,
-        options: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """新しいセッションを作成する"""
-        session_id = str(uuid.uuid4())
-        
-        # オプションをSessionOptionsに変換
-        session_options = SessionOptions(**(options or {}))
-        
-        # モックアダプターを使用（実際の実装では設定に応じて切り替え）
-        adapter = MockMagiAdapter()
-        
-        # ブロードキャスターを作成
-        broadcaster = EventBroadcaster(queue_maxsize=100)
-        
-        # セッション情報を保存
-        session_info = SessionInfo(
-            session_id=session_id,
-            prompt=prompt,
-            options=session_options,
-            adapter=adapter,
-            broadcaster=broadcaster
+class CreateSessionResponse(BaseModel):
+    """セッション作成レスポンスモデル"""
+    session_id: str
+    ws_url: str
+    status: str
+
+
+class CancelSessionResponse(BaseModel):
+    """セッションキャンセルレスポンスモデル"""
+    status: str
+
+
+@api_router.get("/health", response_model=HealthResponse)
+async def health_check() -> HealthResponse:
+    """ヘルスチェックエンドポイント
+
+    Returns:
+        HealthResponse: サーバーの状態
+    """
+    return HealthResponse(status="ok")
+
+
+@api_router.post(
+    "/sessions",
+    response_model=CreateSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_429_TOO_MANY_REQUESTS: {"description": "同時実行数制限超過"}
+    }
+)
+async def create_session(request: CreateSessionRequest) -> CreateSessionResponse:
+    """新規セッション作成エンドポイント
+
+    Args:
+        request: セッション作成リクエスト
+
+    Returns:
+        CreateSessionResponse: 作成されたセッション情報
+
+    Raises:
+        HTTPException(429): 同時実行数が上限に達している場合
+    """
+    try:
+        session_id = await session_manager.create_session(
+            prompt=request.prompt,
+            options=request.options
         )
-        self.sessions[session_id] = session_info
-        
-        logger.info(f"Session created: {session_id}")
-        return session_id
+        # 初期状態は QUEUED だが、create_session 直後は RUNNING (非同期タスク起動) とみなすことも可能
+        # ここでは単純に QUEUED/RUNNING を返す
+        return CreateSessionResponse(
+            session_id=session_id,
+            ws_url=f"/ws/sessions/{session_id}",
+            status="created"
+        )
+    except RuntimeError as e:
+        # 同時実行数制限など
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(e)
+        )
+
+
+@api_router.post("/sessions/{session_id}/cancel", response_model=CancelSessionResponse)
+async def cancel_session(session_id: str) -> CancelSessionResponse:
+    """セッションキャンセルエンドポイント
+
+    Args:
+        session_id: キャンセル対象のセッションID
+
+    Returns:
+        CancelSessionResponse: キャンセル結果
+    """
+    success = await session_manager.cancel_session(session_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found"
+        )
     
-    def get_session(self, session_id: str) -> Optional[SessionInfo]:
-        """セッション情報を取得する"""
-        return self.sessions.get(session_id)
-    
-    def remove_session(self, session_id: str) -> None:
-        """セッションを削除する"""
-        if session_id in self.sessions:
-            session_info = self.sessions[session_id]
-            if session_info.task and not session_info.task.done():
-                session_info.task.cancel()
-            del self.sessions[session_id]
-            logger.info(f"Session removed: {session_id}")
+    return CancelSessionResponse(status="cancelled")
 
 
-# グローバルセッションマネージャーインスタンス
-session_manager = SessionManager()
-
-
-@app.post("/api/sessions", response_model=SessionCreateResponse, status_code=201)
-async def create_session(request: SessionCreateRequest) -> SessionCreateResponse:
-    """セッションを作成する"""
-    session_id = session_manager.create_session(
-        prompt=request.prompt,
-        options=request.options
-    )
-    
-    return SessionCreateResponse(
-        session_id=session_id,
-        status="created"
-    )
+# ルーターをアプリケーションに登録
+app.include_router(api_router)
 
 
 @app.websocket("/ws/sessions/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
-    """WebSocketエンドポイント"""
-    # セッションの存在確認
-    session_info = session_manager.get_session(session_id)
-    
-    if not session_info:
-        await websocket.accept()
+    """WebSocketセッション接続エンドポイント
+
+    Args:
+        websocket: WebSocket接続
+        session_id: 接続先セッションID
+    """
+    await websocket.accept()
+
+    # セッション存在確認
+    session = session_manager.get_session(session_id)
+    if not session:
+        # 400系エラーでクローズ (Policy Violation などを利用)
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
-    
-    await websocket.accept()
-    
+
+    # イベント購読
+    queue = await session_manager.broadcaster.subscribe(session_id)
+
+    # 送信タスク
+    async def sender():
+        try:
+            while True:
+                data = await queue.get()
+                
+                # イベントのエンリッチメント（session_idの付与など）
+                if "session_id" not in data:
+                    data["session_id"] = session_id
+                
+                await websocket.send_json(data)
+                
+                # 終了判定: finalイベント または 特定のフェーズへの遷移
+                # EventBroadcasterにより type, phase, session_id 等が含まれている想定
+                evt_type = data.get("type")
+                phase = data.get("phase")
+                
+                if evt_type == "final":
+                    await websocket.close()
+                    break
+                
+                if evt_type == "error":
+                    await websocket.close()
+                    break
+
+                if evt_type == "phase" and phase in [
+                    SessionPhase.RESOLVED.value,
+                    SessionPhase.CANCELLED.value,
+                    SessionPhase.ERROR.value
+                ]:
+                    await websocket.close()
+                    break
+                    
+        except Exception as e:
+            # 送信エラー時などはループを抜けて終了処理へ
+            logger.exception(f"Sender task error for session {session_id}: {e}")
+
+    # 受信タスク（切断検知用）
+    async def receiver():
+        try:
+            while True:
+                # クライアントからのデータは受信するが無視する
+                await websocket.receive_text()
+        except Exception as e:
+            # 切断時
+            logger.debug(f"Receiver task ended for session {session_id}: {e}")
+
+    sender_task = asyncio.create_task(sender())
+    receiver_task = asyncio.create_task(receiver())
+
     try:
-        # アダプターを実行してイベントをブロードキャスト
-        async for event in session_info.adapter.run(
-            session_info.prompt,
-            session_info.options
-        ):
-            # ブロードキャスターを通じてイベントを送信
-            enriched_event = session_info.broadcaster.enrich(session_id, event)
-            await websocket.send_json(enriched_event)
+        # どちらかのタスクが終了するまで待機（送信完了 or 切断）
+        done, pending = await asyncio.wait(
+            [sender_task, receiver_task],
+            return_when=asyncio.FIRST_COMPLETED
+        )
+        for task in pending:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
             
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected: {session_id}")
-    except Exception as e:
-        logger.exception(f"WebSocket error for session {session_id}: {e}")
     finally:
-        # セッションリソースをクリーンアップ
-        session_manager.remove_session(session_id)
+        # 購読解除
+        await session_manager.broadcaster.unsubscribe(session_id, queue)
+        
+        # セッションのクリーンアップ判定
+        # 以下の条件を満たす場合のみcancel_sessionを呼び出す:
+        # 1. セッションがまだアクティブ(未完了)である
+        # 2. 他にアクティブなサブスクライバーが残っていない
+        try:
+            is_active = session_manager.is_session_active(session_id)
+            subscriber_count = await session_manager.broadcaster.get_subscriber_count(session_id)
+            
+            if is_active and subscriber_count == 0:
+                # セッションが未完了で、かつ他のサブスクライバーがいない場合のみキャンセル
+                await session_manager.cancel_session(session_id)
+                logger.info(f"Session cancelled due to no remaining subscribers: {session_id}")
+            else:
+                logger.info(
+                    f"WebSocket connection closed for session: {session_id} "
+                    f"(active={is_active}, subscribers={subscriber_count})"
+                )
+        except Exception as e:
+            # クリーンアップ処理でのエラーはログに記録するが、例外は伝播させない
+            logger.exception(f"Error during session cleanup for {session_id}: {e}")
+

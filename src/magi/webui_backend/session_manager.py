@@ -102,6 +102,27 @@ class SessionManager:
             logger.info(f"Session cancelled: {session_id}")
             return True
 
+    def is_session_active(self, session_id: str) -> bool:
+        """
+        セッションがアクティブ(未完了)かどうかを確認する。
+        
+        Args:
+            session_id: セッションID
+            
+        Returns:
+            bool: セッションが存在し、かつ終了状態でない場合True
+        """
+        session = self.sessions.get(session_id)
+        if not session:
+            return False
+        
+        # 終了状態でない場合はアクティブとみなす
+        return session.phase not in [
+            SessionPhase.RESOLVED,
+            SessionPhase.CANCELLED,
+            SessionPhase.ERROR
+        ]
+
     async def _cleanup_expired_sessions(self):
         """
         期限切れセッションを削除する(ロック内から呼ぶこと)。
