@@ -81,7 +81,7 @@ uv run python -m unittest tests/unit/test_cli.py
 ```bash
 # フォーマット: path.to.module.Class.method
 # 例: magiパッケージ内の tests.unit.test_cli モジュールにある TestArgumentParser クラスの test_parse_help_short メソッド
-uv run python -m unittest magi.tests.unit.test_cli.TestArgumentParser.test_parse_help_short
+uv run python -m unittest tests.unit.test_cli.TestArgumentParser.test_parse_help_short
 ```
 
 **カバレッジ計測 (Coverage):**

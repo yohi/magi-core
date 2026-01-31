@@ -232,7 +232,7 @@ uv run python -m unittest discover -s tests/integration -v
 uv run python -m unittest discover -s tests -v
 
 # 特定のテストケースを実行
-uv run python -m unittest magi.tests.unit.test_cli.TestArgumentParser.test_parse_help_short
+uv run python -m unittest tests.unit.test_cli.TestArgumentParser.test_parse_help_short
 
 # カバレッジ付きテスト
 uv run coverage run -m unittest discover -s tests
