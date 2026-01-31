@@ -80,7 +80,7 @@ uv run python -m unittest tests/unit/test_cli.py
 **特定のテストケースを実行 (Run Single Case):**
 ```bash
 # フォーマット: path.to.module.Class.method
-# 例: magiパッケージ内の tests.unit.test_cli モジュールにある TestArgumentParser クラスの test_parse_help_short メソッド
+# 例: tests.unit.test_cli モジュールの TestArgumentParser.test_parse_help_short
 uv run python -m unittest tests.unit.test_cli.TestArgumentParser.test_parse_help_short
 ```
 
