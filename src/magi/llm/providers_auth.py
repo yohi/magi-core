@@ -93,13 +93,14 @@ class AntigravityAdapter(AuthenticatedOpenAIAdapter):
         )
 
     async def send(self, request: LLMRequest) -> LLMResponse:
-        """401時はトークン更新後に再試行する。"""
+        """トークンを取得して送信する。401エラー時はトークンを強制更新して再試行する。"""
 
         try:
             return await super().send(request)
         except MagiException as exc:
             if exc.error.code != ErrorCode.API_AUTH_ERROR.value:
                 raise
-        token = await self._auth_provider.get_token()
+
+        token = await self._auth_provider.get_token(force_refresh=True)
         self.context.api_key = token
         return await super().send(request)
