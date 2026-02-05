@@ -97,11 +97,20 @@ textarea {
   height: 80px;
   padding: 5px;
   resize: none;
+}
+
+textarea:focus {
   outline: none;
+}
+
+textarea:focus-visible {
+  outline: 2px solid var(--magi-orange);
+  box-shadow: 0 0 5px var(--magi-orange);
 }
 
 textarea:disabled {
   opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-group {

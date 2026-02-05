@@ -68,9 +68,11 @@ const buildWsUrl = (wsUrl: string) => {
 };
 
 const toDecision = (value: unknown): Decision => {
-  if (value === "APPROVE" || value === "DENY" || value === "CONDITIONAL") {
-    return value;
-  }
+  if (typeof value !== "string") return "UNKNOWN";
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "approved" || normalized === "approve") return "APPROVE";
+  if (normalized === "denied" || normalized === "deny") return "DENY";
+  if (normalized === "conditional") return "CONDITIONAL";
   return "UNKNOWN";
 };
 
