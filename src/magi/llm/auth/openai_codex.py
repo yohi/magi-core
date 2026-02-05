@@ -36,6 +36,7 @@ class _AuthCallbackServer(HTTPServer):
         self.auth_error: str | None = None
         self.event = threading.Event()
         self.expected_path = expected_path
+        self.expected_state: str | None = None
 
 
 class _AuthCallbackHandler(BaseHTTPRequestHandler):
@@ -54,6 +55,17 @@ class _AuthCallbackHandler(BaseHTTPRequestHandler):
         query = parse_qs(parsed.query)
         code = query.get("code", [None])[0]
         error = query.get("error", [None])[0]
+        state = query.get("state", [None])[0]
+
+        if isinstance(server, _AuthCallbackServer) and server.expected_state:
+            if not state or not secrets.compare_digest(state, server.expected_state):
+                server.auth_error = "Invalid state parameter"
+                server.event.set()
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b"Invalid state parameter")
+                return
+
         if isinstance(server, _AuthCallbackServer):
             server.auth_code = code
             server.auth_error = error
@@ -97,13 +109,15 @@ class OpenAICodexAuthProvider(AuthProvider):
 
         verifier = self._generate_verifier()
         challenge = self._generate_challenge(verifier)
+        state = secrets.token_urlsafe(16)
 
         server, redirect_uri = self._create_callback_server()
+        server.expected_state = state
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
 
         try:
-            auth_url = self._build_auth_url(redirect_uri, challenge)
+            auth_url = self._build_auth_url(redirect_uri, challenge, state)
             await asyncio.to_thread(webbrowser.open, auth_url)
 
             received = await asyncio.to_thread(server.event.wait, self._timeout_seconds)
@@ -172,7 +186,7 @@ class OpenAICodexAuthProvider(AuthProvider):
         redirect_uri = f"http://localhost:{port}{DEFAULT_REDIRECT_PATH}"
         return server, redirect_uri
 
-    def _build_auth_url(self, redirect_uri: str, challenge: str) -> str:
+    def _build_auth_url(self, redirect_uri: str, challenge: str, state: str | None = None) -> str:
         base_url = self._context.auth_url or DEFAULT_AUTH_URL
         client_id = self._context.client_id or DEFAULT_CLIENT_ID
         scopes = self._context.scopes or DEFAULT_SCOPES
@@ -187,6 +201,8 @@ class OpenAICodexAuthProvider(AuthProvider):
             "originator": "codex_cli_rs",
             "id_token_add_organizations": "true",
         }
+        if state:
+            params["state"] = state
         query = httpx.QueryParams(params)
         return f"{base_url}?{query}"
 

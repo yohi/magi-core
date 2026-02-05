@@ -86,13 +86,28 @@ class ClaudeAuthProvider(AuthProvider):
         verifier = self._generate_verifier()
         challenge = self._generate_challenge(verifier)
 
-        server = _AuthCallbackServer(("127.0.0.1", 0))
+        if self._context.redirect_uri:
+            parsed = urlparse(self._context.redirect_uri)
+            host = parsed.hostname or "127.0.0.1"
+            port = parsed.port if parsed.port is not None else 0
+            server = _AuthCallbackServer((host, port))
+        else:
+            server = _AuthCallbackServer(("127.0.0.1", 0))
+
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
 
         try:
             port = server.server_address[1]
-            redirect_uri = self._context.redirect_uri or f"http://localhost:{port}/callback"
+            if self._context.redirect_uri:
+                parsed = urlparse(self._context.redirect_uri)
+                scheme = parsed.scheme or "http"
+                host = parsed.hostname or "localhost"
+                path = parsed.path or "/callback"
+                redirect_uri = f"{scheme}://{host}:{port}{path}"
+            else:
+                redirect_uri = f"http://localhost:{port}/callback"
+
             auth_url = self._build_auth_url(redirect_uri, challenge)
             await asyncio.to_thread(webbrowser.open, auth_url)
 

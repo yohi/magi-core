@@ -25,7 +25,7 @@ CLIやデスクトップアプリからブラウザ認証を行う「ローカ�
 3. **ブラウザ誘導**: ユーザーを認可URLへリダイレクト。
    * `response_type=code`
    * `code_challenge={hash}`
-   * `redirect_uri=http://localhost:${port}`
+   * `redirect_uri=http://localhost:${port}/callback`
 
 4. **コード交換**: コールバックで `code` を受け取り、バックグラウンドで `/token` エンドポイントへPOSTしてアクセストークンを取得。
 
@@ -59,7 +59,7 @@ async function authenticateClaude() {
   const port = (server.address() as any).port;
   
   // 3. ブラウザを開く
-  const authUrl = `https://auth.anthropic.com/authorize?response_type=code&client_id=YOUR_ID&redirect_uri=http://localhost:${port}&code_challenge=${challenge}`;
+  const authUrl = `https://auth.anthropic.com/authorize?response_type=code&client_id=YOUR_ID&redirect_uri=http://localhost:${port}/callback&code_challenge=${challenge}`;
   openBrowser(authUrl);
 }
 
