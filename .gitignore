@@ -169,6 +169,9 @@ CLAUDE.md
 node_modules/
 package-lock.json
 package.json
+frontend/dist/
+!frontend/package.json
+!frontend/package-lock.json
 
 # ==============================================================================
 # 一時ファイル・ログ
