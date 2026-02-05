@@ -33,7 +33,7 @@ class MagiSettings(BaseSettings):
         env_prefix="MAGI_",
         env_file=".env",
         env_nested_delimiter="__",
-        extra="forbid",
+        extra="ignore",
     )
 
     def __init__(self, **data: Any):

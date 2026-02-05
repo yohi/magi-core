@@ -13,8 +13,11 @@ from fastapi import FastAPI, WebSocket, APIRouter, status, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+import os
+from magi.config.manager import ConfigManager
 from magi.webui_backend.models import SessionOptions, SessionPhase
 from magi.webui_backend.session_manager import SessionManager
+from magi.webui_backend.adapter import ConsensusEngineMagiAdapter, MockMagiAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +27,31 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# 設定読み込み
+config_manager = ConfigManager()
+try:
+    config = config_manager.load()
+    use_mock = False
+except Exception as e:
+    logger.warning(f"Configuration load failed, falling back to MockMagiAdapter: {e}")
+    config = None
+    use_mock = True
+
+# 環境変数でMock強制も可能にする (例: MAGI_USE_MOCK=1)
+if os.environ.get("MAGI_USE_MOCK", "0") == "1":
+    use_mock = True
+
+def create_adapter():
+    if use_mock or config is None:
+        return MockMagiAdapter()
+    return ConsensusEngineMagiAdapter(config=config)
+
 # セッションマネージャーのインスタンス化
-# 設定値は環境変数等から読み込むのが望ましいが、一旦デフォルト値で初期化
-session_manager = SessionManager(max_concurrency=10, ttl_sec=600)
+session_manager = SessionManager(
+    max_concurrency=10, 
+    ttl_sec=600,
+    adapter_factory=create_adapter
+)
 
 # APIルーターの定義
 api_router = APIRouter(prefix="/api")
