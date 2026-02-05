@@ -45,11 +45,16 @@ class AntigravityAuthProvider(AuthProvider):
         if self._context.client_secret:
             token_payload = await self._client_credentials_flow()
         else:
-            token_payload = await self._auth_code_flow()
+            # TODO: 認証コードフローの実装
+            raise NotImplementedError("認証コードフローは現在実装されていません。client_secretを設定してclient_credentialsフローを使用してください。")
         self._store_tokens(token_payload)
 
-    async def get_token(self) -> str:
-        """有効なアクセストークンを返す。必要ならリフレッシュする。"""
+    async def get_token(self, force_refresh: bool = False) -> str:
+        """有効なアクセストークンを返す。必要ならリフレッシュする。
+
+        Args:
+            force_refresh: 強制的にリフレッシュするかどうか。
+        """
 
         stored = self._token_manager.get_token(self._service_name)
         if not stored:
@@ -59,9 +64,10 @@ class AntigravityAuthProvider(AuthProvider):
         if not stored:
             raise RuntimeError("アクセストークンが取得できませんでした。")
 
-        token = self._extract_access_token(stored)
-        if token is not None:
-            return token
+        if not force_refresh:
+            token = self._extract_access_token(stored)
+            if token is not None:
+                return token
 
         return await self._refresh_queue(stored)
 
@@ -92,18 +98,18 @@ class AntigravityAuthProvider(AuthProvider):
                 stacklevel=2,
             )
             await self.authenticate()
-            stored = self._token_manager.get_token(self._service_name)
-            if not stored:
+            new_stored = self._token_manager.get_token(self._service_name)
+            if not new_stored:
                 raise RuntimeError("アクセストークンが取得できませんでした。")
-            token = self._extract_access_token(stored)
+            token = self._extract_access_token(new_stored)
             if token is None:
                 raise RuntimeError("アクセストークンが取得できませんでした。")
             return token
 
-        stored = self._token_manager.get_token(self._service_name)
-        if not stored:
+        latest_stored = self._token_manager.get_token(self._service_name)
+        if not latest_stored:
             raise RuntimeError("アクセストークンが取得できませんでした。")
-        token = self._extract_access_token(stored)
+        token = self._extract_access_token(latest_stored)
         if token is None:
             raise RuntimeError("アクセストークンが取得できませんでした。")
         return token
@@ -117,7 +123,7 @@ class AntigravityAuthProvider(AuthProvider):
         }
         if self._context.scopes:
             data["scope"] = " ".join(self._context.scopes)
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
             response = await client.post(token_url, data=data, headers={"Accept": "application/json"})
         response.raise_for_status()
         payload = response.json()
@@ -152,7 +158,7 @@ class AntigravityAuthProvider(AuthProvider):
         }
         if self._context.client_secret:
             data["client_secret"] = self._context.client_secret
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
             response = await client.post(token_url, data=data, headers={"Accept": "application/json"})
         response.raise_for_status()
         payload = response.json()
