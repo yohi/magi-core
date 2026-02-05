@@ -15,7 +15,15 @@ from magi.errors import ErrorCode, MagiError, MagiException
 
 # デフォルトおよびサポートするプロバイダ
 DEFAULT_PROVIDER_ID = "anthropic"
-SUPPORTED_PROVIDERS = ("anthropic", "openai", "gemini")
+SUPPORTED_PROVIDERS = (
+    "anthropic",
+    "openai",
+    "gemini",
+    "claude",
+    "copilot",
+    "antigravity",
+)
+AUTH_BASED_PROVIDERS = ("claude", "copilot", "antigravity")
 
 logger = logging.getLogger(__name__)
 
@@ -160,8 +168,9 @@ class ProviderConfigLoader:
                 )
 
         default_provider = None
-        if isinstance(data.get("default_provider"), str):
-            default_provider = data.get("default_provider").lower()
+        raw_default = data.get("default_provider")
+        if isinstance(raw_default, str):
+            default_provider = raw_default.lower()
 
         return providers, default_provider
 
@@ -265,9 +274,12 @@ class ProviderConfigLoader:
 
         errors = []
         for provider_id, cfg in providers.items():
+            required_fields = ["model"]
+            if provider_id not in AUTH_BASED_PROVIDERS:
+                required_fields.insert(0, "api_key")
             missing_fields = [
                 field
-                for field in ("api_key", "model")
+                for field in required_fields
                 if not getattr(cfg, field) or not str(getattr(cfg, field)).strip()
             ]
             if missing_fields:
