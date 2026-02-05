@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAGI SYSTEM DASHBOARD</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@700;900&family=Share+Tech+Mono&display=swap');
+
+        :root {
+            --bg-color: #000;
+            --magi-blue: #4a7fb0;
+            --magi-orange: #e87c3e;
+            --magi-green: #3cae88;
+            --magi-red: #cc3333;
+            --ui-bg: rgba(0, 0, 0, 0.85);
+            --line-width: 2px;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            margin: 0;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Share Tech Mono', monospace;
+            color: var(--magi-orange);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* --- UI Overlay --- */
+        .dashboard-ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Let clicks pass through to background if needed */
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .panel {
+            pointer-events: auto;
+            background: var(--ui-bg);
+            border: 1px solid var(--magi-orange);
+            padding: 10px;
+            box-shadow: 0 0 10px rgba(232, 124, 62, 0.2);
+        }
+
+        /* Log Panel (Right) */
+        .log-panel {
+            position: absolute;
+            top: 80px;
+            right: 20px;
+            bottom: 190px;
+            width: 300px;
+            overflow-y: auto;
+            font-size: 12px;
+            color: var(--magi-green);
+            text-shadow: 0 0 2px var(--magi-green);
+            font-family: 'Share Tech Mono', monospace;
+            scrollbar-width: thin;
+            scrollbar-color: var(--magi-orange) #000;
+        }
+
+        .log-entry { margin-bottom: 4px; }
+        .log-entry.error { color: var(--magi-red); }
+        .log-entry.info { color: var(--magi-blue); }
+
+        /* Control Panel (Bottom Right) */
+        .control-panel {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        textarea {
+            background: #000;
+            border: 1px solid var(--magi-orange);
+            color: var(--magi-orange);
+            font-family: 'Share Tech Mono', monospace;
+            height: 80px;
+            padding: 5px;
+            resize: none;
+            outline: none;
+        }
+        textarea:disabled { opacity: 0.5; }
+
+        .btn-group { display: flex; gap: 10px; }
+
+        button {
+            flex: 1;
+            background: #000;
+            border: 1px solid var(--magi-orange);
+            color: var(--magi-orange);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 16px;
+            padding: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+
+        button:hover:not(:disabled) {
+            background: var(--magi-orange);
+            color: #000;
+        }
+        button:disabled {
+            border-color: #555;
+            color: #555;
+            cursor: not-allowed;
+        }
+
+        /* Result Console (Left) */
+        .result-console {
+            position: absolute;
+            top: 80px;
+            left: 20px;
+            bottom: 20px;
+            width: 300px;
+            overflow-y: auto;
+            display: none; /* Hidden by default */
+            flex-direction: column;
+            gap: 10px;
+            z-index: 101;
+        }
+
+        .result-header {
+            border-bottom: 1px solid var(--magi-orange);
+            padding-bottom: 5px;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-size: 18px;
+            color: var(--magi-orange);
+            text-align: center;
+        }
+
+        .result-content {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            line-height: 1.4;
+        }
+        
+        .result-content .vote-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+        .result-content .vote-yes { color: var(--magi-blue); }
+        .result-content .vote-no { color: var(--magi-red); }
+        .result-content .summary { margin-top: 10px; padding-top: 5px; border-top: 1px dashed #555; color: #ccc; }
+
+        /* Status Bar (Top) */
+        .status-bar {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            pointer-events: auto;
+        }
+
+        .phase-indicator {
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 5px var(--magi-orange);
+            min-width: 250px;
+        }
+
+        .progress-track {
+            flex-grow: 1;
+            height: 20px;
+            border: 1px solid var(--magi-orange);
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--magi-orange);
+            box-shadow: 0 0 10px var(--magi-orange);
+            transition: width 0.3s;
+        }
+
+        /* --- VISUALS (Copied & Adapted from index.html) --- */
+        .scale-wrapper {
+            transform-origin: center;
+            transform: scale(0.9);
+            transition: transform 0.5s;
+        }
+
+        .magi-container {
+            position: relative;
+            width: 1000px;
+            height: 700px;
+        }
+
+        .monolith {
+            position: absolute;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Arial', sans-serif;
+            font-weight: bold;
+            font-size: 32px;
+            color: #000;
+            z-index: 2;
+            transition: opacity 0.2s;
+        }
+
+        .monolith svg {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            overflow: visible; z-index: 1;
+        }
+        
+        .monolith polygon {
+            vector-effect: non-scaling-stroke;
+            stroke-linejoin: miter;
+            transition: fill 0.5s;
+        }
+
+        .monolith-content {
+            z-index: 3;
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .monolith-label { letter-spacing: 1px; }
+        .monolith-number { margin-left: -5px; letter-spacing: -3px; }
+
+        /* Positioning */
+        .balthasar { width: 255px; height: 300px; top: 50px; left: 50%; transform: translateX(-50%); }
+        .balthasar .monolith-content { transform: translateY(1.5em); }
+
+        .casper { width: 295px; height: 215px; bottom: 181px; left: 50%; margin-left: -50px; transform: translateX(-100%); }
+        .melchior { width: 295px; height: 215px; bottom: 181px; right: 50%; margin-right: -50px; transform: translateX(100%); }
+
+        /* Connectors */
+        .connector {
+            position: absolute;
+            background-color: var(--magi-orange);
+            z-index: 1;
+            border: 1px solid #000;
+            box-sizing: border-box;
+            transition: background-color 0.5s;
+        }
+        .conn-horizontal { width: 100px; height: 15px; bottom: 250px; left: 50%; transform: translateX(-50%); border-top: 2px solid #000; border-bottom: 2px solid #000; border-left: none; border-right: none; }
+        .conn-diag-left { width: 40px; height: 15px; top: 312.5px; left: 411px; transform-origin: 0% 50%; transform: rotate(128deg); }
+        .conn-diag-right { width: 40px; height: 15px; top: 312.5px; left: 589px; transform-origin: 0% 50%; transform: rotate(52deg); }
+
+        /* Center Text */
+        .magi-center-text {
+            position: absolute;
+            bottom: 300px; left: 50%; transform: translateX(-50%);
+            font-family: 'Noto Serif JP', serif;
+            font-weight: 700; font-size: 36px;
+            color: var(--magi-orange);
+            text-shadow: 0 0 5px var(--magi-orange);
+            width: 100px; text-align: center;
+        }
+
+        /* Info Blocks */
+        .info-block { position: absolute; top: 46px; width: 255px; transition: opacity 0.5s; }
+        .info-block.left { left: 50%; margin-left: -382.5px; text-align: right; }
+        .info-block.right { left: 50%; margin-left: 127.5px; text-align: left; }
+
+        .green-line {
+            height: 12px; margin: 5px 0; width: 100%; position: relative;
+        }
+        .green-line::before, .green-line::after {
+            content: ''; position: absolute; left: 0; width: 100%; height: 45%;
+            border: 1px solid var(--magi-green); border-radius: 10px;
+            box-shadow: 0 0 3px var(--magi-green); box-sizing: border-box;
+        }
+        .green-line::before { top: 0; }
+        .green-line::after { bottom: 0; }
+
+        .header-title {
+            font-family: 'Noto Serif JP', serif;
+            font-size: 84px; line-height: 1; font-weight: 900;
+            color: var(--magi-orange); margin: 0; padding: 0 25px;
+            text-shadow: 0 0 5px var(--magi-orange);
+            display: flex; justify-content: space-between;
+            transform: translateY(-4px);
+        }
+        .header-title span { display: inline-block; transform: scaleX(1.3); }
+
+        .data-list {
+            margin-top: 5px; font-family: "Helvetica", "Arial", sans-serif;
+            color: var(--magi-orange); text-align: left;
+            text-shadow: 0 0 2px var(--magi-orange); padding-left: 20px;
+        }
+        .code-highlight { font-size: 38px; display: block; transform: scaleX(0.9); transform-origin: left; }
+        .data-row { font-size: 18px; font-weight: 900; margin-bottom: 1px; padding-left: 28px; transform: scaleX(0.9); transform-origin: left; width: 112%; }
+
+        /* Stamps */
+        .hiketsu-container {
+            margin-top: 50px; display: flex; justify-content: center;
+            position: relative; left: 2px;
+        }
+        .stamp {
+            border-radius: 4px; 
+            width: 160px; height: 70px;
+            display: flex;
+            justify-content: center; align-items: center;
+            padding: 0; /* Reset padding for centering */
+            font-size: 44px; line-height: 1;
+            font-family: 'Noto Serif JP', serif; font-weight: 900;
+            letter-spacing: 10px; background: transparent;
+            opacity: 0; transition: opacity 0.5s, transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform: scale(1.5);
+            box-sizing: border-box;
+        }
+        .stamp.visible { opacity: 1; transform: scale(1); }
+        .stamp span { display: inline-block; transform: scaleX(1.3); }
+
+        .stamp-deny { border: 4px double var(--magi-red); color: var(--magi-red); }
+        .stamp-approve { border: 4px double var(--magi-blue); color: var(--magi-blue); }
+        .stamp-thinking { 
+            border: 4px double var(--magi-orange); color: var(--magi-orange);
+            font-size: 36px; letter-spacing: 2px;
+        }
+
+        /* Geo Lines */
+        .geo-lines { position: absolute; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+
+        /* Animations */
+        /* New Blinking Animation (Flicker) */
+        .magi-container.thinking .monolith {
+            opacity: 1;
+        }
+        .magi-container.thinking .monolith .fill-poly {
+            opacity: 0.1;
+            transition: opacity 0.05s;
+        }
+        .magi-container.thinking .monolith.active .fill-poly {
+            opacity: 1;
+        }
+        
+        .denied .monolith polygon { fill: var(--magi-red); stroke: var(--magi-red); }
+        .approved .monolith polygon { fill: var(--magi-blue); stroke: var(--magi-blue); }
+        
+        /* --- Settings Modal --- */
+        .settings-modal {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 200;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: #000;
+            border: 2px solid var(--magi-orange);
+            padding: 20px;
+            width: 400px;
+            box-shadow: 0 0 20px rgba(232, 124, 62, 0.4);
+            font-family: 'Share Tech Mono', monospace;
+            color: var(--magi-orange);
+        }
+        .modal-content h2 {
+            margin-top: 0;
+            border-bottom: 1px solid var(--magi-orange);
+            padding-bottom: 10px;
+            text-align: center;
+        }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input, .form-group textarea {
+            width: 100%;
+            background: #111;
+            border: 1px solid var(--magi-orange);
+            color: var(--magi-orange);
+            padding: 5px;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+        .form-group textarea { height: 100px; resize: vertical; }
+        .modal-buttons { display: flex; gap: 10px; margin-top: 20px; }
+        
+        /* Interactivity */
+        .monolith { cursor: pointer; }
+        .monolith:hover { filter: brightness(1.2); }
+        
+    </style>
+</head>
+<body>
+
+    <div class="scale-wrapper" id="scaler">
+        <div class="magi-container" id="magi-system">
+            
+            <!-- Left Info Block: Teiso -->
+            <div class="info-block left">
+                <div class="green-line"></div>
+                <div class="header-title">
+                    <span>提</span><span>訴</span>
+                </div>
+                <div class="green-line"></div>
+                <div class="data-list">
+                    <span class="code-highlight">CODE : 378</span>
+                    <div class="data-row">FILE:MAGI_SYS</div>
+                    <div class="data-row">EXTENTION:6008</div>
+                    <div class="data-row">EX_MODE:OFF</div>
+                    <div class="data-row">PRIORITY:AAA</div>
+                </div>
+            </div>
+
+            <!-- Right Info Block: Ketsugi -->
+            <div class="info-block right">
+                <div class="green-line"></div>
+                <div class="header-title">
+                    <span>決</span><span>議</span>
+                </div>
+                <div class="green-line"></div>
+                <div class="hiketsu-container">
+                    <div id="stamp-thinking" class="stamp stamp-thinking" style="display:none; position:absolute;"><span>審議中</span></div>
+                    <div id="stamp-deny" class="stamp stamp-deny"><span>否決</span></div>
+                    <div id="stamp-approve" class="stamp stamp-approve" style="display:none; position:absolute;"><span>可決</span></div>
+                </div>
+            </div>
+
+            <!-- Connectors -->
+            <div class="connector conn-horizontal"></div>
+            <div class="connector conn-diag-left"></div>
+            <div class="connector conn-diag-right"></div>
+            
+            <!-- Orange Triangle Lines -->
+            <svg class="geo-lines" width="1000" height="700">
+                <defs>
+                    <marker id="dot" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5">
+                    <circle cx="5" cy="5" r="5" fill="#e87c3e" />
+                    </marker>
+                </defs>
+                <line x1="411" y1="320" x2="386" y2="352" stroke="#e87c3e" stroke-width="15" stroke-linecap="butt" />
+                <line x1="589" y1="320" x2="614" y2="352" stroke="#e87c3e" stroke-width="15" stroke-linecap="butt" />
+            </svg>
+
+            <!-- Monoliths -->
+            <div class="monolith balthasar">
+                <svg viewBox="0 0 255 300" preserveAspectRatio="none">
+                    <polygon points="0,0 255,0 255,240 177.5,300 77.5,300 0,240" fill="none" stroke="var(--magi-orange)" stroke-width="8" />
+                    <polygon points="0,0 255,0 255,240 177.5,300 77.5,300 0,240" fill="none" stroke="#000" stroke-width="4" />
+                    <polygon class="fill-poly" points="0,0 255,0 255,240 177.5,300 77.5,300 0,240" fill="var(--magi-green)" stroke="none" />
+                </svg>
+                <div class="monolith-content">
+                    <span class="monolith-label">BALTHASAR<span class="monolith-number">・2</span></span>
+                </div>
+            </div>
+
+            <div class="monolith casper">
+                <svg viewBox="0 0 295 215" preserveAspectRatio="none">
+                    <polygon points="0,0 180,0 295,95 295,215 0,215" fill="none" stroke="var(--magi-orange)" stroke-width="8" />
+                    <polygon points="0,0 180,0 295,95 295,215 0,215" fill="none" stroke="#000" stroke-width="4" />
+                    <polygon class="fill-poly" points="0,0 180,0 295,95 295,215 0,215" fill="var(--magi-green)" stroke="none" />
+                </svg>
+                <div class="monolith-content">
+                    <span class="monolith-label">CASPER<span class="monolith-number">・3</span></span>
+                </div>
+            </div>
+
+            <div class="monolith melchior">
+                <svg viewBox="0 0 295 215" preserveAspectRatio="none">
+                    <polygon points="115,0 295,0 295,215 0,215 0,95" fill="none" stroke="var(--magi-orange)" stroke-width="8" />
+                    <polygon points="115,0 295,0 295,215 0,215 0,95" fill="none" stroke="#000" stroke-width="4" />
+                    <polygon class="fill-poly" points="115,0 295,0 295,215 0,215 0,95" fill="var(--magi-green)" stroke="none" />
+                </svg>
+                <div class="monolith-content">
+                    <span class="monolith-label">MELCHIOR<span class="monolith-number">・1</span></span>
+                </div>
+            </div>
+
+            <!-- MAGI Label -->
+            <div class="magi-center-text">MAGI</div>
+
+        </div>
+    </div>
+
+    <!-- UI Layer -->
+    <div class="dashboard-ui">
+        <div class="status-bar">
+            <div class="phase-indicator">PHASE: <span id="phase-txt">IDLE</span></div>
+            <div class="progress-track">
+                <div class="progress-fill" id="progress-bar"></div>
+            </div>
+        </div>
+
+        <div class="panel log-panel" id="log-container">
+            <!-- Logs will appear here -->
+        </div>
+
+        <div class="panel result-console" id="result-console">
+            <div class="result-header">FINAL DECISION</div>
+            <div class="result-content" id="result-content"></div>
+        </div>
+
+        <div class="panel control-panel">
+            <textarea id="prompt-input" placeholder="ENTER PROMPT DATA..."></textarea>
+            <div class="btn-group">
+                <button id="btn-start" onclick="startSequence()">START</button>
+                <button id="btn-reset" onclick="resetSequence()" disabled>RESET</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="settings-modal">
+        <div class="modal-content">
+            <h2 id="modal-title">UNIT SETTINGS</h2>
+            <div class="form-group">
+                <label>MODEL:</label>
+                <input type="text" id="setting-model">
+            </div>
+            <div class="form-group">
+                <label>TEMPERATURE:</label>
+                <input type="number" id="setting-temp" step="0.1" min="0" max="1">
+            </div>
+            <div class="form-group">
+                <label>PERSONA:</label>
+                <textarea id="setting-persona"></textarea>
+            </div>
+            <div class="modal-buttons">
+                <button id="btn-save">SAVE</button>
+                <button id="btn-cancel">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const logContainer = document.getElementById('log-container');
+        const phaseTxt = document.getElementById('phase-txt');
+        const progressBar = document.getElementById('progress-bar');
+        const magiSystem = document.getElementById('magi-system');
+        const btnStart = document.getElementById('btn-start');
+        const btnReset = document.getElementById('btn-reset');
+        const promptInput = document.getElementById('prompt-input');
+        const stampDeny = document.getElementById('stamp-deny');
+        const stampApprove = document.getElementById('stamp-approve');
+        const stampThinking = document.getElementById('stamp-thinking');
+        const monoliths = document.querySelectorAll('.monolith');
+        const resultConsole = document.getElementById('result-console');
+        const resultContent = document.getElementById('result-content');
+
+        // Modal Elements
+        const modal = document.getElementById('settings-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const inputModel = document.getElementById('setting-model');
+        const inputTemp = document.getElementById('setting-temp');
+        const inputPersona = document.getElementById('setting-persona');
+        const btnSave = document.getElementById('btn-save');
+        const btnCancel = document.getElementById('btn-cancel');
+
+        // Unit Settings
+        const unitSettings = {
+            melchior: { name: "MELCHIOR-1", model: "gpt-4o", temp: 0.2, persona: "科学者としての赤木ナオコ" },
+            balthasar: { name: "BALTHASAR-2", model: "gpt-4o", temp: 0.5, persona: "母親としての赤木ナオコ" },
+            casper: { name: "CASPER-3", model: "gpt-4o", temp: 0.9, persona: "女としての赤木ナオコ" }
+        };
+
+        let currentEditingUnit = null;
+
+        function openModal(unitKey) {
+            currentEditingUnit = unitKey;
+            const data = unitSettings[unitKey];
+            
+            modalTitle.textContent = `UNIT: ${data.name}`;
+            inputModel.value = data.model;
+            inputTemp.value = data.temp;
+            inputPersona.value = data.persona;
+            
+            modal.style.display = 'flex';
+        }
+
+        function closeModal() {
+            modal.style.display = 'none';
+            currentEditingUnit = null;
+        }
+
+        function saveSettings() {
+            if (!currentEditingUnit) return;
+            
+            unitSettings[currentEditingUnit].model = inputModel.value;
+            unitSettings[currentEditingUnit].temp = parseFloat(inputTemp.value);
+            unitSettings[currentEditingUnit].persona = inputPersona.value;
+            
+            addLog(`UPDATED ${unitSettings[currentEditingUnit].name}`, "info");
+            closeModal();
+        }
+
+        // Click Handlers
+        document.querySelector('.melchior').addEventListener('click', () => openModal('melchior'));
+        document.querySelector('.balthasar').addEventListener('click', () => openModal('balthasar'));
+        document.querySelector('.casper').addEventListener('click', () => openModal('casper'));
+
+        btnSave.addEventListener('click', saveSettings);
+        btnCancel.addEventListener('click', closeModal);
+
+        let intervalId = null;
+        let blinkTimeoutId = null;
+
+        function addLog(msg, type='normal') {
+            const div = document.createElement('div');
+            div.className = `log-entry ${type}`;
+            const time = new Date().toISOString().split('T')[1].slice(0,8);
+            div.textContent = `[${time}] ${msg}`;
+            logContainer.appendChild(div);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function resize() {
+            const wrapper = document.getElementById('scaler');
+            const scaleX = window.innerWidth / 1100;
+            const scaleY = window.innerHeight / 800;
+            const scale = Math.min(scaleX, scaleY, 1.2);
+            wrapper.style.transform = `scale(${scale})`;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function setPhase(phase) {
+            phaseTxt.textContent = phase;
+            if (phase === 'THINKING') {
+                magiSystem.classList.add('thinking');
+                phaseTxt.style.color = 'var(--magi-orange)';
+            } else {
+                magiSystem.classList.remove('thinking');
+            }
+        }
+
+        function startSequence() {
+            if (promptInput.value.trim() === "") {
+                addLog("ERROR: NO PROMPT DATA", "error");
+                return;
+            }
+
+            // Reset state
+            btnStart.disabled = true;
+            promptInput.disabled = true;
+            btnReset.disabled = true;
+            stampDeny.classList.remove('visible');
+            stampApprove.classList.remove('visible');
+            stampThinking.classList.remove('visible');
+            stampApprove.style.display = 'none';
+            stampDeny.style.display = 'flex';
+            stampThinking.style.display = 'none';
+            resultConsole.style.display = 'none';
+            resultContent.innerHTML = '';
+            magiSystem.classList.remove('denied', 'approved');
+            progressBar.style.width = '0%';
+            logContainer.innerHTML = '';
+            
+            // Ensure clean blink state
+            clearTimeout(blinkTimeoutId);
+            monoliths.forEach(m => { m.classList.remove('active'); });
+
+            addLog("INITIALIZING MAGI SYSTEM...");
+            addLog("UPLOAD PROMPT: " + promptInput.value.substring(0, 20) + "...");
+            
+            setTimeout(() => {
+                setPhase('THINKING');
+                addLog("SYNC RATIO: 100%");
+
+                // Show thinking stamp
+                stampThinking.style.display = 'flex';
+                void stampThinking.offsetWidth;
+                stampThinking.classList.add('visible');
+
+                simulateThinking();
+            }, 500);
+        }
+
+        function simulateThinking() {
+            let progress = 0;
+            const logs = [
+                "MELCHIOR-1: ANALYZING SYNTAX...",
+                "BALTHASAR-2: CHECKING ETHICAL CONSTRAINTS...",
+                "CASPER-3: EVALUATING RESOURCE COST...",
+                "INTERNAL: RESOLVING CONFLICTS...",
+                "DEBATE: ROUND 1 START...",
+                "MELCHIOR-1: PROPOSAL ACCEPTED",
+                "BALTHASAR-2: RAISING OBJECTION",
+                "CASPER-3: OVERRULING OBJECTION",
+                "VOTING PROTOCOL INITIATED..."
+            ];
+
+            // Blink Logic: Chaotic random blinking
+            const blinkRecursively = () => {
+                monoliths.forEach(m => { m.classList.remove('active'); });
+                const target = monoliths[Math.floor(Math.random() * monoliths.length)];
+                target.classList.add('active');
+                
+                const delay = Math.floor(Math.random() * 61) + 20; // 20ms - 80ms
+                blinkTimeoutId = setTimeout(blinkRecursively, delay);
+            };
+            blinkRecursively();
+
+            intervalId = setInterval(() => {
+                progress += 5;
+                progressBar.style.width = `${progress}%`;
+
+                if (Math.random() > 0.6 && logs.length > 0) {
+                    addLog(logs.shift(), 'info');
+                }
+
+                if (progress >= 100) {
+                    clearInterval(intervalId);
+                    resolveSequence();
+                }
+            }, 200); // 200ms * 20 steps = 4 seconds roughly
+        }
+
+        function resolveSequence() {
+            setPhase('RESOLVED');
+            btnReset.disabled = false;
+            
+            // Stop blinking
+            clearTimeout(blinkTimeoutId);
+            monoliths.forEach(m => { m.classList.remove('active'); });
+
+            // Hide thinking stamp
+            stampThinking.classList.remove('visible');
+            stampThinking.style.display = 'none';
+
+            const decision = Math.random() > 0.5; // Random outcome
+            
+            // Mock Votes Logic
+            let votes = [];
+            if (decision) {
+                // Approved
+                if (Math.random() < 0.3) {
+                     votes = [true, true, true]; // Unanimous
+                } else {
+                     votes = [true, true, true];
+                     votes[Math.floor(Math.random() * 3)] = false; // 2-1 Split
+                }
+            } else {
+                // Denied
+                if (Math.random() < 0.3) {
+                     votes = [false, false, false]; // Unanimous
+                } else {
+                     votes = [false, false, false];
+                     votes[Math.floor(Math.random() * 3)] = true; // 2-1 Split
+                }
+            }
+
+            const formatVote = (v) => v ? '<span class="vote-yes">YES</span>' : '<span class="vote-no">NO</span>';
+            
+            // Build content
+            const htmlParts = [
+                `<div class="vote-row"><span>MELCHIOR-1:</span> ${formatVote(votes[0])}</div>`,
+                `<div class="vote-row"><span>BALTHASAR-2:</span> ${formatVote(votes[1])}</div>`,
+                `<div class="vote-row"><span>CASPER-3:</span> ${formatVote(votes[2])}</div>`,
+                `<div class="summary">Subject ${decision ? 'APPROVED' : 'DENIED'} by MAGI consensus protocol.<br>Probability of correctness: 99.${Math.floor(Math.random() * 99)}%</div>`
+            ];
+
+            // Show console
+            resultConsole.style.display = 'flex';
+            resultContent.innerHTML = '';
+            
+            // Animate line by line
+            let lineIndex = 0;
+            const typeWriter = () => {
+                if (lineIndex < htmlParts.length) {
+                    resultContent.innerHTML += htmlParts[lineIndex];
+                    lineIndex++;
+                    setTimeout(typeWriter, 300);
+                }
+            };
+            typeWriter();
+
+            if (decision) {
+                // APPROVE
+                addLog("DECISION: APPROVED", "info");
+                magiSystem.classList.add('approved');
+                phaseTxt.style.color = 'var(--magi-blue)';
+                stampDeny.style.display = 'none';
+                stampApprove.style.display = 'flex';
+                // Trigger reflow
+                void stampApprove.offsetWidth; 
+                stampApprove.classList.add('visible');
+            } else {
+                // DENY
+                addLog("DECISION: DENIED", "error");
+                magiSystem.classList.add('denied');
+                phaseTxt.style.color = 'var(--magi-red)';
+                stampApprove.style.display = 'none';
+                stampDeny.style.display = 'flex';
+                void stampDeny.offsetWidth;
+                stampDeny.classList.add('visible');
+            }
+        }
+
+        function resetSequence() {
+            btnStart.disabled = false;
+            promptInput.disabled = false;
+            btnReset.disabled = true;
+            setPhase('IDLE');
+            phaseTxt.style.color = 'var(--magi-orange)';
+            progressBar.style.width = '0%';
+            magiSystem.classList.remove('denied', 'approved');
+            stampDeny.classList.remove('visible');
+            stampApprove.classList.remove('visible');
+            stampThinking.classList.remove('visible');
+            stampThinking.style.display = 'none';
+            resultConsole.style.display = 'none';
+            resultContent.innerHTML = '';
+            
+            // Stop blinking
+            clearTimeout(blinkTimeoutId);
+            monoliths.forEach(m => { m.classList.remove('active'); });
+            
+            addLog("SYSTEM RESET COMPLETE.");
+        }
+
+        // Init
+        addLog("SYSTEM READY.");
+    </script>
+</body>
+</html>
