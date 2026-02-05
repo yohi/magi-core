@@ -324,7 +324,7 @@ export default function App() {
   }, [sessionId]);
 
   const resetSequence = useCallback(async () => {
-    if (isRunning) {
+    if (isRunning || sessionId) {
       await cancelSession();
     }
     closeWebSocket();
@@ -332,7 +332,7 @@ export default function App() {
     setIsRunning(false);
     resetUi();
     addLog("SYSTEM RESET COMPLETE.");
-  }, [addLog, cancelSession, closeWebSocket, isRunning, resetUi]);
+  }, [addLog, cancelSession, closeWebSocket, isRunning, sessionId, resetUi]);
 
   const openModal = (unitKey: "melchior" | "balthasar" | "casper") => {
     setCurrentEditingUnit(unitKey);
