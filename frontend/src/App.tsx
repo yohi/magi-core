@@ -117,6 +117,7 @@ export default function App() {
   const scalerRef = useRef<HTMLDivElement | null>(null);
   const blinkTimeoutRef = useRef<number | null>(null);
   const logRef = useRef<HTMLDivElement | null>(null);
+  const requestAbortRef = useRef<AbortController | null>(null);
 
   const addLog = useCallback((message: string, level: LogLevel = "normal") => {
     logIdRef.current += 1;
@@ -276,6 +277,12 @@ export default function App() {
       return;
     }
 
+    if (requestAbortRef.current) {
+      requestAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    requestAbortRef.current = controller;
+
     resetUi();
     setIsRunning(true);
     setSessionId(null);
@@ -292,9 +299,17 @@ export default function App() {
           prompt: prompt.trim(),
           options: {
             max_rounds: 1,
+            model:
+              unitSettings.melchior.model ||
+              unitSettings.balthasar.model ||
+              unitSettings.casper.model ||
+              undefined,
           },
         }),
+        signal: controller.signal,
       });
+
+      if (controller.signal.aborted) return;
 
       if (!response.ok) {
         const detail = await response.text();
@@ -302,15 +317,25 @@ export default function App() {
       }
 
       const data = (await response.json()) as { session_id: string; ws_url: string };
+      
+      if (controller.signal.aborted) return;
+
       setSessionId(data.session_id);
       addLog(`SESSION CREATED: ${data.session_id}`, "info");
       connectWebSocket(data.ws_url);
     } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        return;
+      }
       const message = err instanceof Error ? err.message : "Unknown error";
       addLog(`ERROR: ${message}`, "error");
       setIsRunning(false);
+    } finally {
+      if (requestAbortRef.current === controller) {
+        requestAbortRef.current = null;
+      }
     }
-  }, [addLog, connectWebSocket, prompt, resetUi]);
+  }, [addLog, connectWebSocket, prompt, resetUi, unitSettings]);
 
   const cancelSession = useCallback(async () => {
     if (!sessionId) return;
@@ -324,6 +349,11 @@ export default function App() {
   }, [sessionId]);
 
   const resetSequence = useCallback(async () => {
+    if (requestAbortRef.current) {
+      requestAbortRef.current.abort();
+      requestAbortRef.current = null;
+    }
+
     if (isRunning || sessionId) {
       await cancelSession();
     }
