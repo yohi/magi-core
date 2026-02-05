@@ -592,7 +592,14 @@
             if (!currentEditingUnit) return;
             
             unitSettings[currentEditingUnit].model = inputModel.value;
-            unitSettings[currentEditingUnit].temp = parseFloat(inputTemp.value);
+            
+            let rawTemp = parseFloat(inputTemp.value);
+            if (Number.isNaN(rawTemp)) {
+                rawTemp = 0.5; // Default fallback
+            }
+            const temp = Math.min(1, Math.max(0, rawTemp));
+            unitSettings[currentEditingUnit].temp = temp;
+            
             unitSettings[currentEditingUnit].persona = inputPersona.value;
             
             addLog(`UPDATED ${unitSettings[currentEditingUnit].name}`, "info");
