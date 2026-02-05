@@ -152,6 +152,39 @@ personas:
 # 個別設定がない項目はグローバル設定が使用されます
 ```
 
+### マルチプロバイダー認証 (Multi-Provider Authentication)
+
+MAGIシステムは `claude` (Anthropic), `copilot` (GitHub Copilot), `antigravity` の各プロバイダーをサポートしています。認証トークンは `keyring` を使用して安全に保存されます。
+
+`magi.yaml` での各プロバイダーの設定例：
+
+#### GitHub Copilot
+```yaml
+providers:
+  copilot:
+    model: gpt-4
+    options:
+      client_id: "Iv1.b507a08c87ecfe98" # オプション（デフォルト値あり）
+```
+
+#### Antigravity
+```yaml
+providers:
+  antigravity:
+    model: ag-model-v1
+    endpoint: https://api.antigravity.dev/v1
+    options:
+      auth_url: https://auth.antigravity.dev/authorize
+      token_url: https://auth.antigravity.dev/token
+      client_id: "your-client-id"
+      client_secret: "your-client-secret" # オプション
+```
+
+#### Claude (Anthropic)
+`provider: claude` を指定することで、OAuth 2.1 経由での認証をサポートします。
+
+---
+
 ## プラグイン開発
 
 ### プラグイン構造

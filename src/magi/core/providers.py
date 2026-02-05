@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Set, Type
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Set, Type, cast
 
 from magi.config.provider import (
     DEFAULT_PROVIDER_ID,
@@ -15,10 +15,13 @@ from magi.config.provider import (
     mask_secret,
 )
 from magi.errors import ErrorCode, MagiError, MagiException
+from magi.llm.auth import AuthContext, get_auth_provider
 from magi.llm.providers import AnthropicAdapter, GeminiAdapter, OpenAIAdapter, ProviderAdapter
+from magi.llm.providers_auth import AntigravityAdapter, CopilotAdapter
 
 if TYPE_CHECKING:
     from magi.core.concurrency import ConcurrencyController
+    from magi.llm.auth import AntigravityAuthProvider, CopilotAuthProvider
 
 
 @dataclass
@@ -29,7 +32,7 @@ class ProviderContext:
     api_key: str
     model: str
     endpoint: Optional[str] = None
-    options: Dict[str, Any] = None
+    options: Optional[Dict[str, Any]] = None
     used_default: bool = False
 
     def __post_init__(self) -> None:
@@ -173,6 +176,12 @@ class ProviderAdapterFactory:
     ) -> ProviderAdapter:
         """Contextに対応するアダプタを生成"""
         key = context.provider_id.lower()
+        if key in {"copilot", "antigravity"}:
+            auth_context = self._build_auth_context(context.options or {})
+            auth_provider = get_auth_provider(key, auth_context)
+            if key == "copilot":
+                return CopilotAdapter(context, cast("CopilotAuthProvider", auth_provider))
+            return AntigravityAdapter(context, cast("AntigravityAuthProvider", auth_provider))
         adapter_cls = self._adapter_mapping.get(key)
         if adapter_cls is None:
             raise MagiException(
@@ -184,6 +193,26 @@ class ProviderAdapterFactory:
                 )
             )
         # AnthropicAdapterのみconcurrency_controllerを必要とする
+        adapter = cast(Any, adapter_cls)
         if key == "anthropic":
-            return adapter_cls(context, concurrency_controller=concurrency_controller)
-        return adapter_cls(context)
+            return adapter(context, concurrency_controller=concurrency_controller)
+        return adapter(context)
+
+    def _build_auth_context(self, options: Dict[str, Any]) -> AuthContext:
+        """オプションからAuthContextを生成する。"""
+        scopes = options.get("scopes")
+        scope_list: list[str] = []
+        if isinstance(scopes, str):
+            scope_list = [s for s in scopes.split() if s]
+        elif isinstance(scopes, list):
+            scope_list = [str(item) for item in scopes]
+
+        return AuthContext(
+            client_id=options.get("client_id"),
+            client_secret=options.get("client_secret"),
+            scopes=scope_list,
+            auth_url=options.get("auth_url"),
+            token_url=options.get("token_url"),
+            redirect_uri=options.get("redirect_uri"),
+            audience=options.get("audience"),
+        )
