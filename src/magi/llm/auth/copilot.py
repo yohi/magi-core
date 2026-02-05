@@ -60,8 +60,18 @@ class CopilotAuthProvider(AuthProvider):
         copilot_payload = await self._fetch_copilot_token(github_token)
         self._store_tokens(github_token, copilot_payload)
 
-    async def get_token(self) -> str:
-        """Copilotトークンを返す。期限切れなら更新する。"""
+    async def get_token(self, force_refresh: bool = False) -> str:
+        """有効なアクセストークンを返す。
+
+        Args:
+            force_refresh: キャッシュを無視して強制的にトークンを更新するかどうか。
+
+        Returns:
+            str: アクセストークン。
+        """
+
+        if force_refresh:
+            await self.authenticate()
 
         stored = self._token_manager.get_token(self._service_name)
         if stored:
@@ -101,7 +111,7 @@ class CopilotAuthProvider(AuthProvider):
             "client_id": client_id,
             "scope": " ".join(scopes),
         }
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
             response = await client.post(
                 GITHUB_DEVICE_CODE_URL,
                 data=data,
@@ -142,7 +152,7 @@ class CopilotAuthProvider(AuthProvider):
             "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
         }
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
             while time.time() < deadline:
                 response = await client.post(
                     GITHUB_TOKEN_URL,
@@ -175,7 +185,7 @@ class CopilotAuthProvider(AuthProvider):
             "Authorization": f"Bearer {github_token}",
             **DEFAULT_HEADERS,
         }
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
             response = await client.get(COPILOT_TOKEN_URL, headers=headers)
         response.raise_for_status()
         payload = response.json()

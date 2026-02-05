@@ -6,6 +6,7 @@ from magi.llm.auth.antigravity import AntigravityAuthProvider
 from magi.llm.auth.base import AuthContext, AuthProvider
 from magi.llm.auth.claude import ClaudeAuthProvider
 from magi.llm.auth.copilot import CopilotAuthProvider
+from magi.llm.auth.openai_codex import OpenAICodexAuthProvider
 from magi.llm.auth.storage import TokenManager
 
 __all__ = [
@@ -14,6 +15,7 @@ __all__ = [
     "AuthProvider",
     "ClaudeAuthProvider",
     "CopilotAuthProvider",
+    "OpenAICodexAuthProvider",
     "TokenManager",
     "get_auth_provider",
 ]
@@ -40,4 +42,6 @@ def get_auth_provider(provider_type: str, context: AuthContext) -> AuthProvider:
         return CopilotAuthProvider(context)
     if normalized == "antigravity":
         return AntigravityAuthProvider(context)
+    if normalized in {"openai_codex", "codex", "openai-codex"}:
+        return OpenAICodexAuthProvider(context)
     raise ValueError(f"未対応の認証プロバイダです: {provider_type}")

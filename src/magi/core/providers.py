@@ -207,6 +207,12 @@ class ProviderAdapterFactory:
         elif isinstance(scopes, list):
             scope_list = [str(item) for item in scopes]
 
+        extras = options.get("extras")
+        extras_dict: dict[str, str] = {}
+        if isinstance(extras, dict):
+            for k, v in extras.items():
+                extras_dict[str(k)] = str(v)
+
         return AuthContext(
             client_id=options.get("client_id"),
             client_secret=options.get("client_secret"),
@@ -215,4 +221,5 @@ class ProviderAdapterFactory:
             token_url=options.get("token_url"),
             redirect_uri=options.get("redirect_uri"),
             audience=options.get("audience"),
+            extras=extras_dict,
         )

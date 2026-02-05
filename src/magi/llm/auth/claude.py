@@ -116,8 +116,18 @@ class ClaudeAuthProvider(AuthProvider):
 
         self._store_tokens(tokens)
 
-    async def get_token(self) -> str:
-        """保存済みトークンを返す。期限切れなら再認証する。"""
+    async def get_token(self, force_refresh: bool = False) -> str:
+        """有効なアクセストークンを返す。
+
+        Args:
+            force_refresh: キャッシュを無視して強制的にトークンを更新するかどうか。
+
+        Returns:
+            str: アクセストークン。
+        """
+
+        if force_refresh:
+            await self.authenticate()
 
         stored = self._token_manager.get_token(self._service_name)
         if not stored:
@@ -170,7 +180,7 @@ class ClaudeAuthProvider(AuthProvider):
         if self._context.client_secret:
             data["client_secret"] = self._context.client_secret
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
             response = await client.post(token_url, data=data, headers={"Accept": "application/json"})
         response.raise_for_status()
         token_payload = response.json()

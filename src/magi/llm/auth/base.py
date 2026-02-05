@@ -37,5 +37,12 @@ class AuthProvider(ABC):
         """認証フローを開始・完了する。"""
 
     @abstractmethod
-    async def get_token(self) -> str:
-        """有効なアクセストークンを返す。"""
+    async def get_token(self, force_refresh: bool = False) -> str:
+        """有効なアクセストークンを返す。
+
+        Args:
+            force_refresh: キャッシュを無視して強制的にトークンを更新するかどうか。
+
+        Returns:
+            str: アクセストークン。
+        """

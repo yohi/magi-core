@@ -21,12 +21,11 @@ Claude Code等のMCP (Model Context Protocol) ツールは、セキュリティ�
 CLIやデスクトップアプリからブラウザ認証を行う「ローカルサーバー・コールバック」方式を採用します。
 
 1. **Code Verifier/Challenge生成**: PKCE用に暗号論的に安全なランダム文字列を生成。
-2. **ローカルサーバー起動**: 一時的なポート（例: `localhost:3000`）でHTTPサーバーを起動し、`/callback` ルートを待機。
+2. **ローカルサーバー起動**: 未使用のランダムポート（`port: 0`）でHTTPサーバーを起動し、リクエストを待機。
 3. **ブラウザ誘導**: ユーザーを認可URLへリダイレクト。
-* `response_type=code`
-* `code_challenge={hash}`
-* `redirect_uri=http://localhost:3000/callback`
-
+   * `response_type=code`
+   * `code_challenge={hash}`
+   * `redirect_uri=http://localhost:${port}`
 
 4. **コード交換**: コールバックで `code` を受け取り、バックグラウンドで `/token` エンドポイントへPOSTしてアクセストークンを取得。
 
@@ -87,13 +86,14 @@ CLIツールや入力デバイスが限られる環境に適した Device Flow �
 
 ### 3.2 リクエスト変換 (Request Transformer)
 
-Copilot APIはOpenAI互換ですが、厳格なヘッダー要求があります。
+Copilot APIはOpenAI互換ですが、いくつかの必須または推奨されるヘッダー要求があります。
 
 * **Endpoint**: `https://copilot-proxy.githubusercontent.com/v1/chat/completions`
 * **Headers**:
-* `Authorization`: `Bearer <copilot_internal_token>` (GitHubトークンではない)
-* `Editor-Version`: `vscode/1.85.0` (VS Codeとして振る舞う必要がある場合がある)
-* `Copilot-Integration-Id`: `vscode-chat`
+  * `Authorization`: `Bearer <copilot_internal_token>` (必須: GitHubトークンではない)
+  * `Editor-Version`: `vscode/1.85.0` (推奨: エディタのバージョン)
+  * `Editor-Plugin-Version`: `copilot-chat/0.12.0` (推奨: プラグインのバージョン)
+  * `Copilot-Integration-Id`: `vscode-chat` (推奨: 統合ID)
 
 
 
@@ -113,7 +113,8 @@ const client = new OpenAI({
   baseURL: 'https://copilot-proxy.githubusercontent.com/v1',
   defaultHeaders: {
     'Editor-Version': 'vscode/1.85.0',
-    'Editor-Plugin-Version': 'copilot-chat/0.12.0'
+    'Editor-Plugin-Version': 'copilot-chat/0.12.0',
+    'Copilot-Integration-Id': 'vscode-chat'
   }
 });
 
