@@ -616,6 +616,7 @@
 
         let intervalId = null;
         let blinkTimeoutId = null;
+        let typewriterTimeoutId = null;
 
         function addLog(msg, type='normal') {
             const div = document.createElement('div');
@@ -782,7 +783,9 @@
                 if (lineIndex < htmlParts.length) {
                     resultContent.innerHTML += htmlParts[lineIndex];
                     lineIndex++;
-                    setTimeout(typeWriter, 300);
+                    typewriterTimeoutId = setTimeout(typeWriter, 300);
+                } else {
+                    typewriterTimeoutId = null;
                 }
             };
             typeWriter();
@@ -824,8 +827,20 @@
             resultConsole.style.display = 'none';
             resultContent.innerHTML = '';
             
-            // Stop blinking
-            clearTimeout(blinkTimeoutId);
+            // Stop all timers
+            if (intervalId !== null) {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+            if (blinkTimeoutId !== null) {
+                clearTimeout(blinkTimeoutId);
+                blinkTimeoutId = null;
+            }
+            if (typewriterTimeoutId !== null) {
+                clearTimeout(typewriterTimeoutId);
+                typewriterTimeoutId = null;
+            }
+
             monoliths.forEach(m => { m.classList.remove('active'); });
             
             addLog("SYSTEM RESET COMPLETE.");
