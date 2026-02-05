@@ -58,6 +58,13 @@ const buildWsUrl = (wsUrl: string) => {
     return wsUrl;
   }
 
+  if (wsUrl.startsWith("http://")) {
+    return `ws://${wsUrl.slice("http://".length)}`;
+  }
+  if (wsUrl.startsWith("https://")) {
+    return `wss://${wsUrl.slice("https://".length)}`;
+  }
+
   const normalizedBase = normalizeWsBase(WS_BASE);
   if (normalizedBase) {
     return `${normalizedBase.replace(/\/+$/, "")}${wsUrl}`;
