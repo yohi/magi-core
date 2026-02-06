@@ -125,6 +125,7 @@ export default function App() {
   const blinkTimeoutRef = useRef<number | null>(null);
   const logRef = useRef<HTMLDivElement | null>(null);
   const requestAbortRef = useRef<AbortController | null>(null);
+  const fallbackTimeoutRef = useRef<number | null>(null);
 
   const addLog = useCallback((message: string, level: LogLevel = "normal") => {
     logIdRef.current += 1;
@@ -284,6 +285,11 @@ export default function App() {
       return;
     }
 
+    if (fallbackTimeoutRef.current !== null) {
+      window.clearTimeout(fallbackTimeoutRef.current);
+      fallbackTimeoutRef.current = null;
+    }
+
     if (requestAbortRef.current) {
       requestAbortRef.current.abort();
     }
@@ -356,6 +362,11 @@ export default function App() {
   }, [sessionId]);
 
   const resetSequence = useCallback(async () => {
+    if (fallbackTimeoutRef.current !== null) {
+      window.clearTimeout(fallbackTimeoutRef.current);
+      fallbackTimeoutRef.current = null;
+    }
+
     if (requestAbortRef.current) {
       requestAbortRef.current.abort();
       requestAbortRef.current = null;
@@ -384,8 +395,12 @@ export default function App() {
       setPhase("CANCELLED");
       addLog("SESSION CANCELLED", "error");
       // Fallback cleanup in case server event never arrives
-      setTimeout(() => {
+      if (fallbackTimeoutRef.current !== null) {
+        window.clearTimeout(fallbackTimeoutRef.current);
+      }
+      fallbackTimeoutRef.current = window.setTimeout(() => {
         resetSequence();
+        fallbackTimeoutRef.current = null;
       }, 5000);
     } else if (isRunning) {
       setIsRunning(false);
@@ -419,6 +434,14 @@ export default function App() {
     addLog(`UPDATED ${unitSettings[currentEditingUnit].name}`, "info");
     closeModal();
   };
+
+  useEffect(() => {
+    return () => {
+      if (fallbackTimeoutRef.current !== null) {
+        window.clearTimeout(fallbackTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const handleResize = () => {
