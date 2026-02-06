@@ -22,3 +22,33 @@
 - **WSイベントの初期欠落**:
   - `create_session` 直後にバックグラウンドタスクが開始される仕様上、WebSocket接続が確立するまでの間に発生した初期イベント（`THINKING`フェーズ開始など）はクライアントに届かない。
   - これに対処するには、クライアント側で状態ポーリングを併用するか、サーバー側で履歴保持（Event Sourcing等）を実装する必要があるが、現状は仕様制限としている。
+
+## 2026-02-05 Task: llm auth base
+- `uv run python -m unittest discover -s tests -v` が多数のERRORで失敗（詳細は tool-output: tool_c2ce81fcf001xsLPE3aiVsVSPk）。今回の変更とは無関係に見えるため、現状のCI/環境要因を確認が必要。
+
+## 2026-02-05 Task: llm auth storage
+- `uv run python -m unittest discover -s tests -v` が多数のERRORで失敗（詳細は tool-output: tool_c2ceb716700101fEqFOAcujLKO）。今回の変更とは無関係に見えるため、現状のCI/環境要因を確認が必要。
+
+## 2026-02-05 Task: llm auth claude
+- `uv run python -m unittest discover -s tests -v` が多数のERRORで失敗（詳細は tool-output: tool_c2cee5b690017V9J5WCCQyLI7h）。今回の変更とは無関係に見えるため、現状のCI/環境要因を確認が必要。
+
+## 2026-02-05 Task: llm auth copilot
+- `uv run python -m unittest discover -s tests -v` が多数のERRORで失敗（詳細は tool-output: tool_c2cf11e69001d0ngp3xM0APNol）。今回の変更とは無関係に見えるため、現状のCI/環境要因を確認が必要。
+
+## 2026-02-05 Task: llm auth antigravity
+- `uv run python -m unittest discover -s tests -v` が多数のERRORで失敗（詳細は tool-output: tool_c2cf43102001afDSpEbyvFAaWt）。今回の変更とは無関係に見えるため、現状のCI/環境要因を確認が必要。
+
+## 2026-02-05 Task: llm auth init
+- `uv run python -m unittest discover -s tests -v` が多数のERRORで失敗（詳細は tool-output: tool_c2cf72e2e001KOxPsXIefUkjrC）。今回の変更とは無関係に見えるため、現状のCI/環境要因を確認が必要。
+
+## 2026-02-05 Task: providers_auth
+- `uv run python -m unittest discover -s tests -v` が多数のERRORで失敗（詳細は tool-output: tool_c2cfb080b001cfStTi4BZR5x5G）。今回の変更とは無関係に見えるため、現状のCI/環境要因を確認が必要。
+
+## 2026-02-05 Task: config provider
+- `uv run python -m unittest discover -s tests -v` が多数のERRORで失敗（詳細は tool-output: tool_c2cfe3445001LkiIM00jQtTn4h）。今回の変更とは無関係に見えるため、現状のCI/環境要因を確認が必要。
+
+## 2026-02-05 Task: core providers auth
+- `uv run python -m unittest discover -s tests -v` が多数のERRORで失敗（詳細は tool-output: tool_c2d0247cf001V0l9RmGDfvIhKr）。今回の変更とは無関係に見えるため、現状のCI/環境要因を確認が必要。
+
+## 2026-02-05 Task: openai_codex auth
+- `uv run python -m unittest discover -s tests -v` が多数のERRORで失敗（詳細は tool-output: tool_c2d28d515001Ht5Tf1HlJL4xf0）。今回の変更とは無関係に見えるため、現状のCI/環境要因を確認が必要。

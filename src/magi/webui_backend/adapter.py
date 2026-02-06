@@ -4,6 +4,7 @@ MagiAdapterの実装
 WebUIとMagi Core（ConsensusEngine）を接続するためのアダプターインターフェースと実装を提供する。
 """
 import asyncio
+import copy
 import logging
 from abc import ABC, abstractmethod
 from typing import Any, AsyncIterator, Callable, Dict, Optional
@@ -149,7 +150,8 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
             on_event=_on_event
         )
         
-        run_config = self.config
+        # 設定のディープコピーを作成して、セッション固有の設定として扱う
+        run_config = copy.deepcopy(self.config)
         if options.max_rounds is not None:
             # UIオプションのmax_roundsをrun_configに反映
             run_config.debate_rounds = int(options.max_rounds)
@@ -157,6 +159,7 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
         async def _run_engine():
             engine = None
             try:
+                logger.info("Initializing ConsensusEngine")
                 engine = self.engine_factory(
                     config=run_config,
                     llm_client_factory=self.llm_client_factory,
@@ -166,21 +169,27 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
                 await queue.put({"type": "phase", "phase": "THINKING"})
                 await queue.put({"type": "progress", "pct": 10})
                 
+                logger.info("Starting Thinking Phase")
                 thinking_results = await engine._run_thinking_phase(prompt)
+                logger.info("Thinking Phase done")
                 
                 await queue.put({"type": "phase", "phase": "DEBATE"})
                 await queue.put({"type": "progress", "pct": 40})
                 
+                logger.info("Starting Debate Phase")
                 debate_results = await engine._run_debate_phase(
                     thinking_results, close_streaming=False
                 )
+                logger.info("Debate Phase done")
                 
                 await queue.put({"type": "phase", "phase": "VOTING"})
                 await queue.put({"type": "progress", "pct": 80})
                 
+                logger.info("Starting Voting Phase")
                 voting_result_dict = await engine._run_voting_phase(
                     thinking_results, debate_results
                 )
+                logger.info("Voting Phase done")
                 
                 str_thinking_results = {
                     k.value if hasattr(k, "value") else str(k): v 
