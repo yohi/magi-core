@@ -100,6 +100,7 @@ class TestWebUIEndToEnd(unittest.TestCase):
                     # イベントループ
                     start_time = time.monotonic()
                     MAX_WAIT_SECONDS = 5
+                    error_event = None
                     
                     while True:
                         if time.monotonic() - start_time > MAX_WAIT_SECONDS:
@@ -110,20 +111,21 @@ class TestWebUIEndToEnd(unittest.TestCase):
                         try:
                             data = websocket.receive_json()
                             received_events.append(data)
-
-                            event_type = data.get("type")
-
-                            # 終了条件
-                            if event_type == "final":
-                                break
-                            if event_type == "error":
-                                self.fail(f"Received error event: {data}")
-                                break
-
                         except Exception as e:
-                            # 接続切断など
                             print(f"WS Exception: {e}")
                             break
+
+                        event_type = data.get("type")
+
+                        # 終了条件
+                        if event_type == "final":
+                            break
+                        if event_type == "error":
+                            error_event = data
+                            break
+
+                    if error_event is not None:
+                        self.fail(f"Received error event: {error_event}")
 
                     # 3. 検証
                     event_types = [e.get("type") for e in received_events]
