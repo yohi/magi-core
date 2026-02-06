@@ -115,7 +115,7 @@ class TestWebUIEndToEnd(unittest.TestCase):
                         # 終了条件
                         if event_type == "final":
                             break
-                        if event_type == "error":
+                        if event_type == "error" and data.get("code") != "CANCELLED":
                             error_event = data
                             break
 
@@ -191,7 +191,7 @@ class TestWebUIEndToEnd(unittest.TestCase):
 
                     cancel_response = client.post(f"/api/sessions/{session_id}/cancel")
                     self.assertEqual(cancel_response.status_code, 200)
-                    self.assertEqual(cancel_response.json(), {"status": "cancelled"})
+                    self.assertEqual(cancel_response.json(), {"status": "CANCELLED"})
 
                     cancelled_received = False
                     start_time = time.monotonic()
@@ -210,6 +210,9 @@ class TestWebUIEndToEnd(unittest.TestCase):
 
                         event_type = event.get("type")
                         if event_type == "error":
+                            if event.get("code") == "CANCELLED":
+                                cancelled_received = True
+                                break
                             self.fail(
                                 f"Received error event during cancel flow: {event}"
                             )

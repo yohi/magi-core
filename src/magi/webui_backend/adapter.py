@@ -152,6 +152,8 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
         
         # 設定のディープコピーを作成して、セッション固有の設定として扱う
         run_config = copy.deepcopy(self.config)
+        if options.model is not None:
+            run_config.model = options.model
         if options.max_rounds is not None:
             # UIオプションのmax_roundsをrun_configに反映
             run_config.debate_rounds = int(options.max_rounds)
