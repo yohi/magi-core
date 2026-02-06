@@ -222,7 +222,7 @@ class SessionManager:
                 "code": "CANCELLED",
                 "message": "Session was cancelled."
             })
-        except asyncio.TimeoutError as e:
+        except asyncio.TimeoutError:
             session.phase = SessionPhase.ERROR
             timeout = session.options.timeout_sec
             msg = f"Timeout after {timeout}s"
