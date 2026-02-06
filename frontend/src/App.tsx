@@ -396,8 +396,8 @@ export default function App() {
     }
 
     if (sessionId) {
-      await cancelSession();
       cancelledRef.current = true;
+      await cancelSession();
       setIsRunning(false);
       setPhase("CANCELLED");
       addLog("SESSION CANCELLED", "error");
