@@ -98,7 +98,15 @@ class TestWebUIEndToEnd(unittest.TestCase):
                     received_events = []
 
                     # イベントループ
+                    start_time = time.monotonic()
+                    MAX_WAIT_SECONDS = 5
+                    
                     while True:
+                        if time.monotonic() - start_time > MAX_WAIT_SECONDS:
+                            self.fail(
+                                f"Timeout ({MAX_WAIT_SECONDS}s) waiting for session completion"
+                            )
+
                         try:
                             data = websocket.receive_json()
                             received_events.append(data)

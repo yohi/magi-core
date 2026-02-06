@@ -4,6 +4,7 @@ MagiAdapterの実装
 WebUIとMagi Core（ConsensusEngine）を接続するためのアダプターインターフェースと実装を提供する。
 """
 import asyncio
+import copy
 import logging
 from abc import ABC, abstractmethod
 from typing import Any, AsyncIterator, Callable, Dict, Optional
@@ -149,7 +150,8 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
             on_event=_on_event
         )
         
-        run_config = self.config
+        # 設定のディープコピーを作成して、セッション固有の設定として扱う
+        run_config = copy.deepcopy(self.config)
         if options.max_rounds is not None:
             # UIオプションのmax_roundsをrun_configに反映
             run_config.debate_rounds = int(options.max_rounds)
