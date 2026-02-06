@@ -33,7 +33,8 @@ class MagiSettings(BaseSettings):
         env_prefix="MAGI_",
         env_file=".env",
         env_nested_delimiter="__",
-        extra="ignore",
+        env_ignore_empty=True,
+        extra="forbid",
     )
 
     def __init__(self, **data: Any):
@@ -105,9 +106,27 @@ class MagiSettings(BaseSettings):
         file_secret_settings,
     ) -> Tuple[Any, ...]:
         """設定ソースの優先順位をカスタマイズ（env > dotenv > init）"""
+        allowed_fields = set(cls.model_fields)
+
+        def _filtered(source):
+            def _inner():
+                data = source()
+                filtered = {}
+                for key, value in data.items():
+                    if key not in allowed_fields:
+                        continue
+                    if value is None:
+                        continue
+                    if isinstance(value, str) and value == "":
+                        continue
+                    filtered[key] = value
+                return filtered
+
+            return _inner
+
         return (
-            env_settings,
-            dotenv_settings,
+            _filtered(env_settings),
+            _filtered(dotenv_settings),
             init_settings,
             file_secret_settings,
         )
