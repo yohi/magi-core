@@ -8,10 +8,11 @@ FastAPIを使用したWebUI用バックエンドサーバーの実装。
 import asyncio
 import logging
 from typing import Optional
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, APIRouter, status, HTTPException
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, ValidationError, Field
 
 import os
 from magi.config.manager import ConfigManager
@@ -22,11 +23,33 @@ from magi.webui_backend.adapter import ConsensusEngineMagiAdapter, MockMagiAdapt
 
 logger = logging.getLogger(__name__)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    session_manager.start_cleanup_task()
+    yield
+    await session_manager.stop_cleanup_task()
+
 app = FastAPI(
     title="MAGI WebUI Backend",
     description="MAGIシステムのWebUI用バックエンドAPI",
     version="1.0.0",
+    lifespan=lifespan,
 )
+
+MAX_CONCURRENCY = int(os.environ.get("MAX_CONCURRENCY", "10"))
+SESSION_TTL_SEC = int(os.environ.get("SESSION_TTL_SEC", "600"))
+CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "")
+
+if CORS_ORIGINS:
+    origins = [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()]
+    if origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
 # 設定読み込み
 config_manager = ConfigManager()
@@ -49,8 +72,8 @@ def create_adapter():
 
 # セッションマネージャーのインスタンス化
 session_manager = SessionManager(
-    max_concurrency=10, 
-    ttl_sec=600,
+    max_concurrency=MAX_CONCURRENCY, 
+    ttl_sec=SESSION_TTL_SEC,
     adapter_factory=create_adapter
 )
 
@@ -65,7 +88,7 @@ class HealthResponse(BaseModel):
 
 class CreateSessionRequest(BaseModel):
     """セッション作成リクエストモデル"""
-    prompt: str
+    prompt: str = Field(..., min_length=1, max_length=8000)
     options: Optional[SessionOptions] = None
 
 
@@ -121,7 +144,7 @@ async def create_session(request: CreateSessionRequest) -> CreateSessionResponse
         return CreateSessionResponse(
             session_id=session_id,
             ws_url=f"/ws/sessions/{session_id}",
-            status="created"
+            status="QUEUED"
         )
     except RuntimeError as e:
         # 同時実行数制限など
@@ -148,7 +171,7 @@ async def cancel_session(session_id: str) -> CancelSessionResponse:
             detail="Session not found"
         )
     
-    return CancelSessionResponse(status="cancelled")
+    return CancelSessionResponse(status="CANCELLED")
 
 
 # ルーターをアプリケーションに登録
