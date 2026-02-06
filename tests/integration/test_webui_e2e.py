@@ -254,24 +254,12 @@ class TestWebUIEndToEnd(unittest.TestCase):
 
                 with client.websocket_connect(ws_url) as websocket:
                     start_event.set()
-                    start_time = time.monotonic()
-                    MAX_WAIT_SECONDS = 5
+                    try:
+                        event = websocket.receive_json()
+                    except Exception as e:
+                        self.fail(f"Error event was not received: {e}")
+                        return
 
-                    event = None
-                    while True:
-                        if time.monotonic() - start_time > MAX_WAIT_SECONDS:
-                            self.fail(
-                                f"Timeout ({MAX_WAIT_SECONDS}s) waiting for error event"
-                            )
-
-                        try:
-                            event = websocket.receive_json()
-                            break
-                        except Exception:
-                            break
-
-                    if event is None:
-                        self.fail("Error event was not received")
                     self.assertEqual(event.get("type"), "error")
                     self.assertEqual(event.get("code"), "E2E_TEST_ERROR")
                     self.assertEqual(event.get("message"), "E2E error simulation")
