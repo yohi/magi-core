@@ -30,14 +30,12 @@ os.environ["MAGI_USE_MOCK"] = (
 
 # appのインポート (環境変数設定後に行う)
 from magi.webui_backend.app import app, session_manager
-from magi.llm.client import LLMResponse
 
 
 class TestWebUIEndToEnd(unittest.TestCase):
-    @patch("magi.llm.client.LLMClient.send")
-    def test_session_execution_flow(self, mock_send):
+    def test_session_execution_flow(self):
         """
-        API経由でセッションを作成し、WebSocketで実行結果を受け取るE2Eテスト
+        ControlledMagiAdapter経由でセッションを作成し、WebSocketで実行結果を受け取るE2Eテスト
         """
         start_event = threading.Event()
 
@@ -62,15 +60,6 @@ class TestWebUIEndToEnd(unittest.TestCase):
                     "votes": {"MELCHIOR-1": {"vote": "YES", "reason": "Test approval"}},
                     "summary": "Test completed",
                 }
-
-        # LLMのレスポンスをモック
-        # Thinking/Debate/Voting すべてでこのレスポンスが返るが、
-        # VotingフェーズではJSONパースされて承認として扱われる想定
-        mock_send.return_value = LLMResponse(
-            content='{"vote": "APPROVE", "reason": "Test approval", "conditions": []}',
-            usage={"input_tokens": 10, "output_tokens": 10},
-            model="test-model",
-        )
 
         with patch.object(
             session_manager, "adapter_factory", return_value=ControlledMagiAdapter()
