@@ -114,6 +114,23 @@ magi --plugin magi-cc-sdd-plugin spec "APIエンドポイントの仕様書"
 MAGI_DEBATE_ROUNDS=3 magi ask "このアーキテクチャの問題点は？"
 ```
 
+## WebUI機能 (Preview)
+
+MAGIシステムの合議プロセスをリアルタイムで可視化するWebインターフェースを提供しています。
+現在は開発者向けのプレビュー機能として利用可能です。
+
+### 起動方法
+
+Docker Composeを使用して、バックエンドとフロントエンドを一括で起動できます。
+
+```bash
+docker compose up --build
+```
+
+起動後、ブラウザで以下のURLにアクセスしてください。
+
+- URL: `http://localhost:3000`
+
 ## 設定
 
 ### 環境変数
