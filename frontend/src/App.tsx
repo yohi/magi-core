@@ -22,6 +22,11 @@ type EventPayload = {
   [key: string]: unknown;
 };
 
+type HealthResponse = {
+  status: string;
+  mode?: string;
+};
+
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 const WS_BASE = import.meta.env.VITE_WS_BASE ?? "";
 
@@ -98,6 +103,7 @@ export default function App() {
   const [currentEditingUnit, setCurrentEditingUnit] = useState<
     "melchior" | "balthasar" | "casper" | null
   >(null);
+  const [serverMode, setServerMode] = useState<string>("production");
   const [unitSettings, setUnitSettings] = useState({
     melchior: {
       name: "MELCHIOR-1",
@@ -462,6 +468,23 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const res = await fetch(joinPath(API_BASE, "/api/health"));
+        if (res.ok) {
+          const data = (await res.json()) as HealthResponse;
+          if (data.mode) {
+            setServerMode(data.mode);
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+    checkHealth();
+  }, []);
+
+  useEffect(() => {
     const handleResize = () => {
       if (!scalerRef.current) return;
       const scaleX = window.innerWidth / 1100;
@@ -677,6 +700,20 @@ export default function App() {
 
       <div className="dashboard-ui">
         <div className="status-bar">
+          {serverMode === "mock" && (
+            <div
+              style={{
+                backgroundColor: "var(--magi-orange)",
+                color: "black",
+                padding: "2px 8px",
+                marginRight: "10px",
+                fontWeight: "bold",
+                fontSize: "0.8rem",
+              }}
+            >
+              MOCK MODE
+            </div>
+          )}
           <div className="phase-indicator" style={{ color: phaseColor }}>
             PHASE: <span id="phase-txt">{phase}</span>
           </div>

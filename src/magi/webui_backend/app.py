@@ -84,6 +84,7 @@ api_router = APIRouter(prefix="/api")
 class HealthResponse(BaseModel):
     """ヘルスチェックレスポンスモデル"""
     status: str
+    mode: str = "production"  # "mock" or "production"
 
 
 class CreateSessionRequest(BaseModel):
@@ -111,7 +112,10 @@ async def health_check() -> HealthResponse:
     Returns:
         HealthResponse: サーバーの状態
     """
-    return HealthResponse(status="ok")
+    return HealthResponse(
+        status="ok",
+        mode="mock" if use_mock else "production"
+    )
 
 
 @api_router.post(
