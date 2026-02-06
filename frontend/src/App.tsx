@@ -355,6 +355,22 @@ export default function App() {
     }
   }, [sessionId]);
 
+  const resetSequence = useCallback(async () => {
+    if (requestAbortRef.current) {
+      requestAbortRef.current.abort();
+      requestAbortRef.current = null;
+    }
+
+    if (isRunning || sessionId) {
+      await cancelSession();
+    }
+    closeWebSocket();
+    setSessionId(null);
+    setIsRunning(false);
+    resetUi();
+    addLog("SYSTEM RESET COMPLETE.");
+  }, [addLog, cancelSession, closeWebSocket, isRunning, sessionId, resetUi]);
+
   const handleCancel = useCallback(async () => {
     if (requestAbortRef.current) {
       requestAbortRef.current.abort();
@@ -377,22 +393,6 @@ export default function App() {
       addLog("SESSION INITIALIZATION CANCELLED", "error");
     }
   }, [sessionId, isRunning, cancelSession, addLog, setPhase, resetSequence]);
-
-  const resetSequence = useCallback(async () => {
-    if (requestAbortRef.current) {
-      requestAbortRef.current.abort();
-      requestAbortRef.current = null;
-    }
-
-    if (isRunning || sessionId) {
-      await cancelSession();
-    }
-    closeWebSocket();
-    setSessionId(null);
-    setIsRunning(false);
-    resetUi();
-    addLog("SYSTEM RESET COMPLETE.");
-  }, [addLog, cancelSession, closeWebSocket, isRunning, sessionId, resetUi]);
 
   const openModal = (unitKey: "melchior" | "balthasar" | "casper") => {
     setCurrentEditingUnit(unitKey);
