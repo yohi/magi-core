@@ -157,6 +157,7 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
         async def _run_engine():
             engine = None
             try:
+                logger.info("Initializing ConsensusEngine")
                 engine = self.engine_factory(
                     config=run_config,
                     llm_client_factory=self.llm_client_factory,
@@ -166,21 +167,27 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
                 await queue.put({"type": "phase", "phase": "THINKING"})
                 await queue.put({"type": "progress", "pct": 10})
                 
+                logger.info("Starting Thinking Phase")
                 thinking_results = await engine._run_thinking_phase(prompt)
+                logger.info("Thinking Phase done")
                 
                 await queue.put({"type": "phase", "phase": "DEBATE"})
                 await queue.put({"type": "progress", "pct": 40})
                 
+                logger.info("Starting Debate Phase")
                 debate_results = await engine._run_debate_phase(
                     thinking_results, close_streaming=False
                 )
+                logger.info("Debate Phase done")
                 
                 await queue.put({"type": "phase", "phase": "VOTING"})
                 await queue.put({"type": "progress", "pct": 80})
                 
+                logger.info("Starting Voting Phase")
                 voting_result_dict = await engine._run_voting_phase(
                     thinking_results, debate_results
                 )
+                logger.info("Voting Phase done")
                 
                 str_thinking_results = {
                     k.value if hasattr(k, "value") else str(k): v 

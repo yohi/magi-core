@@ -11,10 +11,11 @@ from typing import Optional
 
 from fastapi import FastAPI, WebSocket, APIRouter, status, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 import os
 from magi.config.manager import ConfigManager
+from magi.errors import MagiException
 from magi.webui_backend.models import SessionOptions, SessionPhase
 from magi.webui_backend.session_manager import SessionManager
 from magi.webui_backend.adapter import ConsensusEngineMagiAdapter, MockMagiAdapter
@@ -32,7 +33,7 @@ config_manager = ConfigManager()
 try:
     config = config_manager.load()
     use_mock = False
-except Exception as e:
+except (MagiException, ValidationError, FileNotFoundError) as e:
     logger.warning(f"Configuration load failed, falling back to MockMagiAdapter: {e}")
     config = None
     use_mock = True

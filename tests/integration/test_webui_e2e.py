@@ -12,6 +12,7 @@ import os
 import unittest
 import logging
 import threading
+import time
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 
@@ -188,7 +189,15 @@ class TestWebUIEndToEnd(unittest.TestCase):
                     self.assertEqual(cancel_response.json(), {"status": "cancelled"})
 
                     cancelled_received = False
+                    start_time = time.monotonic()
+                    MAX_WAIT_SECONDS = 5
+
                     while True:
+                        if time.monotonic() - start_time > MAX_WAIT_SECONDS:
+                            self.fail(
+                                f"Timeout ({MAX_WAIT_SECONDS}s) waiting for CANCELLED phase"
+                            )
+
                         try:
                             event = websocket.receive_json()
                         except Exception:
