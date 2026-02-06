@@ -281,7 +281,6 @@ class TestWebUIEndToEnd(unittest.TestCase):
 
                     if event is None:
                         self.fail("Error event was not received")
-                        return
                     self.assertEqual(event.get("type"), "error")
                     self.assertEqual(event.get("code"), "E2E_TEST_ERROR")
                     self.assertEqual(event.get("message"), "E2E error simulation")
