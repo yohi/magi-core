@@ -97,6 +97,50 @@ class TestWebUIWebSocket(unittest.TestCase):
         # WebSocketDisconnect が発生することが多い
         # エラーメッセージや例外型を確認してもよいが、ここでは「接続・受信が正常に続かないこと」を確認できればよしとする
 
+    def test_ws_error_event_has_code(self):
+        """例外発生時にエラーイベントに 'code' フィールドが含まれることの確認"""
+        from unittest.mock import MagicMock
+        
+        with TestClient(app) as client:
+            create_payload = {
+                "prompt": "Test Error Code",
+                "options": {"max_rounds": 1}
+            }
+            
+            original_factory = session_manager.adapter_factory
+            mock_adapter = MagicMock()
+            
+            async def mock_run(*args, **kwargs):
+                import asyncio
+                await asyncio.sleep(0.1)
+                raise ValueError("Simulated Internal Error")
+                yield
+            
+            mock_adapter.run.side_effect = mock_run
+            session_manager.adapter_factory = lambda: mock_adapter
+            
+            try:
+                resp = client.post("/api/sessions", json=create_payload)
+                self.assertEqual(resp.status_code, 201)
+                session_id = resp.json()["session_id"]
+                ws_url = f"/ws/sessions/{session_id}"
+                
+                with client.websocket_connect(ws_url) as websocket:
+                    error_event = None
+                    for _ in range(10):
+                        event = websocket.receive_json()
+                        if event.get("type") == "error":
+                            error_event = event
+                            break
+                    
+                    if error_event is None:
+                        self.fail("エラーイベントを受信できませんでした")
+                    
+                    self.assertIn("code", error_event)
+                    self.assertEqual(error_event["code"], "INTERNAL")
+            finally:
+                session_manager.adapter_factory = original_factory
+
     def _verify_common_fields(self, event: Dict[str, Any], expected_session_id: str):
         """EventBroadcasterが付与する共通フィールドの検証"""
         self.assertIn("schema_version", event)

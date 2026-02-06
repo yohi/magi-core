@@ -4,7 +4,7 @@ WebUIバックエンド用データモデル
 
 from enum import Enum
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 import uuid
 
 from pydantic import BaseModel, Field, PrivateAttr
@@ -44,7 +44,7 @@ class SessionOptions(BaseModel):
     """セッション作成時のオプション"""
     model: Optional[str] = None
     max_rounds: Optional[int] = None
-    timeout_sec: int = 120
+    timeout_sec: float = 120.0
 
 class Session(BaseModel):
     """セッション状態を保持するモデル"""
@@ -63,7 +63,7 @@ class Session(BaseModel):
     logs: List[str] = Field(default_factory=list)
     
     # asyncio.Task は Pydantic の管理外にする
-    _task: Optional[object] = PrivateAttr(default=None)
+    _task: Optional[Any] = PrivateAttr(default=None)
 
     def __init__(self, **data):
         super().__init__(**data)

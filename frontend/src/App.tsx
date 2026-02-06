@@ -125,6 +125,8 @@ export default function App() {
   const blinkTimeoutRef = useRef<number | null>(null);
   const logRef = useRef<HTMLDivElement | null>(null);
   const requestAbortRef = useRef<AbortController | null>(null);
+  const fallbackTimeoutRef = useRef<number | null>(null);
+  const cancelledRef = useRef(false);
 
   const addLog = useCallback((message: string, level: LogLevel = "normal") => {
     logIdRef.current += 1;
@@ -166,6 +168,10 @@ export default function App() {
 
   const finalizeRun = useCallback(() => {
     setIsRunning(false);
+    if (!cancelledRef.current && fallbackTimeoutRef.current !== null) {
+      window.clearTimeout(fallbackTimeoutRef.current);
+      fallbackTimeoutRef.current = null;
+    }
     closeWebSocket();
   }, [closeWebSocket]);
 
@@ -266,7 +272,7 @@ export default function App() {
 
       ws.addEventListener("close", () => {
         addLog("WEBSOCKET CLOSED", "info");
-        if (isRunning) {
+        if (isRunning && !cancelledRef.current) {
           finalizeRun();
         }
       });
@@ -283,6 +289,13 @@ export default function App() {
       addLog("ERROR: NO PROMPT DATA", "error");
       return;
     }
+
+    if (fallbackTimeoutRef.current !== null) {
+      window.clearTimeout(fallbackTimeoutRef.current);
+      fallbackTimeoutRef.current = null;
+    }
+
+    cancelledRef.current = false;
 
     if (requestAbortRef.current) {
       requestAbortRef.current.abort();
@@ -356,6 +369,11 @@ export default function App() {
   }, [sessionId]);
 
   const resetSequence = useCallback(async () => {
+    if (fallbackTimeoutRef.current !== null) {
+      window.clearTimeout(fallbackTimeoutRef.current);
+      fallbackTimeoutRef.current = null;
+    }
+
     if (requestAbortRef.current) {
       requestAbortRef.current.abort();
       requestAbortRef.current = null;
@@ -370,6 +388,44 @@ export default function App() {
     resetUi();
     addLog("SYSTEM RESET COMPLETE.");
   }, [addLog, cancelSession, closeWebSocket, isRunning, sessionId, resetUi]);
+
+  const handleCancel = useCallback(async () => {
+    if (requestAbortRef.current) {
+      requestAbortRef.current.abort();
+      requestAbortRef.current = null;
+    }
+
+    if (sessionId) {
+      cancelledRef.current = true;
+      await cancelSession();
+      setIsRunning(false);
+      setPhase("CANCELLED");
+      addLog("SESSION CANCELLED", "error");
+      closeWebSocket();
+
+      if (fallbackTimeoutRef.current !== null) {
+        window.clearTimeout(fallbackTimeoutRef.current);
+      }
+      fallbackTimeoutRef.current = window.setTimeout(() => {
+        resetSequence();
+        fallbackTimeoutRef.current = null;
+      }, 5000);
+    } else if (isRunning) {
+      cancelledRef.current = true;
+      setIsRunning(false);
+      setPhase("CANCELLED");
+      addLog("SESSION INITIALIZATION CANCELLED", "error");
+      closeWebSocket();
+
+      if (fallbackTimeoutRef.current !== null) {
+        window.clearTimeout(fallbackTimeoutRef.current);
+      }
+      fallbackTimeoutRef.current = window.setTimeout(() => {
+        resetSequence();
+        fallbackTimeoutRef.current = null;
+      }, 5000);
+    }
+  }, [sessionId, isRunning, cancelSession, addLog, setPhase, resetSequence, closeWebSocket]);
 
   const openModal = (unitKey: "melchior" | "balthasar" | "casper") => {
     setCurrentEditingUnit(unitKey);
@@ -396,6 +452,14 @@ export default function App() {
     addLog(`UPDATED ${unitSettings[currentEditingUnit].name}`, "info");
     closeModal();
   };
+
+  useEffect(() => {
+    return () => {
+      if (fallbackTimeoutRef.current !== null) {
+        window.clearTimeout(fallbackTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const handleResize = () => {
@@ -458,6 +522,7 @@ export default function App() {
   const showThinkingStamp = decision === null && isRunning;
   const showApproveStamp = decision === "APPROVE";
   const showDenyStamp = decision === "DENY";
+  const showCancelledStamp = phase === "CANCELLED";
   const phaseColor =
     decision === "APPROVE"
       ? "var(--magi-blue)"
@@ -506,6 +571,13 @@ export default function App() {
                 style={{ display: showDenyStamp ? "flex" : "none" }}
               >
                 <span>否決</span>
+              </div>
+              <div
+                id="stamp-cancelled"
+                className={`stamp stamp-cancelled ${showCancelledStamp ? "visible" : ""}`}
+                style={{ display: showCancelledStamp ? "flex" : "none" }}
+              >
+                <span>中止</span>
               </div>
               <div
                 id="stamp-approve"
@@ -647,10 +719,13 @@ export default function App() {
             disabled={isRunning}
           ></textarea>
           <div className="btn-group">
-            <button id="btn-start" onClick={startSequence} disabled={isRunning}>
+            <button id="btn-start" onClick={startSequence} disabled={isRunning} type="button">
               START
             </button>
-            <button id="btn-reset" onClick={resetSequence} disabled={!sessionId && !isRunning}>
+            <button id="btn-cancel" onClick={handleCancel} disabled={!isRunning} type="button">
+              CANCEL
+            </button>
+            <button id="btn-reset" onClick={resetSequence} disabled={!sessionId && !isRunning && phase !== "CANCELLED"} type="button">
               RESET
             </button>
           </div>
@@ -715,7 +790,7 @@ export default function App() {
               <button id="btn-save" onClick={saveSettings}>
                 SAVE
               </button>
-              <button id="btn-cancel" onClick={closeModal}>
+              <button id="btn-cancel-modal" onClick={closeModal}>
                 CANCEL
               </button>
             </div>

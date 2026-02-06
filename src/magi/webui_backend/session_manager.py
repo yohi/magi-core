@@ -70,12 +70,13 @@ class SessionManager:
         try:
             while True:
                 await asyncio.sleep(interval_sec)
-                async with self._lock:
-                    await self._cleanup_expired_sessions()
+                try:
+                    async with self._lock:
+                        await self._cleanup_expired_sessions()
+                except Exception as e:
+                    logger.exception(f"Error in session cleanup loop iteration: {e}")
         except asyncio.CancelledError:
             raise
-        except Exception as e:
-            logger.exception(f"Error in session cleanup loop: {e}")
 
     async def create_session(self, prompt: str, options: Optional[SessionOptions] = None) -> str:
         """
@@ -221,11 +222,12 @@ class SessionManager:
                 "code": "CANCELLED",
                 "message": "Session was cancelled."
             })
-        except asyncio.TimeoutError as e:
+        except asyncio.TimeoutError:
             session.phase = SessionPhase.ERROR
-            msg = f"Timeout Error: {str(e)}"
+            timeout = session.options.timeout_sec
+            msg = f"Timeout after {timeout}s"
             session.logs.append(msg)
-            logger.error(f"Timeout in session {session_id}")
+            logger.exception(f"Timeout in session {session_id}")
             await self.broadcaster.publish(session_id, {
                 "type": "error",
                 "code": "TIMEOUT",
