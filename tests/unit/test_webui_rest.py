@@ -14,7 +14,6 @@ class TestWebUIRest(unittest.TestCase):
         """テスト前の準備"""
         self.client = TestClient(app)
 
-    @unittest.expectedFailure
     def test_create_session_queued_status(self):
         """
         POST /api/sessions
@@ -35,7 +34,6 @@ class TestWebUIRest(unittest.TestCase):
         self.assertIn("status", data)
         self.assertEqual(data["status"], "QUEUED", f"Expected 'QUEUED', but got '{data['status']}'")
 
-    @unittest.expectedFailure
     def test_cancel_session_cancelled_status(self):
         """
         POST /api/sessions/{id}/cancel
@@ -58,7 +56,6 @@ class TestWebUIRest(unittest.TestCase):
         self.assertIn("status", data)
         self.assertEqual(data["status"], "CANCELLED", f"Expected 'CANCELLED', but got '{data['status']}'")
 
-    @unittest.expectedFailure
     def test_create_session_validation_empty_prompt(self):
         """
         プロンプトが空の場合、422 Unprocessable Entity (または400) を期待する。
@@ -73,7 +70,6 @@ class TestWebUIRest(unittest.TestCase):
         # Pydantic等でのバリデーションエラーを期待
         self.assertIn(response.status_code, [400, 422], f"Expected 400 or 422 for empty prompt, but got {response.status_code}")
 
-    @unittest.expectedFailure
     def test_create_session_validation_too_long_prompt(self):
         """
         プロンプトが長すぎる (>8000文字) 場合、422/400 を期待する。

@@ -52,3 +52,4 @@
 
 ## 2026-02-05 Task: openai_codex auth
 - `uv run python -m unittest discover -s tests -v` が多数のERRORで失敗（詳細は tool-output: tool_c2d28d515001Ht5Tf1HlJL4xf0）。今回の変更とは無関係に見えるため、現状のCI/環境要因を確認が必要。
+- Pydanticモデルのフィールドに asyncio.Task を持たせようとすると、PrivateAttr を使用していても型チェックや検証で問題が発生することがある。typing.Any や object を適切に使い分ける必要がある（LSPの警告に注意）。
