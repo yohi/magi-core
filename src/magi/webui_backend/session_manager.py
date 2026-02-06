@@ -70,12 +70,13 @@ class SessionManager:
         try:
             while True:
                 await asyncio.sleep(interval_sec)
-                async with self._lock:
-                    await self._cleanup_expired_sessions()
+                try:
+                    async with self._lock:
+                        await self._cleanup_expired_sessions()
+                except Exception as e:
+                    logger.exception(f"Error in session cleanup loop iteration: {e}")
         except asyncio.CancelledError:
             raise
-        except Exception as e:
-            logger.exception(f"Error in session cleanup loop: {e}")
 
     async def create_session(self, prompt: str, options: Optional[SessionOptions] = None) -> str:
         """
