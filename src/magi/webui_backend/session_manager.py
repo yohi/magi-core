@@ -38,6 +38,45 @@ class SessionManager:
         
         self.adapter_factory = adapter_factory or (lambda: MockMagiAdapter())
         self.broadcaster = broadcaster or EventBroadcaster()
+        self._cleanup_task: Optional[asyncio.Task] = None
+
+    def start_cleanup_task(self, interval_sec: float = 60.0):
+        """
+        期限切れセッションを定期的にクリーンアップするバックグラウンドタスクを開始する。
+        """
+        if self._cleanup_task is not None:
+            return
+
+        self._cleanup_task = asyncio.create_task(self._cleanup_loop(interval_sec))
+        logger.info(f"Session cleanup task started (interval: {interval_sec}s)")
+
+    async def stop_cleanup_task(self):
+        """
+        クリーンアップタスクを停止する。
+        """
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+            self._cleanup_task = None
+            logger.info("Session cleanup task stopped")
+
+    async def _cleanup_loop(self, interval_sec: float):
+        """
+        クリーンアップのメインループ。
+        """
+        try:
+            while True:
+                await asyncio.sleep(interval_sec)
+                try:
+                    async with self._lock:
+                        await self._cleanup_expired_sessions()
+                except Exception as e:
+                    logger.exception(f"Error in session cleanup loop iteration: {e}")
+        except asyncio.CancelledError:
+            raise
 
     async def create_session(self, prompt: str, options: Optional[SessionOptions] = None) -> str:
         """
@@ -168,16 +207,31 @@ class SessionManager:
         try:
             adapter = self.adapter_factory()
             
-            async for event in adapter.run(session.prompt, session.options):
-                self._update_session_state(session, event)
-                await self.broadcaster.publish(session_id, event)
+            async def run_with_adapter():
+                async for event in adapter.run(session.prompt, session.options):
+                    self._update_session_state(session, event)
+                    await self.broadcaster.publish(session_id, event)
+            
+            await asyncio.wait_for(run_with_adapter(), timeout=session.options.timeout_sec)
 
         except asyncio.CancelledError:
             session.phase = SessionPhase.CANCELLED
             session.logs.append("Task cancelled.")
             await self.broadcaster.publish(session_id, {
-                "type": "phase",
-                "phase": SessionPhase.CANCELLED.value
+                "type": "error",
+                "code": "CANCELLED",
+                "message": "Session was cancelled."
+            })
+        except asyncio.TimeoutError:
+            session.phase = SessionPhase.ERROR
+            timeout = session.options.timeout_sec
+            msg = f"Timeout after {timeout}s"
+            session.logs.append(msg)
+            logger.exception(f"Timeout in session {session_id}")
+            await self.broadcaster.publish(session_id, {
+                "type": "error",
+                "code": "TIMEOUT",
+                "message": msg
             })
         except Exception as e:
             session.phase = SessionPhase.ERROR
@@ -186,6 +240,7 @@ class SessionManager:
             logger.exception(f"Error in session {session_id}")
             await self.broadcaster.publish(session_id, {
                 "type": "error",
+                "code": "INTERNAL",
                 "message": msg
             })
 
