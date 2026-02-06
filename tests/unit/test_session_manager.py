@@ -47,6 +47,8 @@ class TestSessionManager(unittest.IsolatedAsyncioTestCase):
         # Wait for completion (MockMagiAdapter runs relatively fast but has sleeps)
         # We can poll the session state
         session = manager.get_session(session_id)
+        self.assertIsNotNone(session)
+        if session is None: return
         
         # Wait for RESOLVED or ERROR
         for _ in range(50): # 5 seconds max
@@ -73,4 +75,64 @@ class TestSessionManager(unittest.IsolatedAsyncioTestCase):
         # Check specific event content
         final_event = next(e for e in events if e["type"] == "final")
         self.assertEqual(final_event["decision"], "APPROVE")
+
+    async def test_session_timeout(self):
+        """Verify that a slow adapter triggers a timeout"""
+        broadcaster = EventBroadcaster()
+        
+        class SlowAdapter(MockMagiAdapter):
+            async def run(self, prompt, options):
+                yield {"type": "log", "lines": ["Starting..."]}
+                await asyncio.sleep(2.0)
+                yield {"type": "final", "decision": "APPROVE"}
+                
+        adapter_factory = MagicMock(return_value=SlowAdapter())
+        manager = SessionManager(
+            max_concurrency=5, 
+            adapter_factory=adapter_factory,
+            broadcaster=broadcaster
+        )
+        
+        options = SessionOptions(timeout_sec=0.1)
+        session_id = await manager.create_session("test prompt", options)
+        
+        queue = await broadcaster.subscribe(session_id)
+        session = manager.get_session(session_id)
+        self.assertIsNotNone(session)
+        if session is None: return
+        
+        for _ in range(20):
+            if session.phase == SessionPhase.ERROR:
+                break
+            await asyncio.sleep(0.1)
+            
+        self.assertEqual(session.phase, SessionPhase.ERROR)
+        
+        events = []
+        while not queue.empty():
+            events.append(queue.get_nowait())
+            
+        self.assertTrue(any(e.get("type") == "error" and e.get("code") == "TIMEOUT" for e in events))
+
+    async def test_periodic_cleanup(self):
+        """Verify that expired sessions are removed automatically by the background task"""
+        manager = SessionManager(
+            max_concurrency=5,
+            ttl_sec=1,
+        )
+        
+        manager.start_cleanup_task(interval_sec=0.1)
+        
+        try:
+            session_id = await manager.create_session("test prompt")
+            session = manager.get_session(session_id)
+            self.assertIsNotNone(session)
+            
+            await asyncio.sleep(1.5)
+            
+            self.assertIsNone(manager.get_session(session_id))
+            self.assertNotIn(session_id, manager.sessions)
+            
+        finally:
+            await manager.stop_cleanup_task()
 
