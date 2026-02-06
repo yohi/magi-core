@@ -363,12 +363,20 @@ export default function App() {
 
     if (sessionId) {
       await cancelSession();
+      // Proactively update UI to prevent stuck state while waiting for server events
+      setIsRunning(false);
+      setPhase("CANCELLED");
+      addLog("SESSION CANCELLED", "error");
+      // Fallback cleanup in case server event never arrives
+      setTimeout(() => {
+        resetSequence();
+      }, 5000);
     } else if (isRunning) {
       setIsRunning(false);
       setPhase("CANCELLED");
       addLog("SESSION INITIALIZATION CANCELLED", "error");
     }
-  }, [sessionId, isRunning, cancelSession, addLog]);
+  }, [sessionId, isRunning, cancelSession, addLog, setPhase, resetSequence]);
 
   const resetSequence = useCallback(async () => {
     if (requestAbortRef.current) {
@@ -741,7 +749,7 @@ export default function App() {
               <button id="btn-save" onClick={saveSettings}>
                 SAVE
               </button>
-              <button id="btn-cancel" onClick={closeModal}>
+              <button id="btn-cancel-modal" onClick={closeModal}>
                 CANCEL
               </button>
             </div>
