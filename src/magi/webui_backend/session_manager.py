@@ -224,9 +224,10 @@ class SessionManager:
             })
         except asyncio.TimeoutError as e:
             session.phase = SessionPhase.ERROR
-            msg = f"Timeout Error: {str(e)}"
+            timeout = session.options.timeout_sec
+            msg = f"Timeout after {timeout}s"
             session.logs.append(msg)
-            logger.error(f"Timeout in session {session_id}")
+            logger.exception(f"Timeout in session {session_id}")
             await self.broadcaster.publish(session_id, {
                 "type": "error",
                 "code": "TIMEOUT",
