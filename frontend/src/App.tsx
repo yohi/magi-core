@@ -416,6 +416,14 @@ export default function App() {
       setPhase("CANCELLED");
       addLog("SESSION INITIALIZATION CANCELLED", "error");
       closeWebSocket();
+
+      if (fallbackTimeoutRef.current !== null) {
+        window.clearTimeout(fallbackTimeoutRef.current);
+      }
+      fallbackTimeoutRef.current = window.setTimeout(() => {
+        resetSequence();
+        fallbackTimeoutRef.current = null;
+      }, 5000);
     }
   }, [sessionId, isRunning, cancelSession, addLog, setPhase, resetSequence, closeWebSocket]);
 
@@ -717,7 +725,7 @@ export default function App() {
             <button id="btn-cancel" onClick={handleCancel} disabled={!isRunning} type="button">
               CANCEL
             </button>
-            <button id="btn-reset" onClick={resetSequence} disabled={!sessionId && !isRunning} type="button">
+            <button id="btn-reset" onClick={resetSequence} disabled={!sessionId && !isRunning && phase !== "CANCELLED"} type="button">
               RESET
             </button>
           </div>
