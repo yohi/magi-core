@@ -509,6 +509,13 @@ button:disabled {
   color: var(--magi-red);
 }
 
+.stamp-cancelled {
+  border: 4px double var(--magi-red);
+  color: var(--magi-red);
+  font-size: 36px;
+  letter-spacing: 2px;
+}
+
 .stamp-approve {
   border: 4px double var(--magi-blue);
   color: var(--magi-blue);

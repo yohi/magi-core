@@ -355,6 +355,21 @@ export default function App() {
     }
   }, [sessionId]);
 
+  const handleCancel = useCallback(async () => {
+    if (requestAbortRef.current) {
+      requestAbortRef.current.abort();
+      requestAbortRef.current = null;
+    }
+
+    if (sessionId) {
+      await cancelSession();
+    } else if (isRunning) {
+      setIsRunning(false);
+      setPhase("CANCELLED");
+      addLog("SESSION INITIALIZATION CANCELLED", "error");
+    }
+  }, [sessionId, isRunning, cancelSession, addLog]);
+
   const resetSequence = useCallback(async () => {
     if (requestAbortRef.current) {
       requestAbortRef.current.abort();
@@ -458,6 +473,7 @@ export default function App() {
   const showThinkingStamp = decision === null && isRunning;
   const showApproveStamp = decision === "APPROVE";
   const showDenyStamp = decision === "DENY";
+  const showCancelledStamp = phase === "CANCELLED";
   const phaseColor =
     decision === "APPROVE"
       ? "var(--magi-blue)"
@@ -506,6 +522,13 @@ export default function App() {
                 style={{ display: showDenyStamp ? "flex" : "none" }}
               >
                 <span>否決</span>
+              </div>
+              <div
+                id="stamp-cancelled"
+                className={`stamp stamp-cancelled ${showCancelledStamp ? "visible" : ""}`}
+                style={{ display: showCancelledStamp ? "flex" : "none" }}
+              >
+                <span>中止</span>
               </div>
               <div
                 id="stamp-approve"
@@ -647,10 +670,13 @@ export default function App() {
             disabled={isRunning}
           ></textarea>
           <div className="btn-group">
-            <button id="btn-start" onClick={startSequence} disabled={isRunning}>
+            <button id="btn-start" onClick={startSequence} disabled={isRunning} type="button">
               START
             </button>
-            <button id="btn-reset" onClick={resetSequence} disabled={!sessionId && !isRunning}>
+            <button id="btn-cancel" onClick={handleCancel} disabled={!isRunning} type="button">
+              CANCEL
+            </button>
+            <button id="btn-reset" onClick={resetSequence} disabled={!sessionId && !isRunning} type="button">
               RESET
             </button>
           </div>
