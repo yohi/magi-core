@@ -20,16 +20,22 @@ from fastapi.testclient import TestClient
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-# 環境変数を事前設定して ConfigManager が成功するようにする
-# これにより MockMagiAdapter ではなく ConsensusEngineMagiAdapter が選択される
+_prev_api_key = os.environ.get("MAGI_API_KEY")
+_prev_use_mock = os.environ.get("MAGI_USE_MOCK")
 os.environ["MAGI_API_KEY"] = "test-api-key"
-# os.environ["MAGI_USE_MOCK"] = "0"
-os.environ["MAGI_USE_MOCK"] = (
-    "1"  # Default to Mock for stable CI/E2E testing without external dependencies
-)
+os.environ["MAGI_USE_MOCK"] = "1"
 
-# appのインポート (環境変数設定後に行う)
 from magi.webui_backend.app import app, session_manager
+
+if _prev_api_key is None:
+    os.environ.pop("MAGI_API_KEY", None)
+else:
+    os.environ["MAGI_API_KEY"] = _prev_api_key
+
+if _prev_use_mock is None:
+    os.environ.pop("MAGI_USE_MOCK", None)
+else:
+    os.environ["MAGI_USE_MOCK"] = _prev_use_mock
 
 
 class TestWebUIEndToEnd(unittest.TestCase):
