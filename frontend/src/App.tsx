@@ -167,6 +167,10 @@ export default function App() {
 
   const finalizeRun = useCallback(() => {
     setIsRunning(false);
+    if (fallbackTimeoutRef.current !== null) {
+      window.clearTimeout(fallbackTimeoutRef.current);
+      fallbackTimeoutRef.current = null;
+    }
     closeWebSocket();
   }, [closeWebSocket]);
 
@@ -394,6 +398,10 @@ export default function App() {
       setIsRunning(false);
       setPhase("CANCELLED");
       addLog("SESSION CANCELLED", "error");
+      
+      // Close WebSocket to prevent further events from overwriting the state
+      closeWebSocket();
+
       // Fallback cleanup in case server event never arrives
       if (fallbackTimeoutRef.current !== null) {
         window.clearTimeout(fallbackTimeoutRef.current);
@@ -406,8 +414,9 @@ export default function App() {
       setIsRunning(false);
       setPhase("CANCELLED");
       addLog("SESSION INITIALIZATION CANCELLED", "error");
+      closeWebSocket();
     }
-  }, [sessionId, isRunning, cancelSession, addLog, setPhase, resetSequence]);
+  }, [sessionId, isRunning, cancelSession, addLog, setPhase, resetSequence, closeWebSocket]);
 
   const openModal = (unitKey: "melchior" | "balthasar" | "casper") => {
     setCurrentEditingUnit(unitKey);
