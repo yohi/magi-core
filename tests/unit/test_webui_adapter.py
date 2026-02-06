@@ -99,3 +99,16 @@ class TestConsensusEngineMagiAdapter(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(error_events), 1)
         self.assertEqual(error_events[0]["code"], "MAGI_CORE_ERROR")
         self.assertIn("Test Error", error_events[0]["message"])
+
+    async def test_model_selection(self):
+        options = SessionOptions(model="test-model-999", max_rounds=5)
+        
+        async for _ in self.adapter.run("test prompt", options):
+            pass
+            
+        self.engine_factory.assert_called_once()
+        _, kwargs = self.engine_factory.call_args
+        run_config = kwargs.get("config")
+        
+        self.assertEqual(run_config.model, "test-model-999")
+        self.assertEqual(run_config.debate_rounds, 5)

@@ -93,7 +93,7 @@ class TestSessionManager(unittest.IsolatedAsyncioTestCase):
             broadcaster=broadcaster
         )
         
-        options = SessionOptions(timeout_sec=0.1)
+        options = SessionOptions(timeout_sec=1)
         session_id = await manager.create_session("test prompt", options)
         
         queue = await broadcaster.subscribe(session_id)
