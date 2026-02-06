@@ -126,6 +126,7 @@ export default function App() {
   const logRef = useRef<HTMLDivElement | null>(null);
   const requestAbortRef = useRef<AbortController | null>(null);
   const fallbackTimeoutRef = useRef<number | null>(null);
+  const cancelledRef = useRef(false);
 
   const addLog = useCallback((message: string, level: LogLevel = "normal") => {
     logIdRef.current += 1;
@@ -167,7 +168,7 @@ export default function App() {
 
   const finalizeRun = useCallback(() => {
     setIsRunning(false);
-    if (fallbackTimeoutRef.current !== null) {
+    if (!cancelledRef.current && fallbackTimeoutRef.current !== null) {
       window.clearTimeout(fallbackTimeoutRef.current);
       fallbackTimeoutRef.current = null;
     }
@@ -271,7 +272,7 @@ export default function App() {
 
       ws.addEventListener("close", () => {
         addLog("WEBSOCKET CLOSED", "info");
-        if (isRunning) {
+        if (isRunning && !cancelledRef.current) {
           finalizeRun();
         }
       });
@@ -293,6 +294,8 @@ export default function App() {
       window.clearTimeout(fallbackTimeoutRef.current);
       fallbackTimeoutRef.current = null;
     }
+
+    cancelledRef.current = false;
 
     if (requestAbortRef.current) {
       requestAbortRef.current.abort();
@@ -394,15 +397,12 @@ export default function App() {
 
     if (sessionId) {
       await cancelSession();
-      // Proactively update UI to prevent stuck state while waiting for server events
+      cancelledRef.current = true;
       setIsRunning(false);
       setPhase("CANCELLED");
       addLog("SESSION CANCELLED", "error");
-      
-      // Close WebSocket to prevent further events from overwriting the state
       closeWebSocket();
 
-      // Fallback cleanup in case server event never arrives
       if (fallbackTimeoutRef.current !== null) {
         window.clearTimeout(fallbackTimeoutRef.current);
       }
@@ -411,6 +411,7 @@ export default function App() {
         fallbackTimeoutRef.current = null;
       }, 5000);
     } else if (isRunning) {
+      cancelledRef.current = true;
       setIsRunning(false);
       setPhase("CANCELLED");
       addLog("SESSION INITIALIZATION CANCELLED", "error");
