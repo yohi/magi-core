@@ -98,6 +98,7 @@ class ProviderConfigLoader:
         self,
         config_path: Optional[Path] = None,
         force_reload: bool = False,
+        skip_validation: bool = False,
     ) -> ProviderConfigs:
         """プロバイダ設定を読み込む"""
         if self._cache is not None and not force_reload:
@@ -107,7 +108,8 @@ class ProviderConfigLoader:
         env_providers, env_default = self._load_from_env()
         merged = self._merge_providers(file_providers, env_providers)
         default_provider = self._resolve_default_provider(file_default, env_default)
-        self._validate(merged, default_provider)
+        if not skip_validation:
+            self._validate(merged, default_provider)
 
         self._cache = ProviderConfigs(
             providers=merged,
@@ -295,6 +297,10 @@ class ProviderConfigLoader:
             aggregated_missing = {
                 entry["provider"]: entry["missing_fields"] for entry in errors
             }
+            # 認証ベースのプロバイダの場合は、認証前は設定が不足していても許容したい場合があるが、
+            # 現状は一律エラーにしている。
+            # ただし、デフォルトプロバイダが設定済みであれば、他のプロバイダの設定不足は無視すべきかもしれない。
+            # ここでは厳密なチェックを維持しつつ、呼び出し側でハンドリングすることを想定。
             message = f"プロバイダ設定が不足しています: {providers_with_error}"
             detail = {
                 "providers": errors,

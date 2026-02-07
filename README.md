@@ -19,13 +19,19 @@ MAGIシステムは、アニメ「エヴァンゲリオン」に登場するMAGI
 
 従来の単一プロンプトによるAIエージェント開発から脱却し、「**合議判定コア（Core）**」と「**機能拡張（Plugins）**」を分離することで、保守性、専門性、拡張性を担保する次世代のAI開発環境を提供します。
 
+### 🚀 特徴
+
+*   **マルチモデル合議 (Multi-Model Consensus)**: 各賢者に異なるLLM（例: 論理担当にGPT-4、速度担当にGPT-4o mini）を割り当て、コストと精度のバランスを最適化。
+*   **マルチプロバイダー対応**: Anthropic Claude, OpenAI, GitHub Copilot, Google Gemini, Antigravity など、主要なLLMプロバイダーをサポート。
+*   **プラグイン拡張**: 仕様書生成やコードレビューなど、特定のタスクに特化した機能をプラグインとして追加可能。
+
 ### 🎭 3賢者（Three Magi）
 
-| ペルソナ | 役割 | 特性 |
-|---------|------|------|
-| **MELCHIOR-1** | 論理・科学 | 論理的整合性と事実に基づいた分析を行う |
-| **BALTHASAR-2** | 倫理・保護 | リスク回避と現状維持を優先する |
-| **CASPER-3** | 欲望・実利 | ユーザーの利益と効率を最優先する |
+| ペルソナ | 役割 | 特性 | 推奨モデル例 |
+|---------|------|------|------------|
+| **MELCHIOR-1** | 論理・科学 | 論理的整合性と事実に基づいた分析を行う | GPT-4o, Claude 3.5 Sonnet |
+| **BALTHASAR-2** | 倫理・保護 | リスク回避と現状維持を優先する | GPT-4 Turbo, Claude 3 Opus |
+| **CASPER-3** | 欲望・実利 | ユーザーの利益と効率を最優先する | GPT-4o mini, Haiku |
 
 ### 📊 合議プロトコル（Consensus Protocol）
 
@@ -85,8 +91,14 @@ magi --help
 # バージョンを表示
 magi --version
 
+# 設定ファイルの生成
+magi init
+
 # 3賢者に質問
 magi ask "このコードをレビューしてください"
+
+# 認証（Google/Antigravity, Claude, etc.）
+magi auth login antigravity
 
 # 仕様書の作成とレビュー（プラグイン使用）
 magi spec "ログイン機能の仕様書を作成"
@@ -145,10 +157,11 @@ docker compose up --build
 
 ### 設定ファイル（magi.yaml）
 
-プロジェクトルートに `magi.yaml` を配置することで、設定をカスタマイズできます：
+`magi init` コマンドを実行すると、プロジェクトルートに設定ファイルの雛形 (`magi.yaml`) が生成されます。
+各賢者に異なるモデルを割り当てることで、コストパフォーマンスと精度の最適化が可能です。
 
 ```yaml
-# magi.yaml
+# magi.yaml (Global Settings)
 model: claude-sonnet-4-20250514
 debate_rounds: 2
 voting_threshold: majority
@@ -156,49 +169,62 @@ output_format: markdown
 timeout: 120
 retry_count: 3
 
-# ペルソナ個別設定 (オプション)
-# キーは melchior / balthasar / casper (小文字) を推奨
+# ペルソナ個別設定 (Persona Overrides)
+# 各賢者の役割に合わせて最適なモデルとパラメータを設定します
 personas:
   melchior:
     llm:
-      model: claude-3-opus-20240229  # 論理担当に高性能モデルを割り当て
-      temperature: 0.0            # 厳密な論理的整合性のために低く設定 (0.0-1.0)
+      model: claude-3-opus-20240229  # 論理担当には最高精度のモデル
+      temperature: 0.0            # 厳密な論理的整合性のために決定論的に
   casper:
     llm:
-      timeout: 180  # 複雑な処理のためにタイムアウトを延長
-# 個別設定がない項目はグローバル設定が使用されます
+      model: gpt-4o-mini          # 実利担当には高速・低コストなモデル
+      timeout: 180                # 複雑な処理のためにタイムアウトを延長
+# 個別設定がない項目（Balthasar等）はグローバル設定が使用されます
 ```
 
 ### マルチプロバイダー認証 (Multi-Provider Authentication)
 
-MAGIシステムは `claude` (Anthropic), `copilot` (GitHub Copilot), `antigravity` の各プロバイダーをサポートしています。認証トークンは `keyring` を使用して安全に保存されます。
+MAGIシステムは `claude` (Anthropic), `copilot` (GitHub Copilot), `antigravity` (Google OAuth) の各プロバイダーをサポートしています。
+認証トークンは OS のキーストア (`keyring`) を使用して安全に保存されます。
 
-`magi.yaml` での各プロバイダーの設定例：
+#### 認証コマンド
 
-#### GitHub Copilot
+```bash
+# 認証プロバイダを選択してログイン（ブラウザ認証）
+magi auth login antigravity
+
+# ログアウト
+magi auth logout antigravity
+
+# 認証状態の確認
+magi auth status
+```
+
+#### 設定例 (magi.yaml)
+
+`magi init` で生成される設定ファイルには、主要なプロバイダの設定例が含まれています。
+
+**Antigravity (Google OAuth):**
+```yaml
+providers:
+  antigravity:
+    model: ag-model-v1
+    # Client ID / Secret はコード内デフォルト値が使用されますが、
+    # 必要に応じて上書き可能です。
+    # options:
+    #   client_id: "your-google-client-id"
+    #   client_secret: "your-google-client-secret"
+```
+
+**GitHub Copilot:**
 ```yaml
 providers:
   copilot:
     model: gpt-4
     options:
-      client_id: "Iv1.b507a08c87ecfe98" # オプション（デフォルト値あり）
+      client_id: "Iv1.b507a08c87ecfe98" # デフォルト値あり
 ```
-
-#### Antigravity
-```yaml
-providers:
-  antigravity:
-    model: ag-model-v1
-    endpoint: https://api.antigravity.dev/v1
-    options:
-      auth_url: https://auth.antigravity.dev/authorize
-      token_url: https://auth.antigravity.dev/token
-      client_id: "your-client-id"
-      client_secret: "your-client-secret" # オプション
-```
-
-#### Claude (Anthropic)
-`provider: claude` を指定することで、OAuth 2.1 経由での認証をサポートします。
 
 ---
 

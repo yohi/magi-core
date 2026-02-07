@@ -9,7 +9,11 @@ from magi.cli.parser import ArgumentParser
 from magi.cli.main import MagiCLI
 from magi.config.manager import Config, ConfigManager
 from magi.config.provider import ProviderConfigLoader
-from magi.core.providers import ProviderAdapterFactory, ProviderRegistry, ProviderSelector
+from magi.core.providers import (
+    ProviderAdapterFactory,
+    ProviderRegistry,
+    ProviderSelector,
+)
 from magi.errors import MagiException
 
 
@@ -67,7 +71,7 @@ def main(args: List[str] | None = None) -> int:
             default_provider=provider_configs.default_provider,
         )
     except MagiException as exc:
-        if parsed.command not in ("help", "version"):
+        if parsed.command not in ("help", "version", "init", "auth"):
             print(f"Provider configuration error: {exc.error.message}", file=sys.stderr)
             return 1
 
@@ -77,7 +81,7 @@ def main(args: List[str] | None = None) -> int:
         config = config_manager.load()
     except MagiException as exc:
         # API keyがなくてもヘルプ系コマンドは動作させる
-        if parsed.command in ("help", "version"):
+        if parsed.command in ("help", "version", "init", "auth"):
             config = Config(api_key="")
         elif provider_selector is not None:
             try:
@@ -91,7 +95,7 @@ def main(args: List[str] | None = None) -> int:
             return 1
     except Exception as e:
         # 予期しないエラーの場合
-        if parsed.command in ("help", "version"):
+        if parsed.command in ("help", "version", "init", "auth"):
             config = Config(api_key="")
         else:
             print(f"Configuration error: {e}", file=sys.stderr)
