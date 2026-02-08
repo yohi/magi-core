@@ -11,7 +11,7 @@ from magi.output.formatter import OutputFormat
 
 
 # 有効なコマンド一覧
-VALID_COMMANDS = {"ask", "spec", "help", "version"}
+VALID_COMMANDS = {"ask", "spec", "help", "version", "auth", "init"}
 
 
 @dataclass
@@ -25,6 +25,7 @@ class ParsedCommand:
         plugin: 使用するプラグイン名
         output_format: 出力形式
     """
+
     command: str
     args: List[str]
     options: Dict[str, Any]
@@ -40,6 +41,7 @@ class ValidationResult:
         is_valid: 有効かどうか
         errors: エラーメッセージのリスト
     """
+
     is_valid: bool
     errors: List[str]
 
@@ -123,6 +125,11 @@ class ArgumentParser:
                 i += 1
                 continue
 
+            if arg in ("-f", "--force", "-y", "--yes"):
+                options["force"] = True
+                i += 1
+                continue
+
             # コマンドまたは引数
             if not command and not arg.startswith("-"):
                 command = arg
@@ -137,7 +144,7 @@ class ArgumentParser:
             args=args,
             options=options,
             plugin=plugin,
-            output_format=output_format
+            output_format=output_format,
         )
 
     def validate(self, parsed: ParsedCommand) -> ValidationResult:
@@ -152,7 +159,11 @@ class ArgumentParser:
         errors: List[str] = []
 
         # ヘルプ・バージョンオプションは常に有効
-        if parsed.options.get("help") or parsed.options.get("version") or parsed.options.get("config_check"):
+        if (
+            parsed.options.get("help")
+            or parsed.options.get("version")
+            or parsed.options.get("config_check")
+        ):
             return ValidationResult(is_valid=True, errors=[])
 
         # コマンドが空の場合
