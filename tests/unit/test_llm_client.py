@@ -2,10 +2,12 @@
 
 LLMクライアントの基本機能をテストする。
 """
+
 import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock, call, patch
 from dataclasses import dataclass
+from typing import Any
 
 from magi.llm.client import (
     LLMRequest,
@@ -23,8 +25,7 @@ class TestLLMRequest(unittest.TestCase):
     def test_create_with_defaults(self):
         """デフォルト値でのリクエスト作成"""
         request = LLMRequest(
-            system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト"
+            system_prompt="システムプロンプト", user_prompt="ユーザープロンプト"
         )
         self.assertEqual(request.system_prompt, "システムプロンプト")
         self.assertEqual(request.user_prompt, "ユーザープロンプト")
@@ -37,7 +38,7 @@ class TestLLMRequest(unittest.TestCase):
             system_prompt="システム",
             user_prompt="ユーザー",
             max_tokens=2048,
-            temperature=0.5
+            temperature=0.5,
         )
         self.assertEqual(request.max_tokens, 2048)
         self.assertEqual(request.temperature, 0.5)
@@ -51,7 +52,7 @@ class TestLLMResponse(unittest.TestCase):
         response = LLMResponse(
             content="応答内容",
             usage={"input_tokens": 100, "output_tokens": 50},
-            model="claude-sonnet-4-20250514"
+            model="claude-sonnet-4-20250514",
         )
         self.assertEqual(response.content, "応答内容")
         self.assertEqual(response.usage["input_tokens"], 100)
@@ -86,7 +87,7 @@ class TestLLMClient(unittest.TestCase):
             api_key="test-key",
             model="claude-3-opus-20240229",
             retry_count=5,
-            timeout=120
+            timeout=120,
         )
         self.assertEqual(client.model, "claude-3-opus-20240229")
         self.assertEqual(client.retry_count, 5)
@@ -111,6 +112,7 @@ class TestLLMClient(unittest.TestCase):
         # 実際のanthropicライブラリのRateLimitErrorをテスト
         from anthropic import RateLimitError
         import httpx
+
         # RateLimitErrorはhttpx.Responseを必要とするため、モックを作成
         mock_response = MagicMock(spec=httpx.Response)
         mock_response.request = MagicMock()
@@ -128,20 +130,25 @@ class TestLLMClient(unittest.TestCase):
         # 実際のanthropicライブラリのAuthenticationErrorをテスト
         from anthropic import AuthenticationError
         import httpx
+
         # AuthenticationErrorはhttpx.Responseを必要とするため、モックを作成
         mock_response = MagicMock(spec=httpx.Response)
         mock_response.request = MagicMock()
         mock_response.status_code = 401  # Unauthorized status code
         mock_response.headers = MagicMock()
         mock_response.headers.get = MagicMock(return_value=None)
-        error = AuthenticationError("Authentication failed", response=mock_response, body=None)
+        error = AuthenticationError(
+            "Authentication failed", response=mock_response, body=None
+        )
         error_type = client._classify_error(error)
         self.assertEqual(error_type, APIErrorType.AUTH_ERROR)
 
     def test_create_error_for_timeout(self):
         """タイムアウトエラーのMagiError作成"""
         client = LLMClient(api_key="test-key")
-        error = client._create_error_for_type(APIErrorType.TIMEOUT, Exception("タイムアウト"))
+        error = client._create_error_for_type(
+            APIErrorType.TIMEOUT, Exception("タイムアウト")
+        )
 
         self.assertEqual(error.code, ErrorCode.API_TIMEOUT.value)
         self.assertIn("タイムアウト", error.message)
@@ -150,7 +157,9 @@ class TestLLMClient(unittest.TestCase):
     def test_create_error_for_rate_limit(self):
         """レート制限エラーのMagiError作成"""
         client = LLMClient(api_key="test-key")
-        error = client._create_error_for_type(APIErrorType.RATE_LIMIT, Exception("レート制限"))
+        error = client._create_error_for_type(
+            APIErrorType.RATE_LIMIT, Exception("レート制限")
+        )
 
         self.assertEqual(error.code, ErrorCode.API_RATE_LIMIT.value)
         self.assertIn("レート制限", error.message)
@@ -159,11 +168,24 @@ class TestLLMClient(unittest.TestCase):
     def test_create_error_for_auth_error(self):
         """認証エラーのMagiError作成"""
         client = LLMClient(api_key="test-key")
-        error = client._create_error_for_type(APIErrorType.AUTH_ERROR, Exception("認証"))
+        error = client._create_error_for_type(
+            APIErrorType.AUTH_ERROR, Exception("認証")
+        )
 
         self.assertEqual(error.code, ErrorCode.API_AUTH_ERROR.value)
         self.assertIn("認証", error.message)
         self.assertFalse(error.recoverable)
+
+    def test_create_error_for_unknown(self):
+        """未知のエラーのMagiError作成"""
+        client = LLMClient(api_key="test-key")
+        original_error = ValueError("予期しないエラー")
+        error = client._create_error_for_type(APIErrorType.UNKNOWN, original_error)
+
+        self.assertEqual(error.code, ErrorCode.API_ERROR.value)
+        self.assertIn("予期しないエラー", error.message)
+        self.assertTrue(error.recoverable)
+        self.assertEqual(error.details["error_type"], "ValueError")
 
 
 class TestLLMClientAsync(unittest.TestCase):
@@ -181,14 +203,12 @@ class TestLLMClientAsync(unittest.TestCase):
         mock_response.model = "claude-sonnet-4-20250514"
 
         with patch.object(
-            client._client.messages, "create",
+            client._client.messages,
+            "create",
             new_callable=AsyncMock,
-            return_value=mock_response
+            return_value=mock_response,
         ):
-            request = LLMRequest(
-                system_prompt="システム",
-                user_prompt="ユーザー"
-            )
+            request = LLMRequest(system_prompt="システム", user_prompt="ユーザー")
 
             async def run_test():
                 response = await client.send(request)
@@ -218,14 +238,8 @@ class TestLLMClientAsync(unittest.TestCase):
                 raise asyncio.TimeoutError()
             return mock_response
 
-        with patch.object(
-            client._client.messages, "create",
-            side_effect=mock_create
-        ):
-            request = LLMRequest(
-                system_prompt="システム",
-                user_prompt="ユーザー"
-            )
+        with patch.object(client._client.messages, "create", side_effect=mock_create):
+            request = LLMRequest(system_prompt="システム", user_prompt="ユーザー")
 
             async def run_test():
                 response = await client.send(request)
@@ -241,14 +255,8 @@ class TestLLMClientAsync(unittest.TestCase):
         async def mock_create(*args, **kwargs):
             raise asyncio.TimeoutError()
 
-        with patch.object(
-            client._client.messages, "create",
-            side_effect=mock_create
-        ):
-            request = LLMRequest(
-                system_prompt="システム",
-                user_prompt="ユーザー"
-            )
+        with patch.object(client._client.messages, "create", side_effect=mock_create):
+            request = LLMRequest(system_prompt="システム", user_prompt="ユーザー")
 
             async def run_test():
                 with self.assertRaises(MagiException) as context:
@@ -256,7 +264,9 @@ class TestLLMClientAsync(unittest.TestCase):
                 # リトライ回数超過エラーを確認
                 # MagiExceptionが正しくラップされていることを確認
                 self.assertIsInstance(context.exception.error, MagiError)
-                self.assertEqual(context.exception.error.code, ErrorCode.API_TIMEOUT.value)
+                self.assertEqual(
+                    context.exception.error.code, ErrorCode.API_TIMEOUT.value
+                )
                 # 例外メッセージにタイムアウト関連メッセージが含まれることを確認
                 self.assertIn("タイムアウト", str(context.exception))
 
@@ -274,22 +284,19 @@ class TestLLMClientAsync(unittest.TestCase):
             # 認証エラーをシミュレート
             from anthropic import AuthenticationError
             import httpx
+
             # AuthenticationErrorはhttpx.Responseを必要とするため、モックを作成
             mock_response = MagicMock(spec=httpx.Response)
             mock_response.request = MagicMock()
             mock_response.status_code = 401  # Unauthorized status code
             mock_response.headers = MagicMock()
             mock_response.headers.get = MagicMock(return_value=None)
-            raise AuthenticationError("Invalid API key", response=mock_response, body=None)
-
-        with patch.object(
-            client._client.messages, "create",
-            side_effect=mock_create
-        ):
-            request = LLMRequest(
-                system_prompt="システム",
-                user_prompt="ユーザー"
+            raise AuthenticationError(
+                "Invalid API key", response=mock_response, body=None
             )
+
+        with patch.object(client._client.messages, "create", side_effect=mock_create):
+            request = LLMRequest(system_prompt="システム", user_prompt="ユーザー")
 
             async def run_test():
                 with self.assertRaises(MagiException) as context:
@@ -298,7 +305,9 @@ class TestLLMClientAsync(unittest.TestCase):
                 self.assertEqual(call_count, 1)
                 # MagiExceptionが正しくラップされていることを確認
                 self.assertIsInstance(context.exception.error, MagiError)
-                self.assertEqual(context.exception.error.code, ErrorCode.API_AUTH_ERROR.value)
+                self.assertEqual(
+                    context.exception.error.code, ErrorCode.API_AUTH_ERROR.value
+                )
                 self.assertFalse(context.exception.error.recoverable)
 
             asyncio.run(run_test())
@@ -344,13 +353,16 @@ class TestLLMClientAsync(unittest.TestCase):
 
         jitter_values = [0.01, 0.02, 0.03]
         request = LLMRequest(system_prompt="s", user_prompt="u")
-        with patch(
-            "magi.llm.client.random.uniform",
-            side_effect=jitter_values,
-        ) as mock_uniform, patch(
-            "magi.llm.client.asyncio.sleep",
-            new_callable=AsyncMock,
-        ) as mock_sleep:
+        with (
+            patch(
+                "magi.llm.client.random.uniform",
+                side_effect=jitter_values,
+            ) as mock_uniform,
+            patch(
+                "magi.llm.client.asyncio.sleep",
+                new_callable=AsyncMock,
+            ) as mock_sleep,
+        ):
             asyncio.run(client.send(request))
 
         # 3回スリープして4回目で成功する
@@ -411,15 +423,17 @@ class TestLLMClientAsync(unittest.TestCase):
         client._send_request = AsyncMock(side_effect=mock_send)
         request = LLMRequest(system_prompt="s", user_prompt="u")
 
-        with patch(
-            "magi.llm.client.random.uniform",
-            return_value=0.0,
-        ) as mock_uniform, patch(
-            "magi.llm.client.asyncio.sleep",
-            new_callable=AsyncMock,
-        ) as mock_sleep, self.assertLogs(
-            "magi.llm.client", level="WARNING"
-        ) as log:
+        with (
+            patch(
+                "magi.llm.client.random.uniform",
+                return_value=0.0,
+            ) as mock_uniform,
+            patch(
+                "magi.llm.client.asyncio.sleep",
+                new_callable=AsyncMock,
+            ) as mock_sleep,
+            self.assertLogs("magi.llm.client", level="WARNING") as log,
+        ):
             asyncio.run(client.send(request))
 
         mock_controller.note_rate_limit.assert_called_once()
@@ -427,9 +441,7 @@ class TestLLMClientAsync(unittest.TestCase):
         sleep_arg = mock_sleep.await_args_list[0].args[0]
         self.assertGreaterEqual(sleep_arg, 0.05)
         mock_uniform.assert_called_once_with(0, 0.1)
-        self.assertTrue(
-            any("rate limit" in message.lower() for message in log.output)
-        )
+        self.assertTrue(any("rate limit" in message.lower() for message in log.output))
 
     def test_retry_with_full_jitter_for_timeout(self):
         """タイムアウト時にFull Jitterで3回試行し例外を送出する"""
@@ -445,13 +457,17 @@ class TestLLMClientAsync(unittest.TestCase):
         request = LLMRequest(system_prompt="s", user_prompt="u")
         jitter_values = [0.05, 0.08]
 
-        with patch(
-            "magi.llm.client.random.uniform",
-            side_effect=jitter_values,
-        ) as mock_uniform, patch(
-            "magi.llm.client.asyncio.sleep",
-            new_callable=AsyncMock,
-        ) as mock_sleep:
+        with (
+            patch(
+                "magi.llm.client.random.uniform",
+                side_effect=jitter_values,
+            ) as mock_uniform,
+            patch(
+                "magi.llm.client.asyncio.sleep",
+                new_callable=AsyncMock,
+            ) as mock_sleep,
+        ):
+
             async def run_test():
                 with self.assertRaises(MagiException):
                     await client.send(request)
@@ -468,7 +484,6 @@ class TestLLMClientAsync(unittest.TestCase):
             ]
         )
 
-
     def test_send_with_attachments(self):
         """添付ファイルを含むリクエストが正しく処理される"""
         client = LLMClient(api_key="test-key")
@@ -483,42 +498,41 @@ class TestLLMClientAsync(unittest.TestCase):
         # テスト用の画像データ
         image_data = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
         attachment = Attachment(
-            mime_type="image/png",
-            data=image_data,
-            filename="test.png"
+            mime_type="image/png", data=image_data, filename="test.png"
         )
 
         with patch.object(
-            client._client.messages, "create",
+            client._client.messages,
+            "create",
             new_callable=AsyncMock,
-            return_value=mock_response
+            return_value=mock_response,
         ) as mock_create:
             request = LLMRequest(
                 system_prompt="システム",
                 user_prompt="この画像を説明してください",
-                attachments=[attachment]
+                attachments=[attachment],
             )
 
             async def run_test():
                 response = await client.send(request)
                 self.assertEqual(response.content, "画像を確認しました")
                 self.assertEqual(response.usage["input_tokens"], 150)
-                
+
                 # messages.createが正しい引数で呼ばれたことを確認
                 call_args = mock_create.call_args
                 messages = call_args.kwargs["messages"]
                 self.assertEqual(len(messages), 1)
-                
+
                 # メッセージのcontentが配列形式であることを確認
                 content = messages[0]["content"]
                 self.assertIsInstance(content, list)
                 self.assertEqual(len(content), 2)  # テキスト + 画像
-                
+
                 # テキストパートを確認
                 text_part = content[0]
                 self.assertEqual(text_part["type"], "text")
                 self.assertEqual(text_part["text"], "この画像を説明してください")
-                
+
                 # 画像パートを確認
                 image_part = content[1]
                 self.assertEqual(image_part["type"], "image")
@@ -529,6 +543,75 @@ class TestLLMClientAsync(unittest.TestCase):
 
             asyncio.run(run_test())
 
+
+# Mocking Anthropic Stream Events
+@dataclass
+class MockEvent:
+    type: str
+    delta: Any = None
+    message: Any = None
+    usage: Any = None
+    index: int = 0
+    content_block: Any = None
+    error: Any = None
+
+
+@dataclass
+class MockDelta:
+    text: str = ""
+    usage: Any = None
+
+
+@dataclass
+class MockMessage:
+    usage: Any = None
+
+
+@dataclass
+class MockUsage:
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+class TestLLMClientStreaming(unittest.TestCase):
+    def setUp(self):
+        self.client = LLMClient(api_key="test-key")
+
+    def test_streaming_response_accumulation_and_usage(self):
+        """Test that streaming properly accumulates content and usage metrics."""
+
+        events = [
+            MockEvent(
+                type="message_start",
+                message=MockMessage(usage=MockUsage(input_tokens=10, output_tokens=0)),
+            ),
+            MockEvent(type="content_block_start", index=0, content_block=MagicMock()),
+            MockEvent(type="content_block_delta", delta=MockDelta(text="Hello")),
+            MockEvent(type="content_block_delta", delta=MockDelta(text=", ")),
+            MockEvent(type="content_block_delta", delta=MockDelta(text="World")),
+            MockEvent(
+                type="message_delta",
+                usage=MockUsage(output_tokens=25),
+            ),
+            MockEvent(type="message_stop"),
+        ]
+
+        async def async_generator():
+            for event in events:
+                yield event
+
+        request = LLMRequest(system_prompt="sys", user_prompt="user")
+        request.stream = True
+
+        mock_create = AsyncMock(return_value=async_generator())
+
+        with patch.object(self.client._client.messages, "create", new=mock_create):
+            response = asyncio.run(self.client.send(request))
+
+            self.assertEqual(response.content, "Hello, World")
+            self.assertEqual(response.usage["input_tokens"], 10)
+            self.assertEqual(response.usage["output_tokens"], 25)
+            self.assertEqual(response.model, "claude-sonnet-4-20250514")
 
 
 if __name__ == "__main__":

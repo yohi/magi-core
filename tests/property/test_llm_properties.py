@@ -5,6 +5,7 @@
 
 For any APIエラー種別に対して、LLM_Clientは対応する適切なエラーメッセージを生成する
 """
+
 import unittest
 from hypothesis import given, settings, strategies as st, assume
 
@@ -39,7 +40,7 @@ class TestErrorMessageConsistency(unittest.TestCase):
             APIErrorType.TIMEOUT: ErrorCode.API_TIMEOUT.value,
             APIErrorType.RATE_LIMIT: ErrorCode.API_RATE_LIMIT.value,
             APIErrorType.AUTH_ERROR: ErrorCode.API_AUTH_ERROR.value,
-            APIErrorType.UNKNOWN: ErrorCode.API_TIMEOUT.value,  # UNKNOWNはタイムアウト扱い
+            APIErrorType.UNKNOWN: ErrorCode.API_ERROR.value,  # UNKNOWNは汎用APIエラー扱い
         }
         self.assertEqual(error.code, expected_codes[error_type])
 
@@ -93,28 +94,27 @@ class TestErrorMessageConsistency(unittest.TestCase):
     @given(
         api_key=st.text(min_size=1, max_size=100),
         model=st.text(min_size=1, max_size=100),
-        error_type=st.sampled_from(APIErrorType)
+        error_type=st.sampled_from(APIErrorType),
     )
     @settings(max_examples=100, deadline=None)
     def test_error_generation_is_independent_of_client_config(
-        self,
-        api_key: str,
-        model: str,
-        error_type: APIErrorType
+        self, api_key: str, model: str, error_type: APIErrorType
     ):
         """エラー生成はクライアント設定に依存しない
 
         Property: For any クライアント設定に対して、同じエラータイプは同じエラーコードを生成
         """
         assume(api_key.strip())  # 空白のみのキーは除外
-        assume(model.strip())    # 空白のみのモデル名は除外
+        assume(model.strip())  # 空白のみのモデル名は除外
 
         client = LLMClient(api_key=api_key, model=model)
         error = client._create_error_for_type(error_type, Exception("test"))
 
         # デフォルト設定のクライアントと比較
         default_client = LLMClient(api_key="default-key")
-        default_error = default_client._create_error_for_type(error_type, Exception("test"))
+        default_error = default_client._create_error_for_type(
+            error_type, Exception("test")
+        )
 
         # エラーコードは設定に関係なく同一
         self.assertEqual(error.code, default_error.code)
@@ -130,7 +130,9 @@ class TestRetryBehaviorByErrorType(unittest.TestCase):
 
     @given(error_type=st.sampled_from(APIErrorType))
     @settings(max_examples=100)
-    def test_should_retry_is_consistent_with_recoverable(self, error_type: APIErrorType):
+    def test_should_retry_is_consistent_with_recoverable(
+        self, error_type: APIErrorType
+    ):
         """リトライ判定はrecoverableと一貫している
 
         Property: 認証エラー以外のrecoverableなエラーはリトライ対象

@@ -42,7 +42,7 @@ class MagiSettings(BaseSettings):
         super().__init__(**data)
 
     # API 設定
-    api_key: str = Field(..., description="Anthropic API Key")
+    api_key: Optional[str] = Field(None, description="Anthropic API Key")
     model: str = Field(default="claude-sonnet-4-20250514")
     timeout: int = Field(default=60, ge=1)
     retry_count: int = Field(default=3, ge=0, le=10)
@@ -50,6 +50,9 @@ class MagiSettings(BaseSettings):
 
     # ペルソナ設定
     personas: Dict[str, PersonaConfig] = Field(default_factory=dict)
+
+    # プロバイダ設定
+    providers: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
     # 合議設定
     debate_rounds: int = Field(default=1, ge=1)
@@ -211,7 +214,9 @@ class MagiSettings(BaseSettings):
         return self.guardrails_on_timeout
 
     @guardrails_on_timeout_behavior.setter
-    def guardrails_on_timeout_behavior(self, value: Literal["fail-open", "fail-closed"]) -> None:
+    def guardrails_on_timeout_behavior(
+        self, value: Literal["fail-open", "fail-closed"]
+    ) -> None:
         if value not in ("fail-open", "fail-closed"):
             raise ValueError(
                 f"guardrails_on_timeout_behavior must be 'fail-open' or 'fail-closed', got: {value}"
@@ -223,7 +228,9 @@ class MagiSettings(BaseSettings):
         return self.guardrails_on_error
 
     @guardrails_on_error_policy.setter
-    def guardrails_on_error_policy(self, value: Literal["fail-open", "fail-closed"]) -> None:
+    def guardrails_on_error_policy(
+        self, value: Literal["fail-open", "fail-closed"]
+    ) -> None:
         if value not in ("fail-open", "fail-closed"):
             raise ValueError(
                 f"guardrails_on_error_policy must be 'fail-open' or 'fail-closed', got: {value}"
