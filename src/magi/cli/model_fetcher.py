@@ -62,24 +62,19 @@ def _fetch_anthropic(api_key: str, timeout: float) -> List[str]:
 
 def _fetch_google(api_key: str, provider_id: str, timeout: float) -> List[str]:
     """
-    Google または Antigravity から利用可能なモデルの一覧を取得します。
+    Googleから利用可能なモデルの一覧を取得します。
 
     Args:
-        api_key: APIキーまたはBearerトークン
-        provider_id: 'google' または 'antigravity'
+        api_key: APIキー
+        provider_id: 'google' ('antigravity' は別関数で処理)
         timeout: タイムアウト秒数
 
     Returns:
         利用可能なモデルのIDのリスト
     """
-    if provider_id == "google":
-        url = "https://generativelanguage.googleapis.com/v1beta/models"
-        params = {"key": api_key}
-        headers = {}
-    else:  # antigravity
-        url = "https://generativelanguage.googleapis.com/v1beta/models"
-        params = {}
-        headers = {"Authorization": f"Bearer {api_key}"}
+    url = "https://generativelanguage.googleapis.com/v1beta/models"
+    params = {"key": api_key}
+    headers = {}
 
     response = httpx.get(url, headers=headers, params=params, timeout=timeout)
     _ = response.raise_for_status()
@@ -108,6 +103,39 @@ def _fetch_google(api_key: str, provider_id: str, timeout: float) -> List[str]:
     return models
 
 
+def _fetch_antigravity(api_key: str, timeout: float) -> List[str]:
+    """
+    Antigravity (Cloud Code) から利用可能なモデルの一覧を取得します。
+
+    Args:
+        api_key: Bearerトークン
+        timeout: タイムアウト秒数
+
+    Returns:
+        利用可能なモデルのIDのリスト
+    """
+    url = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "User-Agent": "antigravity",
+        "Content-Type": "application/json",
+    }
+    # Project IDは現状取得手段がないため、空のJSONボディを送信する
+    # サーバー側でトークンからプロジェクトを推測してくれることを期待
+    response = httpx.post(url, headers=headers, json={}, timeout=timeout)
+    _ = response.raise_for_status()
+    data = response.json()
+
+    if not isinstance(data, dict):
+        return []
+
+    models_dict = data.get("models", {})
+    if not isinstance(models_dict, dict):
+        return []
+
+    return sorted(list(models_dict.keys()))
+
+
 def fetch_available_models(provider_id: str, api_key: str) -> List[str]:
     """
     指定されたプロバイダーから利用可能なモデルの一覧を取得します。
@@ -126,8 +154,10 @@ def fetch_available_models(provider_id: str, api_key: str) -> List[str]:
             return _fetch_openai(api_key, timeout)
         elif provider_id == "anthropic":
             return _fetch_anthropic(api_key, timeout)
-        elif provider_id in ("google", "antigravity"):
+        elif provider_id == "google":
             return _fetch_google(api_key, provider_id, timeout)
+        elif provider_id == "antigravity":
+            return _fetch_antigravity(api_key, timeout)
         else:
             print(f"Warning: Unknown provider ID: {provider_id}", file=sys.stderr)
             return []

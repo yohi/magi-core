@@ -442,6 +442,66 @@ class MagiCLI:
                         "google" if selected_provider == "gemini" else selected_provider
                     )
                     fetched_models = fetch_available_models(fetch_id, api_key)
+            elif selected_provider == "antigravity":
+                # Antigravityの場合は Client ID/Secret が必要になるため、トークンリフレッシュも含めて AuthProvider を使用する
+                client_id = ""
+                client_secret = ""
+                token_url = "https://oauth2.googleapis.com/token"
+
+                # Check for non-interactive environment
+                if not sys.stdin.isatty():
+                    client_id = os.environ.get("MAGI_ANTIGRAVITY_CLIENT_ID") or ""
+                    client_secret = (
+                        os.environ.get("MAGI_ANTIGRAVITY_CLIENT_SECRET") or ""
+                    )
+                    token_url = (
+                        os.environ.get("MAGI_ANTIGRAVITY_TOKEN_URL") or token_url
+                    )
+                else:
+                    # Interactive input
+                    print(
+                        "Antigravity configuration (optional if already logged in with magi auth):"
+                    )
+                    client_id = input("Antigravity Client ID: ").strip()
+                    if client_id:
+                        from getpass import getpass
+
+                        client_secret = getpass("Antigravity Client Secret: ").strip()
+
+                    token_url_input = input(
+                        f"Antigravity Token URL [default: {token_url}]: "
+                    ).strip()
+                    if token_url_input:
+                        token_url = token_url_input
+
+                # AuthContextの構築
+                auth_context = AuthContext(
+                    client_id=client_id,
+                    client_secret=client_secret,
+                    token_url=token_url,
+                    scopes=[],  # デフォルトスコープが使用される
+                    extras={},
+                )
+
+                try:
+                    # AuthProviderの取得
+                    # ここでトークンを取得・リフレッシュを試みる
+                    auth_provider = get_auth_provider(selected_provider, auth_context)
+                    # 非同期メソッドを同期的に実行
+                    token = asyncio.run(auth_provider.get_token())
+
+                    print("Fetching available models...")
+                    fetched_models = fetch_available_models(selected_provider, token)
+                except Exception as e:
+                    print(
+                        f"Warning: Failed to authenticate with {selected_provider}: {e}",
+                        file=sys.stderr,
+                    )
+                    print(
+                        "Using default models. Run 'magi auth login antigravity' to fix authentication.",
+                        file=sys.stderr,
+                    )
+
             elif selected_provider in AUTH_BASED_PROVIDERS:
                 token_manager = TokenManager()
                 token_data = token_manager.get_token(f"magi.{selected_provider}")
@@ -517,6 +577,22 @@ class MagiCLI:
             }
             if api_key:
                 config_dict["providers"][selected_provider]["api_key"] = api_key
+            elif selected_provider == "antigravity":
+                if "options" not in config_dict["providers"][selected_provider]:
+                    config_dict["providers"][selected_provider]["options"] = {}
+
+                if "client_id" in locals() and client_id:
+                    config_dict["providers"][selected_provider]["options"][
+                        "client_id"
+                    ] = client_id
+                if "client_secret" in locals() and client_secret:
+                    config_dict["providers"][selected_provider]["options"][
+                        "client_secret"
+                    ] = client_secret
+                if "token_url" in locals() and token_url:
+                    config_dict["providers"][selected_provider]["options"][
+                        "token_url"
+                    ] = token_url
 
             with open(target_path, "w", encoding="utf-8") as f:
                 f.write("# magi.yaml\n")
