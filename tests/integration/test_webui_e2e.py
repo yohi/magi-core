@@ -96,7 +96,7 @@ class TestWebUIEndToEnd(unittest.TestCase):
                     start_time = time.monotonic()
                     MAX_WAIT_SECONDS = 5
                     error_event = None
-                    
+
                     while True:
                         if time.monotonic() - start_time > MAX_WAIT_SECONDS:
                             self.fail(
@@ -278,7 +278,9 @@ class TestWebUIEndToEnd(unittest.TestCase):
         with TestClient(app) as client:
             response = client.get("/api/health")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "ok"})
+        data = response.json()
+        self.assertEqual(data["status"], "ok")
+        self.assertIn("mode", data)
 
 
 if __name__ == "__main__":
