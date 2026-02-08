@@ -108,3 +108,33 @@ class TestAntigravityAdapter(unittest.TestCase):
 
         self.assertEqual(exc.exception.error.code, ErrorCode.API_ERROR.value)
         self.assertEqual(client.post.await_count, 2)
+
+    @patch("magi.llm.providers_auth.httpx.AsyncClient")
+    def test_usage_metadata_extraction(self, mock_client_cls):
+        client = AsyncMock()
+        mock_client_cls.return_value = client
+
+        response200 = MagicMock()
+        response200.status_code = 200
+        response200.json.return_value = {
+            "response": {
+                "candidates": [{"content": {"parts": [{"text": "success"}]}}],
+                "usageMetadata": {
+                    "promptTokenCount": 100,
+                    "candidatesTokenCount": 50,
+                },
+            }
+        }
+
+        client.post.return_value = response200
+
+        adapter = AntigravityAdapter(
+            self.context, self.auth_provider, http_client=client
+        )
+        request = LLMRequest(user_prompt="test", system_prompt="sys")
+
+        result = asyncio.run(adapter.send(request))
+
+        self.assertEqual(result.content, "success")
+        self.assertEqual(result.usage["input_tokens"], 100)
+        self.assertEqual(result.usage["output_tokens"], 50)

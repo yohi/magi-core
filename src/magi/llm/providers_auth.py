@@ -297,9 +297,15 @@ class AntigravityAdapter(AuthenticatedOpenAIAdapter):
 
             text = parts[0].get("text", "")
 
+            usage_metadata = response_data.get("usageMetadata", {})
+            usage = {
+                "input_tokens": usage_metadata.get("promptTokenCount", 0),
+                "output_tokens": usage_metadata.get("candidatesTokenCount", 0),
+            }
+
             return LLMResponse(
                 content=text,
-                usage={},
+                usage=usage,
                 model=self.model,
             )
         except (KeyError, IndexError, ValueError) as exc:
