@@ -292,6 +292,18 @@ class MagiCLI:
             return 1
 
         provider_id = provider_id.lower()
+
+        if provider_id not in AUTH_BASED_PROVIDERS:
+            print(
+                f"Error: '{provider_id}' is not a valid authentication provider.",
+                file=sys.stderr,
+            )
+            print(
+                f"Available providers: {', '.join(sorted(AUTH_BASED_PROVIDERS))}",
+                file=sys.stderr,
+            )
+            return 1
+
         service_name = f"magi.{provider_id}"
 
         try:
