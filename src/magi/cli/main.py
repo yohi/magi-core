@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional
 
 from magi import __version__
+from magi.cli.model_fetcher import fetch_available_models
 from magi.cli.parser import ArgumentParser, ParsedCommand, VALID_COMMANDS
 from magi.config.manager import Config
 from magi.config.provider import (
@@ -44,6 +45,8 @@ from magi.plugins.guard import PluginGuard
 
 if TYPE_CHECKING:
     from magi.plugins.loader import Plugin
+
+API_KEY_PROVIDERS = ("openai", "anthropic", "gemini", "google")
 
 
 class MagiCLI:
@@ -426,7 +429,25 @@ class MagiCLI:
                     print(f"Invalid input. Using '{DEFAULT_PROVIDER_ID}'.")
                     selected_provider = DEFAULT_PROVIDER_ID
 
-            models = RECOMMENDED_MODELS.get(selected_provider, [])
+            api_key = ""
+            fetched_models = []
+            if selected_provider in API_KEY_PROVIDERS:
+                api_key = input(
+                    f"Enter API Key for {selected_provider} (optional, leave empty to skip fetching models): "
+                ).strip()
+                if api_key:
+                    print("Fetching available models...")
+                    # gemini は google プロバイダーのロジックを使用する
+                    fetch_id = (
+                        "google" if selected_provider == "gemini" else selected_provider
+                    )
+                    fetched_models = fetch_available_models(fetch_id, api_key)
+
+            models = (
+                fetched_models
+                if fetched_models
+                else RECOMMENDED_MODELS.get(selected_provider, [])
+            )
             selected_model = ""
             if models:
                 print(f"Select model for {selected_provider}:")
@@ -457,8 +478,7 @@ class MagiCLI:
                     f"Enter model name for {selected_provider}: "
                 ).strip()
 
-            api_key = ""
-            if selected_provider not in AUTH_BASED_PROVIDERS:
+            if not api_key and selected_provider not in AUTH_BASED_PROVIDERS:
                 api_key = input(
                     f"Enter API Key for {selected_provider} (optional): "
                 ).strip()
