@@ -13,7 +13,10 @@ from magi.errors import MagiException, ErrorCode
 class TestAntigravityAdapter(unittest.TestCase):
     def setUp(self):
         self.context = ProviderContext(
-            provider_id="antigravity", api_key="fake-key", model="gemini-pro"
+            provider_id="antigravity",
+            api_key="fake-key",
+            model="gemini-pro",
+            options={"project_id": "test-project"},
         )
         self.auth_provider = AsyncMock()
         self.auth_provider.get_token.return_value = "fake-token"
