@@ -284,19 +284,41 @@ class LLMClient:
             # 指示に従い「ハンドラで確定した stream を転送ボディに反映」する修正を行う。
             # SDKの場合、stream=Trueを指定するとAsyncStreamが返る。
             full_content = ""
-            async for chunk in response:
-                if chunk.type == "content_block_delta":
-                    full_content += chunk.delta.text
+            usage = {"input_tokens": 0, "output_tokens": 0}
 
-            # 使用量情報はストリーム完了後に取得できる場合があるが、
-            # SDKのバージョンによっては難しい場合もある。
-            # ここでは簡易的に0または見積もりを入れる。
+            async for chunk in response:
+                if chunk.type == "message_start":
+                    if hasattr(chunk, "message") and hasattr(chunk.message, "usage"):
+                        usage["input_tokens"] += getattr(
+                            chunk.message.usage, "input_tokens", 0
+                        )
+                        usage["output_tokens"] += getattr(
+                            chunk.message.usage, "output_tokens", 0
+                        )
+
+                elif chunk.type == "content_block_delta":
+                    if hasattr(chunk, "delta") and hasattr(chunk.delta, "text"):
+                        full_content += chunk.delta.text
+
+                elif chunk.type == "message_delta":
+                    if hasattr(chunk, "usage"):
+                        usage["output_tokens"] += getattr(
+                            chunk.usage, "output_tokens", 0
+                        )
+                    if hasattr(chunk, "delta") and hasattr(chunk.delta, "text"):
+                        full_content += chunk.delta.text
+
+                elif chunk.type == "error":
+                    error_details = getattr(chunk, "error", "Unknown stream error")
+                    raise MagiException(
+                        create_api_error(
+                            ErrorCode.API_ERROR, f"Stream error: {error_details}"
+                        )
+                    )
+
             return LLMResponse(
                 content=full_content,
-                usage={
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                },  # ストリーム時は正確な取得が困難な場合がある
+                usage=usage,
                 model=self.model,
             )
 
