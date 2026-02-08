@@ -37,11 +37,16 @@ REDIRECT_PORT = 51121
 REDIRECT_URI = f"http://localhost:{REDIRECT_PORT}/oauth-callback"
 
 
+class AuthState:
+    """認証結果を保持するクラス"""
+
+    def __init__(self) -> None:
+        self.code: Optional[str] = None
+        self.error: Optional[str] = None
+
+
 class OAuthCallbackHandler(BaseHTTPRequestHandler):
     """OAuthコールバックを処理するハンドラ"""
-
-    code: Optional[str] = None
-    error: Optional[str] = None
 
     def do_GET(self) -> None:
         """GETリクエストを処理する"""
@@ -50,16 +55,22 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
             self.send_error(404, "Not Found")
             return
 
+        # サーバーインスタンスから状態オブジェクトを取得
+        auth_state: Optional[AuthState] = getattr(self.server, "auth_state", None)
+        if not auth_state:
+            self.send_error(500, "Server configuration error")
+            return
+
         query_params = parse_qs(parsed_url.query)
 
         if "error" in query_params:
-            self.__class__.error = query_params["error"][0]
+            auth_state.error = query_params["error"][0]
             self._send_response("Authentication failed. You can close this window.")
         elif "code" in query_params:
-            self.__class__.code = query_params["code"][0]
+            auth_state.code = query_params["code"][0]
             self._send_response("Authentication successful! You can close this window.")
         else:
-            self.__class__.error = "No code or error found in response"
+            auth_state.error = "No code or error found in response"
             self._send_response("Invalid response. You can close this window.")
 
     def _send_response(self, message: str) -> None:
@@ -132,11 +143,12 @@ class AntigravityAuthProvider(AuthProvider):
         server = HTTPServer(("localhost", 0), OAuthCallbackHandler)
         _, actual_port = server.server_address
 
+        # 状態オブジェクトをサーバーにアタッチ
+        auth_state = AuthState()
+        server.auth_state = auth_state  # type: ignore
+
         # リダイレクトURIを実際のポートに合わせて更新
         dynamic_redirect_uri = f"http://localhost:{actual_port}/oauth-callback"
-
-        OAuthCallbackHandler.code = None
-        OAuthCallbackHandler.error = None
 
         server_thread = threading.Thread(target=server.serve_forever)
         server_thread.daemon = True
@@ -161,19 +173,15 @@ class AntigravityAuthProvider(AuthProvider):
 
             # 4. コード待機
             start_time = time.time()
-            while (
-                OAuthCallbackHandler.code is None and OAuthCallbackHandler.error is None
-            ):
+            while auth_state.code is None and auth_state.error is None:
                 if time.time() - start_time > self._timeout_seconds:
                     raise RuntimeError("Authentication timed out")
                 await asyncio.sleep(0.5)
 
-            if OAuthCallbackHandler.error:
-                raise RuntimeError(
-                    f"Authentication failed: {OAuthCallbackHandler.error}"
-                )
+            if auth_state.error:
+                raise RuntimeError(f"Authentication failed: {auth_state.error}")
 
-            auth_code = OAuthCallbackHandler.code
+            auth_code = auth_state.code
             if not auth_code:
                 raise RuntimeError("Failed to receive authorization code")
 
