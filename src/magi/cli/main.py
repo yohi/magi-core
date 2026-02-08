@@ -442,6 +442,26 @@ class MagiCLI:
                         "google" if selected_provider == "gemini" else selected_provider
                     )
                     fetched_models = fetch_available_models(fetch_id, api_key)
+            elif selected_provider in AUTH_BASED_PROVIDERS:
+                token_manager = TokenManager()
+                token_data = token_manager.get_token(f"magi.{selected_provider}")
+                if token_data:
+                    token = token_data
+                    try:
+                        payload = json.loads(token_data)
+                        if isinstance(payload, dict) and "access_token" in payload:
+                            token = payload["access_token"]
+                    except json.JSONDecodeError:
+                        pass
+
+                    print("Fetching available models...")
+                    fetched_models = fetch_available_models(selected_provider, token)
+                else:
+                    print(
+                        f"Note: Not authenticated with {selected_provider}. Using default models. "
+                        f"Run 'magi auth login {selected_provider}' to fetch dynamic models.",
+                        file=sys.stderr,
+                    )
 
             models = (
                 fetched_models
