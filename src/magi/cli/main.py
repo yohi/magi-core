@@ -291,9 +291,7 @@ class MagiCLI:
     async def _auth_status(self, provider_id: Optional[str]) -> int:
         """認証ステータスの表示"""
         providers = (
-            [provider_id.lower()]
-            if provider_id
-            else ["claude", "copilot", "antigravity", "openai_codex"]
+            [provider_id.lower()] if provider_id else sorted(list(AUTH_BASED_PROVIDERS))
         )
 
         token_manager = TokenManager()
