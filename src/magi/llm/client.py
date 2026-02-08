@@ -256,7 +256,7 @@ class LLMClient:
                     }
                 )
 
-        # streamパラメータを解決（リクエストに指定があればそれを使い、なければデフォルトを使用）
+        # streamパラメータを解決(リクエストに指定があればそれを使い、なければデフォルトを使用)
         # ただし、Anthropic SDKのcreateメソッドはstreamパラメータを直接サポートしていないため、
         # 必要に応じてstream()メソッドを使用するか、stream=Trueを渡す必要があるが、
         # AsyncAnthropic.messages.create は stream引数を取る (ver 0.3.0以降)
@@ -386,14 +386,19 @@ class LLMClient:
                 False,
             ),
             APIErrorType.UNKNOWN: (
-                ErrorCode.API_TIMEOUT,
+                ErrorCode.API_ERROR,
                 "APIリクエストで予期しないエラーが発生しました。",
                 True,
             ),
         }
 
         code, message, recoverable = error_map[error_type]
-        return create_api_error(code=code, message=message, recoverable=recoverable)
+        return create_api_error(
+            code=code,
+            message=message,
+            recoverable=recoverable,
+            details={"error_type": type(original_error).__name__},
+        )
 
     def _should_retry(
         self, error_type: APIErrorType, attempt: int, retry_count: int

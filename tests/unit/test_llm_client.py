@@ -176,6 +176,17 @@ class TestLLMClient(unittest.TestCase):
         self.assertIn("認証", error.message)
         self.assertFalse(error.recoverable)
 
+    def test_create_error_for_unknown(self):
+        """未知のエラーのMagiError作成"""
+        client = LLMClient(api_key="test-key")
+        original_error = ValueError("予期しないエラー")
+        error = client._create_error_for_type(APIErrorType.UNKNOWN, original_error)
+
+        self.assertEqual(error.code, ErrorCode.API_ERROR.value)
+        self.assertIn("予期しないエラー", error.message)
+        self.assertTrue(error.recoverable)
+        self.assertEqual(error.details["error_type"], "ValueError")
+
 
 class TestLLMClientAsync(unittest.TestCase):
     """LLMClientの非同期テスト"""
