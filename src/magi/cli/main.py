@@ -250,10 +250,16 @@ class MagiCLI:
 
                 if not auth_context.token_url:
                     default_url = "https://oauth2.googleapis.com/token"
-                    val = input(
-                        f"Antigravity Token URL [default: {default_url}]: "
-                    ).strip()
-                    auth_context.token_url = val if val else default_url
+                    if not sys.stdin.isatty():
+                        # Non-interactive: check env var or use default
+                        val = os.environ.get("MAGI_ANTIGRAVITY_TOKEN_URL")
+                        auth_context.token_url = val if val else default_url
+                    else:
+                        # Interactive input
+                        val = input(
+                            f"Antigravity Token URL [default: {default_url}]: "
+                        ).strip()
+                        auth_context.token_url = val if val else default_url
 
             # AuthProviderの取得と認証実行
             auth_provider = get_auth_provider(provider_id, auth_context)

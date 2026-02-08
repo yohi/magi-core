@@ -10,7 +10,7 @@ class TestProviderConfigLoaderCache(unittest.TestCase):
 
     def test_cache_validation_logic(self):
         """skip_validation=Trueでロードされたキャッシュが、
-        その後のskip_validation=Falseの呼び出しで再利用されない（検証がスキップされない）ことを確認する
+        その後のskip_validation=Falseの呼び出しで再利用されない(検証がスキップされない)ことを確認する
         """
         # モック設定: バリデーションに失敗するような不完全な設定を返す
         # api_keyが欠落しているなど
