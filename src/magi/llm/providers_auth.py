@@ -158,8 +158,22 @@ class AntigravityAdapter(AuthenticatedOpenAIAdapter):
             "generationConfig": generation_config,
         }
 
+        options = self.context.options or {}
+        project_id = options.get("project_id")
+        if not project_id:
+            project_id = os.environ.get("ANTIGRAVITY_PROJECT_ID")
+
+        if not project_id:
+            # TODO: Fetch Project ID from /v1internal:loadCodeAssist
+            # See implementation plan in src/magi/llm/auth/antigravity.py
+            raise ValueError(
+                "Antigravity Project ID is not configured. "
+                "Please set 'project_id' in magi.yaml options or "
+                "export ANTIGRAVITY_PROJECT_ID environment variable."
+            )
+
         wrapped_body = {
-            "project": self.context.options.get("project_id", "rising-fact-p41fc"),
+            "project": project_id,
             "model": self.model,
             "request": request_payload,
             "requestType": "agent",

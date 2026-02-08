@@ -215,6 +215,7 @@ providers:
     # options:
     #   client_id: "your-google-client-id"
     #   client_secret: "your-google-client-secret"
+    #   project_id: "your-google-cloud-project-id" # 環境変数 ANTIGRAVITY_PROJECT_ID でも指定可能
 ```
 
 **GitHub Copilot:**

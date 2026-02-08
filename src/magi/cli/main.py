@@ -604,17 +604,26 @@ class MagiCLI:
                     allow_unicode=True,
                 )
 
-            # Check if config contains secrets and restrict permissions
             has_secrets = False
-            # Check providers for api keys
             providers_cfg = config_dict.get("providers", {})
             if isinstance(providers_cfg, dict):
-                for provider_cfg in providers_cfg.values():
+                for provider_name, provider_cfg in providers_cfg.items():
                     if isinstance(provider_cfg, dict):
                         for key in provider_cfg.keys():
-                            if "api" in key.lower() and "key" in key.lower():
+                            k_lower = key.lower()
+                            if (
+                                ("api" in k_lower and "key" in k_lower)
+                                or "secret" in k_lower
+                                or "token" in k_lower
+                            ):
                                 has_secrets = True
                                 break
+
+                        if not has_secrets and provider_name == "antigravity":
+                            options = provider_cfg.get("options", {})
+                            if isinstance(options, dict) and "client_secret" in options:
+                                has_secrets = True
+
                     if has_secrets:
                         break
 
