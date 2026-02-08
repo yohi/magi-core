@@ -302,11 +302,9 @@ class LLMClient:
 
                 elif chunk.type == "message_delta":
                     if hasattr(chunk, "usage"):
-                        usage["output_tokens"] += getattr(
-                            chunk.usage, "output_tokens", 0
+                        usage["output_tokens"] = getattr(
+                            chunk.usage, "output_tokens", usage["output_tokens"]
                         )
-                    if hasattr(chunk, "delta") and hasattr(chunk.delta, "text"):
-                        full_content += chunk.delta.text
 
                 elif chunk.type == "error":
                     error_details = getattr(chunk, "error", "Unknown stream error")
