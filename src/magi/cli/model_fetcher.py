@@ -8,8 +8,8 @@ def fetch_available_models(provider_id: str, api_key: str) -> List[str]:
     指定されたプロバイダーから利用可能なモデルの一覧を取得します。
 
     Args:
-        provider_id: プロバイダーのID ('openai', 'anthropic', 'google' など)
-        api_key: APIキー
+        provider_id: プロバイダーのID ('openai', 'anthropic', 'google', 'antigravity' など)
+        api_key: APIキー（または認証用の認証情報/credential）
 
     Returns:
         利用可能なモデルのIDのリスト
@@ -46,11 +46,15 @@ def fetch_available_models(provider_id: str, api_key: str) -> List[str]:
                     if isinstance(m, dict) and isinstance(m.get("id"), str)
                 ]
 
-        elif provider_id == "google":
-            url = (
-                f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-            )
-            response = httpx.get(url, timeout=timeout)
+        elif provider_id in ("google", "antigravity"):
+            if provider_id == "google":
+                url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+                headers = {}
+            else:  # antigravity
+                url = "https://generativelanguage.googleapis.com/v1beta/models"
+                headers = {"Authorization": f"Bearer {api_key}"}
+
+            response = httpx.get(url, headers=headers, timeout=timeout)
             _ = response.raise_for_status()
             data = response.json()
             if isinstance(data, dict):
