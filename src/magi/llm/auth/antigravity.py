@@ -128,7 +128,13 @@ class AntigravityAuthProvider(AuthProvider):
         )
 
         # 2. ローカルサーバー起動
-        server = HTTPServer(("localhost", REDIRECT_PORT), OAuthCallbackHandler)
+        # ポート0を指定して動的ポート割り当てを利用（衝突回避）
+        server = HTTPServer(("localhost", 0), OAuthCallbackHandler)
+        _, actual_port = server.server_address
+
+        # リダイレクトURIを実際のポートに合わせて更新
+        dynamic_redirect_uri = f"http://localhost:{actual_port}/oauth-callback"
+
         OAuthCallbackHandler.code = None
         OAuthCallbackHandler.error = None
 
@@ -141,7 +147,7 @@ class AntigravityAuthProvider(AuthProvider):
             params = {
                 "response_type": "code",
                 "client_id": self._require_client_id(),
-                "redirect_uri": REDIRECT_URI,
+                "redirect_uri": dynamic_redirect_uri,
                 "scope": " ".join(self._context.scopes),
                 "code_challenge": code_challenge,
                 "code_challenge_method": "S256",
@@ -168,24 +174,28 @@ class AntigravityAuthProvider(AuthProvider):
                 )
 
             auth_code = OAuthCallbackHandler.code
+            if not auth_code:
+                raise RuntimeError("Failed to receive authorization code")
 
         finally:
             server.shutdown()
             server.server_close()
 
         # 5. トークン交換
-        token_payload = await self._exchange_code_for_token(auth_code, code_verifier)
+        token_payload = await self._exchange_code_for_token(
+            auth_code, code_verifier, dynamic_redirect_uri
+        )
         self._store_tokens(token_payload)
 
     async def _exchange_code_for_token(
-        self, code: str, code_verifier: str
+        self, code: str, code_verifier: str, redirect_uri: str
     ) -> dict[str, Any]:
         """認可コードをトークンと交換する"""
         token_url = self._require_token_url()
         data = {
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": REDIRECT_URI,
+            "redirect_uri": redirect_uri,
             "client_id": self._require_client_id(),
             "code_verifier": code_verifier,
         }

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -216,16 +217,36 @@ class MagiCLI:
 
             # 必須パラメータの対話的入力（設定ファイルにない場合）
             if provider_id == "antigravity":
-                if not auth_context.client_id:
-                    val = input("Antigravity Client ID: ").strip()
-                    if val:
-                        auth_context.client_id = val
-                if not auth_context.client_secret:
-                    from getpass import getpass
+                # Check for non-interactive environment
+                if not sys.stdin.isatty():
+                    # Attempt to get from env vars or fail
+                    if not auth_context.client_id:
+                        auth_context.client_id = (
+                            os.environ.get("MAGI_ANTIGRAVITY_CLIENT_ID") or ""
+                        )
+                    if not auth_context.client_secret:
+                        auth_context.client_secret = (
+                            os.environ.get("MAGI_ANTIGRAVITY_CLIENT_SECRET") or ""
+                        )
 
-                    val = getpass("Antigravity Client Secret: ").strip()
-                    if val:
-                        auth_context.client_secret = val
+                    if not auth_context.client_id or not auth_context.client_secret:
+                        raise RuntimeError(
+                            "Non-interactive environment detected. "
+                            "Please set MAGI_ANTIGRAVITY_CLIENT_ID and MAGI_ANTIGRAVITY_CLIENT_SECRET environment variables, "
+                            "or configure them in magi.yaml."
+                        )
+                else:
+                    # Interactive input
+                    if not auth_context.client_id:
+                        val = input("Antigravity Client ID: ").strip()
+                        if val:
+                            auth_context.client_id = val
+                    if not auth_context.client_secret:
+                        from getpass import getpass
+
+                        val = getpass("Antigravity Client Secret: ").strip()
+                        if val:
+                            auth_context.client_secret = val
 
                 if not auth_context.token_url:
                     default_url = "https://oauth2.googleapis.com/token"
@@ -390,13 +411,14 @@ providers:
   #   options:
   #     client_id: "Iv1.b507a08c87ecfe98"
 
-  # Example: Antigravity
+  # Example: Antigravity (Google OAuth)
   # antigravity:
   #   model: ag-model-v1
+  #   # Client ID / Secret は必須です。
+  #   # magi auth login 実行時に対話的に入力するか、ここに直接記述してください。
   #   options:
-  #     auth_url: https://auth.antigravity.dev/authorize
-  #     token_url: https://auth.antigravity.dev/token
-  #     client_id: "your-client-id"
+  #     client_id: "your-google-client-id"
+  #     client_secret: "your-google-client-secret"
 """
         try:
             with open(target_path, "w", encoding="utf-8") as f:

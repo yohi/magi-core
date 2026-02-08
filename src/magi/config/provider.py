@@ -93,6 +93,7 @@ class ProviderConfigLoader:
 
     def __init__(self) -> None:
         self._cache: Optional[ProviderConfigs] = None
+        self._cache_validated: bool = False
 
     def load(
         self,
@@ -102,7 +103,8 @@ class ProviderConfigLoader:
     ) -> ProviderConfigs:
         """プロバイダ設定を読み込む"""
         if self._cache is not None and not force_reload:
-            return self._cache
+            if skip_validation or self._cache_validated:
+                return self._cache
 
         file_providers, file_default = self._load_from_file(config_path)
         env_providers, env_default = self._load_from_env()
@@ -115,6 +117,7 @@ class ProviderConfigLoader:
             providers=merged,
             default_provider=default_provider,
         )
+        self._cache_validated = not skip_validation
         return self._cache
 
     def _load_from_file(

@@ -210,8 +210,8 @@ magi auth status
 providers:
   antigravity:
     model: ag-model-v1
-    # Client ID / Secret はコード内デフォルト値が使用されますが、
-    # 必要に応じて上書き可能です。
+    # Client ID / Secret は必須です。
+    # magi auth login 実行時に対話的に入力するか、ここに直接記述してください。
     # options:
     #   client_id: "your-google-client-id"
     #   client_secret: "your-google-client-secret"
