@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import json
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
 import httpx
@@ -282,9 +283,8 @@ class AntigravityAdapter(AuthenticatedOpenAIAdapter):
                 )
             )
 
-        data = response.json()
-
         try:
+            data = response.json()
             response_data = data.get("response", {})
             candidates = response_data.get("candidates", [])
             if not candidates:
@@ -308,7 +308,7 @@ class AntigravityAdapter(AuthenticatedOpenAIAdapter):
                 usage=usage,
                 model=self.model,
             )
-        except (KeyError, IndexError, ValueError) as exc:
+        except (KeyError, IndexError, ValueError, json.JSONDecodeError) as exc:
             raise MagiException(
                 create_api_error(
                     code=ErrorCode.API_ERROR,
@@ -316,7 +316,7 @@ class AntigravityAdapter(AuthenticatedOpenAIAdapter):
                     details={
                         "provider": self.provider_id,
                         "model": self.model,
-                        "response": data,
+                        "response_text": response.text,
                         "error": str(exc),
                     },
                 )

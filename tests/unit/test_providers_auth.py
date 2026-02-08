@@ -110,7 +110,30 @@ class TestAntigravityAdapter(unittest.TestCase):
         self.assertEqual(client.post.await_count, 2)
 
     @patch("magi.llm.providers_auth.httpx.AsyncClient")
-    def test_usage_metadata_extraction(self, mock_client_cls):
+    def test_json_decode_error(self, mock_client_cls):
+        client = AsyncMock()
+        mock_client_cls.return_value = client
+
+        response200 = MagicMock()
+        response200.status_code = 200
+        response200.text = "invalid json"
+        response200.json.side_effect = ValueError(
+            "Expecting value: line 1 column 1 (char 0)"
+        )
+
+        client.post.return_value = response200
+
+        adapter = AntigravityAdapter(
+            self.context, self.auth_provider, http_client=client
+        )
+        request = LLMRequest(user_prompt="test", system_prompt="sys")
+
+        with self.assertRaises(MagiException) as exc:
+            asyncio.run(adapter.send(request))
+
+        self.assertEqual(exc.exception.error.code, ErrorCode.API_ERROR.value)
+        self.assertIn("Failed to parse API response", exc.exception.error.message)
+
         client = AsyncMock()
         mock_client_cls.return_value = client
 
