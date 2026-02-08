@@ -38,9 +38,7 @@ class ConfigManager:
         self._config: Optional[MagiSettings] = None
 
     def load(
-        self,
-        config_path: Optional[Path] = None,
-        force_reload: bool = False
+        self, config_path: Optional[Path] = None, force_reload: bool = False
     ) -> MagiSettings:
         """設定を読み込む
 
@@ -62,15 +60,6 @@ class ConfigManager:
             settings = MagiSettings(**file_config)
         except ValidationError as exc:  # Pydantic バリデーション失敗
             raise self._convert_validation_error(exc) from exc
-
-        if not settings.api_key:
-            raise MagiException(
-                MagiError(
-                    code=ErrorCode.CONFIG_MISSING_API_KEY.value,
-                    message="APIキーが設定されていません。環境変数 MAGI_API_KEY または設定ファイルで設定してください。",
-                    recoverable=False,
-                )
-            )
 
         self._config = settings
         return settings
@@ -203,7 +192,10 @@ class ConfigManager:
         errors = exc.errors()
         # locが空のリストの場合のIndexErrorを回避
         missing_api_key = any(
-            (loc := err.get("loc")) and isinstance(loc, (list, tuple)) and loc and loc[0] == "api_key"
+            (loc := err.get("loc"))
+            and isinstance(loc, (list, tuple))
+            and loc
+            and loc[0] == "api_key"
             for err in errors
         )
         code = (

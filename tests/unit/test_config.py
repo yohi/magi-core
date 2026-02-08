@@ -55,16 +55,14 @@ class TestConfigManagerWithMagiSettings(unittest.TestCase):
         finally:
             config_path.unlink()
 
-    def test_missing_api_key_raises_magi_exception(self):
-        """API キー欠如は MagiException(CONFIG_001) を送出"""
+    def test_missing_api_key_is_allowed(self):
+        """API キー欠如でもロード可能"""
         for key in list(os.environ.keys()):
             if key.startswith("MAGI_"):
                 del os.environ[key]
 
-        with self.assertRaises(MagiException) as ctx:
-            self.manager.load()
-
-        self.assertIn(ErrorCode.CONFIG_MISSING_API_KEY.value, str(ctx.exception))
+        config = self.manager.load()
+        self.assertIsNone(config.api_key)
 
     def test_invalid_value_raises_magi_exception(self):
         """無効な値は MagiException(CONFIG_002) を送出"""
