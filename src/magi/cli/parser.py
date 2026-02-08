@@ -125,6 +125,11 @@ class ArgumentParser:
                 i += 1
                 continue
 
+            if arg in ("-f", "--force", "-y", "--yes"):
+                options["force"] = True
+                i += 1
+                continue
+
             # コマンドまたは引数
             if not command and not arg.startswith("-"):
                 command = arg

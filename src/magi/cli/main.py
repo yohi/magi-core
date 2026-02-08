@@ -167,31 +167,40 @@ class MagiCLI:
     async def _auth_login(self, provider_id: Optional[str]) -> int:
         """プロバイダへのログイン（認証フロー実行）"""
         if not provider_id:
-            # プロバイダが未指定の場合、対話的に選択させる
-            candidates = sorted(list(AUTH_BASED_PROVIDERS))
-            print("Select a provider to login:", file=sys.stderr)
-            for i, p in enumerate(candidates, 1):
-                print(f"  {i}) {p}", file=sys.stderr)
-
-            try:
-                # ユーザー入力を待機
-                choice = input("Enter number: ").strip()
-                if not choice:
-                    print("Canceled.", file=sys.stderr)
+            if not sys.stdin.isatty():
+                provider_id = os.environ.get("MAGI_PROVIDER_ID")
+                if not provider_id:
+                    print(
+                        "Error: No provider specified and MAGI_PROVIDER_ID not set in non-interactive mode.",
+                        file=sys.stderr,
+                    )
                     return 1
+            else:
+                # プロバイダが未指定の場合、対話的に選択させる
+                candidates = sorted(list(AUTH_BASED_PROVIDERS))
+                print("Select a provider to login:", file=sys.stderr)
+                for i, p in enumerate(candidates, 1):
+                    print(f"  {i}) {p}", file=sys.stderr)
 
-                idx = int(choice) - 1
-                if 0 <= idx < len(candidates):
-                    provider_id = candidates[idx]
-                else:
-                    print("Invalid selection.", file=sys.stderr)
+                try:
+                    # ユーザー入力を待機
+                    choice = input("Enter number: ").strip()
+                    if not choice:
+                        print("Canceled.", file=sys.stderr)
+                        return 1
+
+                    idx = int(choice) - 1
+                    if 0 <= idx < len(candidates):
+                        provider_id = candidates[idx]
+                    else:
+                        print("Invalid selection.", file=sys.stderr)
+                        return 1
+                except (ValueError, IndexError):
+                    print("Invalid input.", file=sys.stderr)
                     return 1
-            except (ValueError, IndexError):
-                print("Invalid input.", file=sys.stderr)
-                return 1
-            except (KeyboardInterrupt, EOFError):
-                print("\nCanceled.", file=sys.stderr)
-                return 1
+                except (KeyboardInterrupt, EOFError):
+                    print("\nCanceled.", file=sys.stderr)
+                    return 1
 
         provider_id = provider_id.lower()
         print(f"Authenticating with {provider_id}...", file=sys.stderr)
@@ -362,15 +371,25 @@ class MagiCLI:
         target_path = Path.cwd() / "magi.yaml"
 
         if target_path.exists():
-            print(f"Warning: '{target_path}' already exists.", file=sys.stderr)
-            try:
-                choice = input("Overwrite? [y/N]: ").strip().lower()
-                if choice not in ("y", "yes"):
-                    print("Aborted.", file=sys.stderr)
-                    return 0
-            except (KeyboardInterrupt, EOFError):
-                print("\nAborted.", file=sys.stderr)
+            force = (options or {}).get("force")
+            if force:
+                pass
+            elif not sys.stdin.isatty():
+                print(
+                    f"Error: '{target_path}' already exists and --force not specified in non-interactive mode.",
+                    file=sys.stderr,
+                )
                 return 1
+            else:
+                print(f"Warning: '{target_path}' already exists.", file=sys.stderr)
+                try:
+                    choice = input("Overwrite? [y/N]: ").strip().lower()
+                    if choice not in ("y", "yes"):
+                        print("Aborted.", file=sys.stderr)
+                        return 0
+                except (KeyboardInterrupt, EOFError):
+                    print("\nAborted.", file=sys.stderr)
+                    return 1
 
         template = """# MAGI System Configuration
 # https://github.com/yohi/magi-core
