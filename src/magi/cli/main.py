@@ -12,6 +12,7 @@ import logging
 import os
 import sys
 import time
+import yaml
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional
 
@@ -22,6 +23,7 @@ from magi.config.provider import (
     AUTH_BASED_PROVIDERS,
     DEFAULT_PROVIDER_ID,
     SUPPORTED_PROVIDERS,
+    RECOMMENDED_MODELS,
     ProviderConfig,
     ProviderConfigLoader,
 )
@@ -379,7 +381,7 @@ class MagiCLI:
         args: List[str],
         options: Optional[Dict[str, Any]] = None,
     ) -> int:
-        """initコマンドの実行: 設定ファイルの生成"""
+        """initコマンドの実行: 設定ファイルの生成 (対話的)"""
         target_path = Path.cwd() / "magi.yaml"
 
         if target_path.exists():
@@ -403,65 +405,92 @@ class MagiCLI:
                     print("\nAborted.", file=sys.stderr)
                     return 1
 
-        template = """# MAGI System Configuration
-# https://github.com/yohi/magi-core
-
-# Default LLM Model
-#   - claude-sonnet-4-20250514 (Recommended for general use)
-#   - gpt-4o
-model: claude-sonnet-4-20250514
-
-# API Key (Can also be set via env var MAGI_API_KEY)
-# api_key: "sk-..."
-
-# Timeout and Retry Settings
-timeout: 60
-retry_count: 3
-
-# Consensus Protocol Settings
-debate_rounds: 1
-voting_threshold: majority  # "majority" or "unanimous"
-
-# Persona Overrides (Optional)
-# Customize models and parameters for each Sage
-personas:
-  melchior:
-    llm:
-      # model: claude-3-opus-20240229
-      # temperature: 0.0  # Deterministic logic
-  balthasar:
-    llm:
-      # model: gpt-4-turbo
-  casper:
-    llm:
-      # model: gpt-4o-mini
-      # temperature: 0.9  # Creative/Diverse
-
-# Provider Configurations (Optional)
-# Configure multi-provider authentication and endpoints
-providers:
-  # Example: GitHub Copilot
-  # copilot:
-  #   model: gpt-4
-  #   options:
-  #     client_id: "Iv1.b507a08c87ecfe98"
-
-  # Example: Antigravity (Google OAuth)
-  # antigravity:
-  #   model: ag-model-v1
-  #   # Client ID / Secret は必須です。
-  #   # magi auth login 実行時に対話的に入力するか、ここに直接記述してください。
-  #   options:
-  #     client_id: "your-google-client-id"
-  #     client_secret: "your-google-client-secret"
-"""
         try:
+            print("Select default LLM provider:")
+            providers = sorted(list(SUPPORTED_PROVIDERS))
+            for i, p in enumerate(providers, 1):
+                print(f"  {i}) {p}")
+
+            p_choice = input(f"Choose provider [1-{len(providers)}]: ").strip()
+            if not p_choice:
+                selected_provider = DEFAULT_PROVIDER_ID
+            else:
+                try:
+                    idx = int(p_choice) - 1
+                    if 0 <= idx < len(providers):
+                        selected_provider = providers[idx]
+                    else:
+                        print(f"Invalid selection. Using '{DEFAULT_PROVIDER_ID}'.")
+                        selected_provider = DEFAULT_PROVIDER_ID
+                except ValueError:
+                    print(f"Invalid input. Using '{DEFAULT_PROVIDER_ID}'.")
+                    selected_provider = DEFAULT_PROVIDER_ID
+
+            models = RECOMMENDED_MODELS.get(selected_provider, [])
+            selected_model = ""
+            if models:
+                print(f"Select model for {selected_provider}:")
+                for i, m in enumerate(models, 1):
+                    print(f"  {i}) {m}")
+                print(f"  {len(models) + 1}) Enter custom model")
+
+                m_choice = input(f"Choose model [1-{len(models) + 1}]: ").strip()
+                if not m_choice:
+                    selected_model = models[0]
+                else:
+                    try:
+                        idx = int(m_choice) - 1
+                        if 0 <= idx < len(models):
+                            selected_model = models[idx]
+                        elif idx == len(models):
+                            selected_model = input("Enter custom model name: ").strip()
+                            if not selected_model:
+                                selected_model = models[0]
+                        else:
+                            print(f"Invalid selection. Using '{models[0]}'.")
+                            selected_model = models[0]
+                    except ValueError:
+                        print(f"Invalid input. Using '{models[0]}'.")
+                        selected_model = models[0]
+            else:
+                selected_model = input(
+                    f"Enter model name for {selected_provider}: "
+                ).strip()
+
+            api_key = ""
+            if selected_provider not in AUTH_BASED_PROVIDERS:
+                api_key = input(
+                    f"Enter API Key for {selected_provider} (optional): "
+                ).strip()
+
+            config_dict: Dict[str, Any] = {
+                "default_provider": selected_provider,
+                "providers": {selected_provider: {"model": selected_model}},
+                "debate_rounds": 1,
+                "voting_threshold": "majority",
+                "output_format": "markdown",
+                "timeout": 60,
+            }
+            if api_key:
+                config_dict["providers"][selected_provider]["api_key"] = api_key
+
             with open(target_path, "w", encoding="utf-8") as f:
-                f.write(template)
+                f.write("# magi.yaml\n")
+                yaml.dump(
+                    config_dict,
+                    f,
+                    default_flow_style=False,
+                    sort_keys=False,
+                    allow_unicode=True,
+                )
+
             print(f"Successfully created '{target_path}'.", file=sys.stderr)
             return 0
-        except OSError as e:
-            print(f"Error creating file: {e}", file=sys.stderr)
+        except (KeyboardInterrupt, EOFError):
+            print("\nAborted.", file=sys.stderr)
+            return 1
+        except Exception as e:
+            print(f"Error during initialization: {e}", file=sys.stderr)
             return 1
 
     def _run_ask_command(
