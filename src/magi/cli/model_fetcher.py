@@ -114,7 +114,12 @@ def _fetch_antigravity(api_key: str, timeout: float) -> List[str]:
     Returns:
         利用可能なモデルのIDのリスト
     """
-    url = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels"
+    import os
+
+    base_url = os.environ.get(
+        "ANTIGRAVITY_ENDPOINT", "https://cloudcode-pa.googleapis.com"
+    )
+    url = f"{base_url}/v1internal:fetchAvailableModels"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "User-Agent": "antigravity",

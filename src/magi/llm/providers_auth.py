@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any, Dict, Optional, TYPE_CHECKING
+
+import httpx
 
 from magi.errors import ErrorCode, MagiException, create_api_error
 from magi.llm.auth import AntigravityAuthProvider, AuthProvider, CopilotAuthProvider
@@ -89,7 +92,9 @@ class AntigravityAdapter(AuthenticatedOpenAIAdapter):
     """Antigravity向けGoogle Generative Language API アダプタ。"""
 
     ANTIGRAVITY_VERSION = "1.15.8"
-    ANTIGRAVITY_ENDPOINT = "https://daily-cloudcode-pa.sandbox.googleapis.com"
+    ANTIGRAVITY_ENDPOINT = os.environ.get(
+        "ANTIGRAVITY_ENDPOINT", "https://cloudcode-pa.googleapis.com"
+    )
 
     def __init__(
         self,
@@ -132,12 +137,14 @@ class AntigravityAdapter(AuthenticatedOpenAIAdapter):
         if request.attachments:
             for attachment in request.attachments:
                 encoded_data = base64.b64encode(attachment.data).decode("utf-8")
-                user_parts.append({
-                    "inline_data": {
-                        "mime_type": attachment.mime_type,
-                        "data": encoded_data,
+                user_parts.append(
+                    {
+                        "inline_data": {
+                            "mime_type": attachment.mime_type,
+                            "data": encoded_data,
+                        }
                     }
-                })
+                )
 
         contents = [{"role": "user", "parts": user_parts}]
         generation_config = {
@@ -152,7 +159,7 @@ class AntigravityAdapter(AuthenticatedOpenAIAdapter):
         }
 
         wrapped_body = {
-            "project": "rising-fact-p41fc",
+            "project": self.context.options.get("project_id", "rising-fact-p41fc"),
             "model": self.model,
             "request": request_payload,
             "requestType": "agent",
@@ -164,7 +171,6 @@ class AntigravityAdapter(AuthenticatedOpenAIAdapter):
 
     async def send(self, request: LLMRequest) -> LLMResponse:
         """Google Generative Language API形式に変換して送信する。"""
-        import httpx
 
         self._validate_prompts(request)
 
@@ -212,12 +218,39 @@ class AntigravityAdapter(AuthenticatedOpenAIAdapter):
         if response.status_code == 401:
             token = await self._auth_provider.get_token(force_refresh=True)
             self.context.api_key = token
-            response = await self._client.post(
-                url,
-                headers=self._auth_headers(),
-                json=payload,
-                timeout=self._timeout,
-            )
+            try:
+                response = await self._client.post(
+                    url,
+                    headers=self._auth_headers(),
+                    json=payload,
+                    timeout=self._timeout,
+                )
+            except httpx.TimeoutException as exc:
+                raise MagiException(
+                    create_api_error(
+                        code=ErrorCode.API_TIMEOUT,
+                        message=f"Retry request to {url} timed out",
+                        details={
+                            "provider": self.provider_id,
+                            "model": self.model,
+                            "url": url,
+                            "timeout": self._timeout,
+                        },
+                    )
+                ) from exc
+            except Exception as exc:
+                raise MagiException(
+                    create_api_error(
+                        code=ErrorCode.API_ERROR,
+                        message=f"Retry request to {url} failed: {exc}",
+                        details={
+                            "provider": self.provider_id,
+                            "model": self.model,
+                            "url": url,
+                            "error": str(exc),
+                        },
+                    )
+                ) from exc
 
         if response.status_code != 200:
             error_text = response.text
@@ -236,20 +269,20 @@ class AntigravityAdapter(AuthenticatedOpenAIAdapter):
             )
 
         data = response.json()
-        
+
         try:
             response_data = data.get("response", {})
             candidates = response_data.get("candidates", [])
             if not candidates:
                 raise ValueError("No candidates in response")
-            
+
             content = candidates[0].get("content", {})
             parts = content.get("parts", [])
             if not parts:
                 raise ValueError("No parts in content")
-            
+
             text = parts[0].get("text", "")
-            
+
             return LLMResponse(
                 content=text,
                 usage={},

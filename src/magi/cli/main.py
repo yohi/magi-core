@@ -581,15 +581,15 @@ class MagiCLI:
                 if "options" not in config_dict["providers"][selected_provider]:
                     config_dict["providers"][selected_provider]["options"] = {}
 
-                if "client_id" in locals() and client_id:
+                if client_id:
                     config_dict["providers"][selected_provider]["options"][
                         "client_id"
                     ] = client_id
-                if "client_secret" in locals() and client_secret:
+                if client_secret:
                     config_dict["providers"][selected_provider]["options"][
                         "client_secret"
                     ] = client_secret
-                if "token_url" in locals() and token_url:
+                if token_url:
                     config_dict["providers"][selected_provider]["options"][
                         "token_url"
                     ] = token_url
