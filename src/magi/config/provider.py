@@ -24,6 +24,12 @@ SUPPORTED_PROVIDERS = (
     "antigravity",
 )
 AUTH_BASED_PROVIDERS = ("claude", "copilot", "antigravity")
+RECOMMENDED_MODELS = {
+    "anthropic": ["claude-3-5-sonnet-20240620", "claude-3-opus-20240229"],
+    "openai": ["gpt-4o", "gpt-4-turbo"],
+    "gemini": ["gemini-1.5-pro", "gemini-1.5-flash"],
+    "antigravity": ["gemini-2.0-flash-exp"],
+}
 
 logger = logging.getLogger(__name__)
 
