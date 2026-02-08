@@ -133,11 +133,14 @@ def fetch_available_models(provider_id: str, api_key: str) -> List[str]:
             return []
 
     except (httpx.RequestError, httpx.HTTPStatusError, Exception) as e:
-        print(
-            f"Warning: Failed to fetch models for {provider_id}: {e}", file=sys.stderr
-        )
+        if provider_id in ("google", "antigravity"):
+            print(
+                f"Warning: Failed to fetch models for {provider_id} (error hidden to protect secrets)",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"Warning: Failed to fetch models for {provider_id}: {e}",
+                file=sys.stderr,
+            )
         return []
-
-
-# Keep Optional to satisfy the user request for the import
-_: Optional[Any] = None

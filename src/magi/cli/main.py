@@ -494,9 +494,13 @@ class MagiCLI:
                         print(f"Invalid input. Using '{models[0]}'.")
                         selected_model = models[0]
             else:
-                selected_model = input(
-                    f"Enter model name for {selected_provider}: "
-                ).strip()
+                while True:
+                    selected_model = input(
+                        f"Enter model name for {selected_provider}: "
+                    ).strip()
+                    if selected_model:
+                        break
+                    print("Model name cannot be empty. Please try again.")
 
             if not api_key and selected_provider not in AUTH_BASED_PROVIDERS:
                 api_key = input(
@@ -523,6 +527,27 @@ class MagiCLI:
                     sort_keys=False,
                     allow_unicode=True,
                 )
+
+            # Check if config contains secrets and restrict permissions
+            has_secrets = False
+            # Check providers for api keys
+            providers_cfg = config_dict.get("providers", {})
+            if isinstance(providers_cfg, dict):
+                for provider_cfg in providers_cfg.values():
+                    if isinstance(provider_cfg, dict):
+                        for key in provider_cfg.keys():
+                            if "api" in key.lower() and "key" in key.lower():
+                                has_secrets = True
+                                break
+                    if has_secrets:
+                        break
+
+            if has_secrets:
+                try:
+                    os.chmod(target_path, 0o600)
+                except Exception:
+                    # Handle platforms where chmod might fail or behave differently (e.g. Windows)
+                    pass
 
             print(f"Successfully created '{target_path}'.", file=sys.stderr)
             return 0

@@ -25,10 +25,12 @@ SUPPORTED_PROVIDERS = (
 )
 AUTH_BASED_PROVIDERS = ("claude", "copilot", "antigravity")
 RECOMMENDED_MODELS = {
-    "anthropic": ["claude-3-5-sonnet-20240620", "claude-3-opus-20240229"],
+    "anthropic": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
     "openai": ["gpt-4o", "gpt-4-turbo"],
-    "gemini": ["gemini-1.5-pro", "gemini-1.5-flash"],
+    "gemini": ["gemini-2.0-flash", "gemini-2.0-flash-exp"],
     "antigravity": ["gemini-2.0-flash-exp"],
+    "claude": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
+    "copilot": ["gpt-4o", "gpt-4"],
 }
 
 logger = logging.getLogger(__name__)
