@@ -226,6 +226,16 @@ providers:
       client_id: "Iv1.b507a08c87ecfe98" # デフォルト値あり
 ```
 
+### パススルー機能 (Model Pass-Through)
+
+以下のプロバイダおよびモデルパターンを指定した場合、リクエストは変換されずにそのまま対象APIへ転送されます。これにより、最新モデルや特定のモデルIDを即座に利用可能です。
+
+- **OpenAI**: `gpt-`, `o1-` ~ `o9-`, `chatgpt-`, `codex` で始まるモデルID
+- **Google / Antigravity**: `gemini-`, `antigravity` で始まるモデルID
+- **Anthropic**: その他のモデルIDはAnthropicとして処理されます
+
+例: `gpt-4o`, `gemini-2.0-flash-exp`, `o1-preview` などは設定なしでそのまま利用可能です。
+
 ---
 
 ## プラグイン開発
