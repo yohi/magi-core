@@ -147,7 +147,7 @@ class AntigravityAuthProvider(AuthProvider):
         # ポート0を指定して動的ポート割り当てを利用（衝突回避）
         server = HTTPServer(("localhost", 0), OAuthCallbackHandler)
         # IPv4/IPv6両対応のため最初の2要素（host, port）のみを取得
-        host, actual_port = server.server_address[:2]
+        _, actual_port = server.server_address[:2]
 
         # 状態オブジェクトをサーバーにアタッチ
         auth_state = AuthState()
