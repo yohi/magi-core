@@ -188,8 +188,9 @@ class TestOutputFormatter(unittest.TestCase):
         """Markdown出力に思考セクションが含まれること"""
         output = self.formatter.format(self.consensus_result, OutputFormat.MARKDOWN)
         
-        self.assertIn("# MAGI 合議結果", output)
-        self.assertIn("## Thinking Phase", output)
+        # 絵文字やカラーコードが含まれるため、主要なキーワードが含まれていることを確認
+        self.assertIn("MAGI 合議結果", output)
+        self.assertIn("Thinking Phase", output)
         self.assertIn("MELCHIOR", output)
         self.assertIn("BALTHASAR", output)
         self.assertIn("CASPER", output)
@@ -198,13 +199,13 @@ class TestOutputFormatter(unittest.TestCase):
         """Markdown出力に議論セクションが含まれること"""
         output = self.formatter.format(self.consensus_result, OutputFormat.MARKDOWN)
         
-        self.assertIn("## Debate Phase", output)
+        self.assertIn("Debate Phase", output)
 
     def test_format_markdown_contains_voting_section(self):
         """Markdown出力に投票セクションが含まれること"""
         output = self.formatter.format(self.consensus_result, OutputFormat.MARKDOWN)
         
-        self.assertIn("## Voting Phase", output)
+        self.assertIn("Voting Phase", output)
         self.assertIn("APPROVE", output)
 
     def test_format_markdown_contains_final_decision(self):
@@ -213,6 +214,17 @@ class TestOutputFormatter(unittest.TestCase):
         
         self.assertIn("## 最終判定", output)
         self.assertIn("APPROVED", output)
+
+    def test_format_markdown_plain_returns_string_without_colors(self):
+        """Markdown形式(plain=True)で色や絵文字が含まれないこと"""
+        plain_formatter = OutputFormatter(plain=True)
+        output = plain_formatter.format(self.consensus_result, OutputFormat.MARKDOWN)
+        
+        self.assertIn("# MAGI 合議結果", output)
+        self.assertIn("## Thinking Phase", output)
+        self.assertIn("### MELCHIOR", output) # 絵文字なし
+        self.assertNotIn("🔬", output)
+        self.assertNotIn("\033[", output) # カラーコードなし
 
     def test_format_with_conditional_vote(self):
         """条件付き投票がある場合に条件が出力されること"""
