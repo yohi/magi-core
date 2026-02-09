@@ -778,7 +778,7 @@ class MagiCLI:
             event_context={"provider": provider.provider_id},
             concurrency_controller=concurrency_controller,
         )
-        formatter = OutputFormatter()
+        formatter = OutputFormatter(plain=options.get("plain", False))
 
         try:
             result = asyncio.run(engine.execute(question))

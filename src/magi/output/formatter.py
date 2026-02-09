@@ -7,7 +7,7 @@
 import json
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from magi.models import (
     ConsensusResult,
@@ -30,6 +30,34 @@ class OutputFormat(Enum):
 class OutputFormatter:
     """合議結果を指定形式にフォーマットするクラス"""
 
+    # Colors
+    MAGENTA = '\033[95m'
+    BLUE = '\033[94m'
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+    # Emojis
+    EMOJI_MAGI = "🧠"
+    EMOJI_THINKING = "🤔"
+    EMOJI_DEBATE = "🗣️"
+    EMOJI_VOTE = "🗳️"
+    
+    EMOJI_MELCHIOR = "🔬" # Scientist
+    EMOJI_BALTHASAR = "⚖️" # Mother
+    EMOJI_CASPER = "💰"   # Pragmatist
+
+    EMOJI_APPROVE = "✅"
+    EMOJI_DENY = "❌"
+    EMOJI_CONDITIONAL = "⚠️"
+
+    def __init__(self, plain: bool = False):
+        self.plain = plain
+
     def format(self, result: ConsensusResult, format_type: OutputFormat) -> str:
         """結果を指定形式にフォーマット
 
@@ -46,6 +74,26 @@ class OutputFormatter:
             return self._to_markdown(result)
         else:
             raise ValueError(f"Unsupported format type: {format_type}")
+
+    def _get_persona_style(self, persona_name: str) -> Tuple[str, str]:
+        """ペルソナに応じた色と絵文字を返す"""
+        if self.plain:
+            return "", ""
+        
+        name = persona_name.lower()
+        if "melchior" in name:
+            return self.BLUE, self.EMOJI_MELCHIOR
+        if "balthasar" in name:
+            return self.YELLOW, self.EMOJI_BALTHASAR
+        if "casper" in name:
+            return self.MAGENTA, self.EMOJI_CASPER
+        return self.ENDC, ""
+
+    def _colorize(self, text: str, color: str) -> str:
+        """テキストに色を適用する"""
+        if self.plain:
+            return text
+        return f"{color}{text}{self.ENDC}"
 
     def _to_json(self, result: ConsensusResult) -> str:
         """JSON形式に変換
@@ -71,31 +119,43 @@ class OutputFormatter:
         lines = []
         
         # ヘッダー
-        lines.append("# MAGI 合議結果")
+        title = "MAGI 合議結果" if self.plain else f"{self.EMOJI_MAGI} MAGI 合議結果"
+        lines.append(self._colorize(f"# {title}", self.MAGENTA + self.BOLD))
         lines.append("")
         
         # Thinking Phase
-        lines.append("## Thinking Phase")
+        header_text = "Thinking Phase" if self.plain else f"{self.EMOJI_THINKING} Thinking Phase"
+        lines.append(self._colorize(f"## {header_text}", self.CYAN + self.BOLD))
         lines.append("")
         for persona_value, thinking in result.thinking_results.items():
             if isinstance(thinking, ThinkingOutput):
-                lines.append(f"### {thinking.persona_type.value.upper()}")
+                color, emoji = self._get_persona_style(thinking.persona_type.value)
+                persona_name = thinking.persona_type.value.upper()
+                persona_header = persona_name if self.plain else f"{emoji} {persona_name}"
+                lines.append(self._colorize(f"### {persona_header}", color + self.BOLD))
                 lines.append("")
                 lines.append(thinking.content)
                 lines.append("")
         
         # Debate Phase
-        lines.append("## Debate Phase")
+        header_text = "Debate Phase" if self.plain else f"{self.EMOJI_DEBATE} Debate Phase"
+        lines.append(self._colorize(f"## {header_text}", self.GREEN + self.BOLD))
         lines.append("")
         if result.debate_results:
             for debate_round in result.debate_results:
-                lines.append(f"### Round {debate_round.round_number}")
+                lines.append(self._colorize(f"### Round {debate_round.round_number}", self.BOLD))
                 lines.append("")
                 for persona, output in debate_round.outputs.items():
-                    lines.append(f"#### {persona.value.upper()}")
+                    color, emoji = self._get_persona_style(persona.value)
+                    persona_name = persona.value.upper()
+                    persona_header = persona_name if self.plain else f"{emoji} {persona_name}"
+                    lines.append(self._colorize(f"#### {persona_header}", color + self.BOLD))
                     lines.append("")
                     for target_persona, response in output.responses.items():
-                        lines.append(f"**{target_persona.value.upper()}への反論:**")
+                        target_color, target_emoji = self._get_persona_style(target_persona.value)
+                        target_name_str = target_persona.value.upper()
+                        target_name = target_name_str if self.plain else f"{target_emoji} {target_name_str}"
+                        lines.append(f"**{self._colorize(target_name, target_color)}への反論:**")
                         lines.append(response)
                         lines.append("")
         else:
@@ -103,12 +163,32 @@ class OutputFormatter:
             lines.append("")
         
         # Voting Phase
-        lines.append("## Voting Phase")
+        header_text = "Voting Phase" if self.plain else f"{self.EMOJI_VOTE} Voting Phase"
+        lines.append(self._colorize(f"## {header_text}", self.YELLOW + self.BOLD))
         lines.append("")
         for persona, vote_output in result.voting_results.items():
-            lines.append(f"### {persona.value.upper()}")
+            color, emoji = self._get_persona_style(persona.value)
+            persona_name = persona.value.upper()
+            persona_header = persona_name if self.plain else f"{emoji} {persona_name}"
+            lines.append(self._colorize(f"### {persona_header}", color + self.BOLD))
             lines.append("")
-            lines.append(f"- **投票:** {vote_output.vote.value.upper()}")
+            
+            vote_val = vote_output.vote.value.upper()
+            vote_emoji = ""
+            vote_color = self.ENDC
+            if not self.plain:
+                if vote_val == "APPROVE":
+                    vote_emoji = self.EMOJI_APPROVE
+                    vote_color = self.GREEN
+                elif vote_val == "DENY":
+                    vote_emoji = self.EMOJI_DENY
+                    vote_color = self.RED
+                elif vote_val == "CONDITIONAL":
+                    vote_emoji = self.EMOJI_CONDITIONAL
+                    vote_color = self.YELLOW
+            
+            vote_text = vote_val if self.plain else f"{vote_emoji} {self._colorize(vote_val, vote_color)}"
+            lines.append(f"- **投票:** {vote_text.strip()}")
             lines.append(f"- **理由:** {vote_output.reason}")
             if vote_output.conditions:
                 lines.append("- **条件:**")
@@ -117,16 +197,33 @@ class OutputFormatter:
             lines.append("")
         
         # 最終判定
-        lines.append("## 最終判定")
+        lines.append(self._colorize("## 最終判定", self.MAGENTA + self.BOLD))
         lines.append("")
-        lines.append(f"**{result.final_decision.value.upper()}**")
+        
+        final_decision = result.final_decision.value.upper()
+        final_emoji = ""
+        final_color = self.ENDC
+        if not self.plain:
+            if final_decision == "APPROVE":
+                final_emoji = self.EMOJI_APPROVE
+                final_color = self.GREEN
+            elif final_decision == "DENY":
+                final_emoji = self.EMOJI_DENY
+                final_color = self.RED
+            elif final_decision == "CONDITIONAL":
+                final_emoji = self.EMOJI_CONDITIONAL
+                final_color = self.YELLOW
+            
+        final_text = final_decision if self.plain else f"{final_emoji} {self._colorize(final_decision, final_color + self.BOLD)}"
+        
+        lines.append(f"**{final_text.strip()}**")
         lines.append("")
         lines.append(f"Exit Code: {result.exit_code}")
         
         # 条件がある場合
         if result.all_conditions:
             lines.append("")
-            lines.append("### 条件一覧")
+            lines.append(self._colorize("### 条件一覧", self.YELLOW + self.BOLD))
             lines.append("")
             for condition in result.all_conditions:
                 lines.append(f"- {condition}")
