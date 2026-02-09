@@ -1,7 +1,10 @@
 """MAGIシステムのCLIエントリーポイント"""
 
 import json
+import logging.config
+import os
 import sys
+from pathlib import Path
 from typing import List
 
 from magi import __version__
@@ -17,6 +20,17 @@ from magi.core.providers import (
 from magi.errors import MagiException
 
 
+def _setup_logging() -> None:
+    """ロギング設定を読み込む
+
+    環境変数 MAGI_LOGGING_CONFIG で指定された設定ファイルを読み込む。
+    指定がない場合はデフォルト設定を使用。
+    """
+    log_config = os.environ.get("MAGI_LOGGING_CONFIG")
+    if log_config and Path(log_config).exists():
+        logging.config.fileConfig(log_config, disable_existing_loggers=False)
+
+
 def main(args: List[str] | None = None) -> int:
     """
     MAGIシステムのメインエントリーポイント
@@ -27,6 +41,9 @@ def main(args: List[str] | None = None) -> int:
     Returns:
         終了コード（0: 成功、非0: エラー）
     """
+    # ロギング設定を読み込み
+    _setup_logging()
+
     if args is None:
         args = sys.argv[1:]
 
