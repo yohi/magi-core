@@ -26,9 +26,17 @@ def _setup_logging() -> None:
     環境変数 MAGI_LOGGING_CONFIG で指定された設定ファイルを読み込む。
     指定がない場合はデフォルト設定を使用。
     """
+    try:
+        os.makedirs("logs", exist_ok=True)
+    except OSError as e:
+        print(f"Warning: Failed to create logs directory: {e}", file=sys.stderr)
+
     log_config = os.environ.get("MAGI_LOGGING_CONFIG")
     if log_config and Path(log_config).exists():
-        logging.config.fileConfig(log_config, disable_existing_loggers=False)
+        try:
+            logging.config.fileConfig(log_config, disable_existing_loggers=False)
+        except Exception as e:
+            print(f"Warning: Failed to load logging config: {e}", file=sys.stderr)
 
 
 def main(args: List[str] | None = None) -> int:
