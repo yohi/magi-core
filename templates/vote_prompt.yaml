@@ -1,0 +1,28 @@
+name: vote_prompt
+version: v1
+schema_ref: vote_schema.json
+template: |
+  以下の議論内容を踏まえて、あなたの最終的な投票を行ってください。
+
+  ## 議論内容
+  {context}
+
+  ## 投票フォーマット
+  以下のJSON形式で回答してください：
+
+  ```json
+  {
+    "vote": "APPROVE | DENY | CONDITIONAL",
+    "reason": "投票理由を具体的に説明してください",
+    "confidence": 0.85,
+    "conditions": ["CONDITIONALの場合のみ: 条件を列挙"]
+  }
+  ```
+
+  - **APPROVE**: 提案を承認する
+  - **DENY**: 提案を否決する
+  - **CONDITIONAL**: 条件付きで承認する（conditionsフィールドに条件を記述）
+
+  必ず有効なJSON形式で回答してください。
+variables:
+  context: "議論のコンテキスト"
