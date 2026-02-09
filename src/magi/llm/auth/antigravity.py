@@ -43,6 +43,7 @@ class AuthState:
     def __init__(self) -> None:
         self.code: Optional[str] = None
         self.error: Optional[str] = None
+        self.completed = threading.Event()
 
 
 class OAuthCallbackHandler(BaseHTTPRequestHandler):
@@ -61,17 +62,21 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
             self.send_error(500, "Server configuration error")
             return
 
-        query_params = parse_qs(parsed_url.query)
+        try:
+            query_params = parse_qs(parsed_url.query)
 
-        if "error" in query_params:
-            auth_state.error = query_params["error"][0]
-            self._send_response("Authentication failed. You can close this window.")
-        elif "code" in query_params:
-            auth_state.code = query_params["code"][0]
-            self._send_response("Authentication successful! You can close this window.")
-        else:
-            auth_state.error = "No code or error found in response"
-            self._send_response("Invalid response. You can close this window.")
+            if "error" in query_params:
+                auth_state.error = query_params["error"][0]
+                self._send_response("Authentication failed. You can close this window.")
+            elif "code" in query_params:
+                auth_state.code = query_params["code"][0]
+                self._send_response("Authentication successful! You can close this window.")
+            else:
+                auth_state.error = "No code or error found in response"
+                self._send_response("Invalid response. You can close this window.")
+        finally:
+            # 処理完了を通知
+            auth_state.completed.set()
 
     def _send_response(self, message: str) -> None:
         self.send_response(200)
@@ -141,7 +146,8 @@ class AntigravityAuthProvider(AuthProvider):
         # 2. ローカルサーバー起動
         # ポート0を指定して動的ポート割り当てを利用（衝突回避）
         server = HTTPServer(("localhost", 0), OAuthCallbackHandler)
-        _, actual_port = server.server_address
+        # IPv4/IPv6両対応のため最初の2要素（host, port）のみを取得
+        host, actual_port = server.server_address[:2]
 
         # 状態オブジェクトをサーバーにアタッチ
         auth_state = AuthState()
@@ -177,6 +183,15 @@ class AntigravityAuthProvider(AuthProvider):
                 if time.time() - start_time > self._timeout_seconds:
                     raise RuntimeError("Authentication timed out")
                 await asyncio.sleep(0.5)
+
+            # レスポンス送信完了を待機（最大5秒）
+            # これを待たずにshutdownすると、ハンドラ実行中にサーバーが停止してフリーズする可能性がある
+            wait_start = time.time()
+            while not auth_state.completed.is_set():
+                if time.time() - wait_start > 5.0:
+                    logger.warning("Timeout waiting for callback response completion")
+                    break
+                await asyncio.sleep(0.1)
 
             if auth_state.error:
                 raise RuntimeError(f"Authentication failed: {auth_state.error}")
@@ -244,16 +259,18 @@ class AntigravityAuthProvider(AuthProvider):
         return await self._refresh_queue(stored)
 
     async def _refresh_queue(self, stored: str) -> str:
-        if self._refresh_task:
+        if self._refresh_task is not None:
             return await self._refresh_task
 
         async with self._refresh_lock:
-            if self._refresh_task:
+            if self._refresh_task is not None:
                 return await self._refresh_task
 
             self._refresh_task = asyncio.create_task(self._refresh_token(stored))
 
         try:
+            if self._refresh_task is None:
+                raise RuntimeError("Failed to create refresh task")
             return await self._refresh_task
         finally:
             self._refresh_task = None
