@@ -125,6 +125,12 @@ class ArgumentParser:
                 i += 1
                 continue
 
+            # Plain出力オプション
+            if arg == "--plain":
+                options["plain"] = True
+                i += 1
+                continue
+
             if arg in ("-f", "--force", "-y", "--yes"):
                 options["force"] = True
                 i += 1

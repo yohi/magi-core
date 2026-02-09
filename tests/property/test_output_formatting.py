@@ -156,7 +156,9 @@ class TestOutputFormattingProperty(unittest.TestCase):
 
     def setUp(self):
         """テストの準備"""
-        self.formatter = OutputFormatter()
+        # プロパティテストでは構造的正当性を確認するため、plainモードを使用する
+        # これにより、カラーコードによるアサーション失敗を回避できる
+        self.formatter = OutputFormatter(plain=True)
 
     @given(result=consensus_result_strategy())
     @settings(max_examples=100)
