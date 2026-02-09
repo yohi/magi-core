@@ -549,9 +549,8 @@ class MagiCLI:
                     auth_provider = get_auth_provider(selected_provider, auth_context)
                     # 非同期メソッドを同期的に実行
                     try:
-                        token = asyncio.run(auth_provider.get_token())
                         print("Fetching available models...")
-                        fetched_models = fetch_available_models(selected_provider, token)
+                        fetched_models = asyncio.run(auth_provider.get_available_models())
                     except (RuntimeError, ValueError) as e:
                         # 認証失敗やモデル取得失敗は警告を出してデフォルトモデルへフォールバック
                         # テスト環境などで発生しやすい

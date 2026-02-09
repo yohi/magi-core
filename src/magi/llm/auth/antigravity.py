@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 
 # Antigravity (Google OAuth) Constants
 ANTIGRAVITY_VERSION = "1.15.8"
-ANTIGRAVITY_ENDPOINT_DAILY = "https://daily.cloudcode-pa.googleapis.com"
-ANTIGRAVITY_ENDPOINT_AUTOPUSH = "https://autopush.cloudcode-pa.googleapis.com"
+ANTIGRAVITY_ENDPOINT_DAILY = "https://daily-cloudcode-pa.sandbox.googleapis.com"
+ANTIGRAVITY_ENDPOINT_AUTOPUSH = "https://autopush-cloudcode-pa.sandbox.googleapis.com"
 ANTIGRAVITY_ENDPOINT_PROD = "https://cloudcode-pa.googleapis.com"
 ANTIGRAVITY_ENDPOINTS = [
     ANTIGRAVITY_ENDPOINT_DAILY,
@@ -284,8 +284,8 @@ class AntigravityAuthProvider(AuthProvider):
                 url = f"{base_url}{url_suffix}"
                 try:
                     response = await client.post(url, headers=headers, json=json_body)
-                    # 5xx エラーの場合は次のエンドポイントを試す
-                    if 500 <= response.status_code < 600:
+                    # 5xx, 400, 404 エラーの場合は次のエンドポイントを試す
+                    if 500 <= response.status_code < 600 or response.status_code in (400, 404):
                         logger.warning(f"Endpoint {base_url} returned {response.status_code}. Retrying with next endpoint.")
                         continue
                     return response
@@ -588,8 +588,12 @@ class AntigravityAuthProvider(AuthProvider):
     async def _refresh_token(self, stored: str) -> str:
         refresh_token = self._extract_refresh_token(stored)
         if refresh_token:
-            token_payload = await self._refresh_token_flow(refresh_token)
-            self._store_tokens(token_payload, refresh_token_fallback=refresh_token)
+            try:
+                token_payload = await self._refresh_token_flow(refresh_token)
+                self._store_tokens(token_payload, refresh_token_fallback=refresh_token)
+            except (httpx.HTTPStatusError, Exception) as e:
+                logger.warning(f"Refresh token invalid, re-authenticating... (error: {e})")
+                await self.authenticate()
         else:
             warnings.warn(
                 "refresh_tokenが無いため再認証します。",
@@ -597,13 +601,6 @@ class AntigravityAuthProvider(AuthProvider):
                 stacklevel=2,
             )
             await self.authenticate()
-            new_stored = self._token_manager.get_token(self._service_name)
-            if not new_stored:
-                raise RuntimeError("アクセストークンが取得できませんでした。")
-            token = self._extract_access_token(new_stored)
-            if token is None:
-                raise RuntimeError("アクセストークンが取得できませんでした。")
-            return token
 
         latest_stored = self._token_manager.get_token(self._service_name)
         if not latest_stored:
@@ -656,7 +653,10 @@ class AntigravityAuthProvider(AuthProvider):
         token = await self.get_token()
         url_suffix = "/v1internal:fetchAvailableModels"
         headers = self._get_headers(token)
-        body = {"metadata": {"ideType": "ANTIGRAVITY"}}
+
+        # プロジェクトIDを取得
+        project_id = await self.get_project_id()
+        body = {"project": project_id} if project_id else {}
 
         try:
             response = await self._fetch_with_fallback(url_suffix, headers, body)
@@ -669,16 +669,21 @@ class AntigravityAuthProvider(AuthProvider):
             data = response.json()
 
             models = data.get("models", [])
-            if not isinstance(models, list):
-                logger.warning(f"Unexpected response format for fetchAvailableModels: {data}")
-                return []
-
             model_names = []
-            for m in models:
-                if isinstance(m, dict) and "name" in m:
-                    model_names.append(m["name"])
-                elif isinstance(m, str):
-                    model_names.append(m)
+
+            if isinstance(models, list):
+                # 従来のリスト形式への対応
+                for m in models:
+                    if isinstance(m, dict) and "name" in m:
+                        model_names.append(m["name"])
+                    elif isinstance(m, str):
+                        model_names.append(m)
+            elif isinstance(models, dict):
+                # 辞書形式（Map）への対応: キーがモデルID
+                model_names.extend(models.keys())
+            else:
+                logger.warning(f"Unexpected models format in fetchAvailableModels: {type(models)}")
+                return []
 
             return sorted(model_names)
         except Exception as e:
