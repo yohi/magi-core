@@ -250,7 +250,8 @@ class MagiCLI:
                     if not auth_context.client_id or not auth_context.client_secret:
                         raise RuntimeError(
                             "Non-interactive environment detected. "
-                            "Please set MAGI_ANTIGRAVITY_CLIENT_ID and MAGI_ANTIGRAVITY_CLIENT_SECRET environment variables, "
+                            "Please set MAGI_ANTIGRAVITY_CLIENT_ID/MAGI_ANTIGRAVITY_CLIENT_SECRET or "
+                            "ANTIGRAVITY_CLIENT_ID/ANTIGRAVITY_CLIENT_SECRET environment variables, "
                             "or configure them in magi.yaml."
                         )
                 else:

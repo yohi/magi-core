@@ -27,7 +27,7 @@ class TestOAuthCallbackHandler(unittest.TestCase):
         self.handler_mock.wfile = self.wfile_mock
 
     def test_do_GET_success(self):
-        with patch.object(OAuthCallbackHandler, '_send_response', wraps=self.handler_mock._send_response) as mock_send_response:
+        with patch.object(OAuthCallbackHandler, '_send_response', wraps=self.handler_mock._send_response):
              OAuthCallbackHandler.do_GET(self.handler_mock)
              
              self.assertEqual(self.auth_state.code, "test_code")

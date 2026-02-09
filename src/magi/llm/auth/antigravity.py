@@ -7,6 +7,7 @@ import base64
 import hashlib
 import json
 import logging
+import os
 import secrets
 import socket
 import sys
@@ -337,31 +338,39 @@ class AntigravityAuthProvider(AuthProvider):
 
         # 2. ローカルサーバー起動
         # ポートバインド戦略:
-        # 1. まず IPv6 (Dual Stack) を試みる ("::")
-        # 2. ダメなら IPv4 ("0.0.0.0") を試みる
-        # 3. それでもダメなら従来の "127.0.0.1"
+        # デフォルトではループバックのみ (::1, 127.0.0.1) を試みる。
+        # 環境変数 MAGI_ALLOW_EXTERNAL_BIND が設定されている場合のみ外部バインドを試みる。
         
         server = None
         server_url_log = ""
+        allow_external = os.environ.get("MAGI_ALLOW_EXTERNAL_BIND") == "1"
 
-        # 戦略1: Dual Stack (IPv6 + IPv4)
-        try:
-            # "::" はIPv6の全インターフェース。DualStackServerでIPv4も拾う設定にする。
-            server = DualStackServer(("::", REDIRECT_PORT), OAuthCallbackHandler)
-            server_url_log = f"http://localhost:{REDIRECT_PORT} (Dual Stack)"
-        except (OSError, socket.error):
-            # IPv6非対応などの場合、次へ
-            pass
-
-        # 戦略2: IPv4 Any (0.0.0.0)
-        if server is None:
+        if allow_external:
+            # 戦略1: Dual Stack (IPv6 + IPv4) - External
             try:
-                server = IPv4Server(("0.0.0.0", REDIRECT_PORT), OAuthCallbackHandler)
-                server_url_log = f"http://localhost:{REDIRECT_PORT} (IPv4 Any)"
-            except OSError:
+                # "::" はIPv6の全インターフェース。DualStackServerでIPv4も拾う設定にする。
+                server = DualStackServer(("::", REDIRECT_PORT), OAuthCallbackHandler)
+                server_url_log = f"http://localhost:{REDIRECT_PORT} (Dual Stack)"
+            except (OSError, socket.error):
                 pass
 
-        # 戦略3: IPv4 Localhost (127.0.0.1) - 最終手段
+            # 戦略2: IPv4 Any (0.0.0.0) - External
+            if server is None:
+                try:
+                    server = IPv4Server(("0.0.0.0", REDIRECT_PORT), OAuthCallbackHandler)
+                    server_url_log = f"http://localhost:{REDIRECT_PORT} (IPv4 Any)"
+                except OSError:
+                    pass
+
+        # 戦略3: IPv6 Localhost (::1)
+        if server is None:
+            try:
+                server = DualStackServer(("::1", REDIRECT_PORT), OAuthCallbackHandler)
+                server_url_log = f"http://localhost:{REDIRECT_PORT} (IPv6 Localhost)"
+            except (OSError, socket.error):
+                pass
+
+        # 戦略4: IPv4 Localhost (127.0.0.1) - 最終手段
         if server is None:
             try:
                 server = IPv4Server(("127.0.0.1", REDIRECT_PORT), OAuthCallbackHandler)
