@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 import secrets
+import sys
 import threading
 import time
 import warnings
@@ -69,8 +70,9 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
                 auth_state.error = query_params["error"][0]
                 self._send_response("Authentication failed. You can close this window.")
             elif "code" in query_params:
-                auth_state.code = query_params["code"][0]
-                self._send_response("Authentication successful! You can close this window.")
+                code = query_params["code"][0]
+                auth_state.code = code
+                self._send_response("Authentication successful!", code=code)
             else:
                 auth_state.error = "No code or error found in response"
                 self._send_response("Invalid response. You can close this window.")
@@ -78,16 +80,45 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
             # 処理完了を通知
             auth_state.completed.set()
 
-    def _send_response(self, message: str) -> None:
+    def _send_response(self, message: str, code: Optional[str] = None) -> None:
         self.send_response(200)
-        self.send_header("Content-type", "text/html")
+        self.send_header("Content-type", "text/html; charset=utf-8")
         self.end_headers()
+        
+        code_html = ""
+        if code:
+            code_html = f"""
+            <div style="margin-top: 20px; padding: 15px; background-color: #f5f5f5; border-radius: 5px; border: 1px solid #ddd;">
+                <p style="margin: 0 0 10px; color: #666; font-size: 14px;">
+                    もしCLIが自動的に反応しない場合は、以下のコードをコピーしてターミナルに貼り付けてください:
+                </p>
+                <div style="font-family: monospace; font-size: 16px; font-weight: bold; word-break: break-all; color: #333; padding: 10px; background: #fff; border: 1px solid #ccc; border-radius: 3px; max-height: 200px; overflow-y: auto;">
+                    {code}
+                </div>
+                <button onclick="copyCode()" style="margin-top: 10px; padding: 5px 10px; cursor: pointer;">コードをコピー</button>
+            </div>
+            <script>
+            function copyCode() {{
+                const code = `{code}`;
+                navigator.clipboard.writeText(code).then(() => {{
+                    alert("クリップボードにコピーしました");
+                }}).catch(err => {{
+                    console.error("Failed to copy: ", err);
+                }});
+            }}
+            </script>
+            """
+
         html = f"""
         <html>
-        <head><title>Authentication Status</title></head>
-        <body style="font-family: sans-serif; text-align: center; padding-top: 50px;">
-            <h2>{message}</h2>
-            <script>setTimeout(function() {{ window.close(); }}, 2000);</script>
+        <head>
+            <title>Authentication Status</title>
+            <meta charset="utf-8">
+        </head>
+        <body style="font-family: sans-serif; text-align: center; padding-top: 50px; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #4CAF50;">{message}</h2>
+            <p>You can close this window.</p>
+            {code_html}
         </body>
         </html>
         """
@@ -144,17 +175,24 @@ class AntigravityAuthProvider(AuthProvider):
         )
 
         # 2. ローカルサーバー起動
-        # ポート0を指定して動的ポート割り当てを利用（衝突回避）
-        server = HTTPServer(("localhost", 0), OAuthCallbackHandler)
-        # IPv4/IPv6両対応のため最初の2要素（host, port）のみを取得
-        _, actual_port = server.server_address[:2]
+        # 固定ポートを使用（Google Cloud Consoleで登録済みのURIと一致させるため）
+        host = "127.0.0.1"
+        try:
+            server = HTTPServer((host, REDIRECT_PORT), OAuthCallbackHandler)
+            print(f"Local server running on http://{host}:{REDIRECT_PORT}", file=sys.stderr)
+        except OSError as e:
+            if e.errno == 98:  # Address already in use
+                raise RuntimeError(
+                    f"Port {REDIRECT_PORT} is already in use. Please stop other processes using this port."
+                )
+            raise
 
         # 状態オブジェクトをサーバーにアタッチ
         auth_state = AuthState()
         server.auth_state = auth_state  # type: ignore
 
-        # リダイレクトURIを実際のポートに合わせて更新
-        dynamic_redirect_uri = f"http://localhost:{actual_port}/oauth-callback"
+        # リダイレクトURIを固定値に設定
+        redirect_uri = REDIRECT_URI
 
         server_thread = threading.Thread(target=server.serve_forever)
         server_thread.daemon = True
@@ -165,7 +203,7 @@ class AntigravityAuthProvider(AuthProvider):
             params = {
                 "response_type": "code",
                 "client_id": self._require_client_id(),
-                "redirect_uri": dynamic_redirect_uri,
+                "redirect_uri": redirect_uri,
                 "scope": " ".join(self._context.scopes),
                 "code_challenge": code_challenge,
                 "code_challenge_method": "S256",
@@ -177,36 +215,87 @@ class AntigravityAuthProvider(AuthProvider):
             print(f"Opening browser for authentication: {auth_url}")
             webbrowser.open(auth_url)
 
-            # 4. コード待機
+            # 4. コード待機（手動入力対応）
+            print("\n" + "=" * 60)
+            print("【手動認証の手順 (Manual Authentication Steps)】")
+            print("1. ブラウザでGoogleアカウントにログインし、アクセスを許可してください。")
+            print("2. 認証後、ブラウザが 'http://localhost:51121/...' にリダイレクトされます。")
+            print("3. もし「接続が拒否されました (Connection refused)」等のエラーが表示されても")
+            print("   **認証は成功しています**。")
+            print("4. エラー画面の **アドレスバーのURLすべて** をコピーしてください。")
+            print("   または、認証成功画面に表示された **認証コード** をコピーしてください。")
+            print("5. コピーしたURLまたはコードを以下に貼り付けて、Enterキーを押してください。")
+            print("   (自動的に検知された場合は、何も入力せずにEnterを押してください)")
+            print("=" * 60 + "\n")
+
+            auth_code = None
             start_time = time.time()
-            while auth_state.code is None and auth_state.error is None:
+
+            while not auth_code:
+                # タイムアウトチェック
                 if time.time() - start_time > self._timeout_seconds:
                     raise RuntimeError("Authentication timed out")
-                await asyncio.sleep(0.5)
+                
+                if auth_state.error:
+                    raise RuntimeError(f"Authentication failed: {auth_state.error}")
 
-            # レスポンス送信完了を待機（最大5秒）
-            # これを待たずにshutdownすると、ハンドラ実行中にサーバーが停止してフリーズする可能性がある
-            wait_start = time.time()
-            while not auth_state.completed.is_set():
-                if time.time() - wait_start > 5.0:
-                    logger.warning("Timeout waiting for callback response completion")
+                # ユーザー入力を待機（非ブロッキングにするため run_in_executor を使用）
+                # これによりバックグラウンドのサーバー処理を阻害しない
+                try:
+                    # プロンプトを表示して入力を待つ
+                    # 注意: input() はブロックするため、サーバーからの自動検知をリアルタイムに反映するには
+                    # ユーザーがEnterを押す必要がある。
+                    redirect_url_or_empty = await asyncio.to_thread(input, "Paste URL or Code here (or Enter to check auto-detect): ")
+                    redirect_url_or_empty = redirect_url_or_empty.strip()
+                except (EOFError, KeyboardInterrupt):
+                    raise RuntimeError("Authentication canceled by user")
+
+                    # 1. ユーザー入力からコード抽出を試みる
+                if redirect_url_or_empty:
+                    import re
+                    # 指定された正規表現パターンでコードをピンポイントで探す
+                    code_match = re.search(r'(4/[0-9A-Za-z_-]+)', redirect_url_or_empty)
+                    if code_match:
+                        auth_code = code_match.group(1)
+                    else:
+                        # URLパラメータ解析 (フォールバック)
+                        # code=... のパターンを探す
+                        match = re.search(r'[?&]code=([^&]+)', redirect_url_or_empty)
+                        if match:
+                            auth_code = match.group(1)
+                        # code= がない場合、入力値そのものがコードである可能性
+                        elif not redirect_url_or_empty.startswith("http") and len(redirect_url_or_empty) > 10:
+                            # URL形式でなく、ある程度の長さがあればコードとみなす
+                            auth_code = redirect_url_or_empty
+                    
+                    if auth_code:
+                        print("Manual code entry detected.")
+                        print("サーバーを停止しています... (Stopping local server...)")
+                        break
+                    else:
+                        print("入力からコードを検出できませんでした。もう一度試してください。")
+
+                # 2. 自動検知（ローカルサーバー）の結果を確認
+                if auth_state.code:
+                    auth_code = auth_state.code
+                    print("\nAuto-authentication detected.")
                     break
-                await asyncio.sleep(0.1)
+                
+                if auth_state.error:
+                    raise RuntimeError(f"Authentication failed: {auth_state.error}")
 
-            if auth_state.error:
-                raise RuntimeError(f"Authentication failed: {auth_state.error}")
-
-            auth_code = auth_state.code
             if not auth_code:
                 raise RuntimeError("Failed to receive authorization code")
 
         finally:
+            print("サーバーを停止しています... (Stopping local server...)")
             server.shutdown()
             server.server_close()
 
         # 5. トークン交換
+        print("認証コードをトークンと交換しています... (Exchanging code for tokens...)")
         token_payload = await self._exchange_code_for_token(
-            auth_code, code_verifier, dynamic_redirect_uri
+            auth_code, code_verifier, redirect_uri
         )
         self._store_tokens(token_payload)
 

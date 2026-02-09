@@ -22,8 +22,12 @@ class TestAntigravityAuth(unittest.TestCase):
     @patch("magi.llm.auth.antigravity.webbrowser.open")
     @patch("magi.llm.auth.antigravity.HTTPServer")
     @patch("magi.llm.auth.antigravity.httpx.AsyncClient")
-    def test_authenticate_wait_for_completion(self, mock_client, mock_server_cls, mock_browser):
+    @patch("magi.llm.auth.antigravity.asyncio.to_thread")
+    def test_authenticate_wait_for_completion(self, mock_to_thread, mock_client, mock_server_cls, mock_browser):
         """authenticateメソッドがcompletedイベントを待機することを確認"""
+        
+        # input()のモック (Enterのみ押された場合)
+        mock_to_thread.return_value = ""
         
         # モックの設定
         mock_server_instance = MagicMock()
@@ -62,10 +66,7 @@ class TestAntigravityAuth(unittest.TestCase):
             
             # codeをセット
             current_auth_state.code = "test_code"
-            # completedはまだセットしない
-
-            time.sleep(0.5)
-            # 2. ここでcompletedをセット
+            # completedをセット (whileループを抜けさせる)
             current_auth_state.completed.set()
 
         threading.Thread(target=simulate_browser_callback).start()
@@ -83,8 +84,12 @@ class TestAntigravityAuth(unittest.TestCase):
     @patch("magi.llm.auth.antigravity.webbrowser.open")
     @patch("magi.llm.auth.antigravity.HTTPServer")
     @patch("magi.llm.auth.antigravity.httpx.AsyncClient")
-    def test_authenticate_timeout(self, mock_client, mock_server_cls, mock_browser):
+    @patch("magi.llm.auth.antigravity.asyncio.to_thread")
+    def test_authenticate_timeout(self, mock_to_thread, mock_client, mock_server_cls, mock_browser):
         """authenticateメソッドがタイムアウトすることを確認"""
+        
+        # input()のモック (Enterのみ押された場合)
+        mock_to_thread.return_value = ""
         
         mock_server_instance = MagicMock()
         mock_server_cls.return_value = mock_server_instance
@@ -104,6 +109,44 @@ class TestAntigravityAuth(unittest.TestCase):
         
         self.assertIn("timed out", str(cm.exception))
         loop.close()
+
+    @patch("magi.llm.auth.antigravity.webbrowser.open")
+    @patch("magi.llm.auth.antigravity.HTTPServer")
+    @patch("magi.llm.auth.antigravity.httpx.AsyncClient")
+    @patch("magi.llm.auth.antigravity.asyncio.to_thread")
+    def test_authenticate_regex_extraction(self, mock_to_thread, mock_client, mock_server_cls, mock_browser):
+        """正規表現による認証コード抽出を確認"""
+        
+        # ユーザーが「余計なテキスト」と一緒に「4/」形式のコードを入力した場合をシミュレート
+        mock_to_thread.return_value = "既存のブラウザセッション... 認証コード: 4/test_abc_123_XYZ"
+        
+        mock_server_instance = MagicMock()
+        mock_server_cls.return_value = mock_server_instance
+        mock_server_instance.server_address = ("localhost", 12345)
+        
+        # httpxのモックレスポンス
+        mock_response = MagicMock()
+        mock_response.is_error = False
+        mock_response.json.return_value = {
+            "access_token": "acc",
+            "refresh_token": "ref",
+            "expires_in": 3600,
+            "token_type": "Bearer"
+        }
+        
+        mock_client_instance = MagicMock()
+        mock_client_instance.__aenter__.return_value = mock_client_instance
+        mock_client_instance.post = AsyncMock(return_value=mock_response)
+        mock_client.return_value = mock_client_instance
+
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(self.provider.authenticate())
+        loop.close()
+
+        # 交換に使用されたコードが抽出されたものであることを確認
+        mock_client_instance.post.assert_called_once()
+        call_args = mock_client_instance.post.call_args
+        self.assertEqual(call_args[1]["data"]["code"], "4/test_abc_123_XYZ")
 
 if __name__ == "__main__":
     unittest.main()
