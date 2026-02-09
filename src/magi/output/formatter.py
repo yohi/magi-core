@@ -37,6 +37,7 @@ class OutputFormatter:
     GREEN = '\033[92m'
     YELLOW = '\033[93m'
     RED = '\033[91m'
+    WHITE = '\033[97m'
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
@@ -87,7 +88,7 @@ class OutputFormatter:
             return self.YELLOW, self.EMOJI_BALTHASAR
         if "casper" in name:
             return self.MAGENTA, self.EMOJI_CASPER
-        return self.ENDC, ""
+        return self.WHITE, ""
 
     def _colorize(self, text: str, color: str) -> str:
         """テキストに色を適用する"""
