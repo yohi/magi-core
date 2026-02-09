@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Set, Type, cast
 
 from magi.config.provider import (
+    AUTH_BASED_PROVIDERS,
     DEFAULT_PROVIDER_ID,
     ProviderConfig,
     ProviderConfigs,
@@ -16,7 +17,12 @@ from magi.config.provider import (
 )
 from magi.errors import ErrorCode, MagiError, MagiException
 from magi.llm.auth import AuthContext, get_auth_provider
-from magi.llm.providers import AnthropicAdapter, GeminiAdapter, OpenAIAdapter, ProviderAdapter
+from magi.llm.providers import (
+    AnthropicAdapter,
+    GeminiAdapter,
+    OpenAIAdapter,
+    ProviderAdapter,
+)
 from magi.llm.providers_auth import AntigravityAdapter, CopilotAdapter
 
 if TYPE_CHECKING:
@@ -72,11 +78,7 @@ class ProviderRegistry:
 
     def list(self) -> Iterable[str]:
         """利用可能なプロバイダ一覧"""
-        return [
-            key
-            for key in self._providers.keys()
-            if key.lower() in self._supported
-        ]
+        return [key for key in self._providers.keys() if key.lower() in self._supported]
 
     def resolve(self, provider_id: str) -> ProviderConfig:
         """プロバイダIDから設定を解決する"""
@@ -110,17 +112,21 @@ class ProviderRegistry:
             if not getattr(config, field) or not str(getattr(config, field)).strip()
         ]
         if missing_fields:
-            raise MagiException(
-                MagiError(
-                    code=ErrorCode.CONFIG_MISSING_API_KEY.value,
-                    message=f"Provider '{provider_id}' is missing required fields.",
-                    details={
-                        "provider": provider_id,
-                        "missing_fields": missing_fields,
-                    },
-                    recoverable=False,
+            if normalized in AUTH_BASED_PROVIDERS and "api_key" in missing_fields:
+                missing_fields.remove("api_key")
+
+            if missing_fields:
+                raise MagiException(
+                    MagiError(
+                        code=ErrorCode.CONFIG_MISSING_API_KEY.value,
+                        message=f"Provider '{provider_id}' is missing required fields.",
+                        details={
+                            "provider": provider_id,
+                            "missing_fields": missing_fields,
+                        },
+                        recoverable=False,
+                    )
                 )
-            )
 
         return config
 
@@ -134,7 +140,9 @@ class ProviderSelector:
         default_provider: Optional[str] = None,
     ) -> None:
         self.registry = registry
-        resolved_default = default_provider or getattr(registry, "default_provider", None)
+        resolved_default = default_provider or getattr(
+            registry, "default_provider", None
+        )
         if not resolved_default:
             resolved_default = DEFAULT_PROVIDER_ID
         self.default_provider = resolved_default.lower()
@@ -180,8 +188,12 @@ class ProviderAdapterFactory:
             auth_context = self._build_auth_context(context.options or {})
             auth_provider = get_auth_provider(key, auth_context)
             if key == "copilot":
-                return CopilotAdapter(context, cast("CopilotAuthProvider", auth_provider))
-            return AntigravityAdapter(context, cast("AntigravityAuthProvider", auth_provider))
+                return CopilotAdapter(
+                    context, cast("CopilotAuthProvider", auth_provider)
+                )
+            return AntigravityAdapter(
+                context, cast("AntigravityAuthProvider", auth_provider)
+            )
         adapter_cls = self._adapter_mapping.get(key)
         if adapter_cls is None:
             raise MagiException(

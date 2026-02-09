@@ -109,12 +109,14 @@ class OpenAIAdapter:
         *,
         http_client: Optional[Any] = None,
         timeout: float = 30.0,
+        chat_endpoint: str = "/v1/chat/completions",
     ) -> None:
         self.context = context
         self.provider_id = context.provider_id
         self.model = context.model
         self.endpoint = (context.endpoint or "https://api.openai.com").rstrip("/")
         self._timeout = timeout
+        self._chat_endpoint = chat_endpoint
         self._httpx = _require_httpx()
         self._owns_client = http_client is None
         self._client = http_client or self._httpx.AsyncClient(timeout=timeout)
@@ -122,21 +124,35 @@ class OpenAIAdapter:
 
     def _validate_prompts(self, request: LLMRequest) -> None:
         """プロンプトが非空文字列であることを検証"""
-        if not request.system_prompt or not isinstance(request.system_prompt, str) or not request.system_prompt.strip():
+        if (
+            not request.system_prompt
+            or not isinstance(request.system_prompt, str)
+            or not request.system_prompt.strip()
+        ):
             raise MagiException(
                 MagiError(
                     code=ErrorCode.CONFIG_INVALID_VALUE.value,
                     message="system_prompt must be a non-empty string",
-                    details={"provider": self.provider_id, "value": request.system_prompt},
+                    details={
+                        "provider": self.provider_id,
+                        "value": request.system_prompt,
+                    },
                     recoverable=False,
                 )
             )
-        if not request.user_prompt or not isinstance(request.user_prompt, str) or not request.user_prompt.strip():
+        if (
+            not request.user_prompt
+            or not isinstance(request.user_prompt, str)
+            or not request.user_prompt.strip()
+        ):
             raise MagiException(
                 MagiError(
                     code=ErrorCode.CONFIG_INVALID_VALUE.value,
                     message="user_prompt must be a non-empty string",
-                    details={"provider": self.provider_id, "value": request.user_prompt},
+                    details={
+                        "provider": self.provider_id,
+                        "value": request.user_prompt,
+                    },
                     recoverable=False,
                 )
             )
@@ -144,25 +160,22 @@ class OpenAIAdapter:
     async def send(self, request: LLMRequest) -> LLMResponse:
         """Chat Completions エンドポイントへ送信"""
         import base64
-        
+
         self._validate_prompts(request)
-        
+
         # user messageのcontentを構築: テキスト + 添付ファイル
         user_content = [{"type": "text", "text": request.user_prompt}]
-        
+
         # 添付ファイルがある場合、image_url content partとして追加
         if request.attachments:
             for attachment in request.attachments:
                 # base64エンコードしてdata URL形式で追加
                 encoded_data = base64.b64encode(attachment.data).decode("utf-8")
                 data_url = f"data:{attachment.mime_type};base64,{encoded_data}"
-                user_content.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": data_url
-                    }
-                })
-        
+                user_content.append(
+                    {"type": "image_url", "image_url": {"url": data_url}}
+                )
+
         payload = {
             "model": self.model,
             "messages": [
@@ -173,7 +186,7 @@ class OpenAIAdapter:
             "temperature": request.temperature,
         }
 
-        url = f"{self.endpoint}/v1/chat/completions"
+        url = f"{self.endpoint}{self._chat_endpoint}"
         try:
             response = await self._client.post(
                 url,
@@ -342,46 +355,58 @@ class GeminiAdapter:
     async def send(self, request: LLMRequest) -> LLMResponse:
         """Gemini generateContent API を呼び出す"""
         import base64
-        
-        if not request.system_prompt or not isinstance(request.system_prompt, str) or not request.system_prompt.strip():
+
+        if (
+            not request.system_prompt
+            or not isinstance(request.system_prompt, str)
+            or not request.system_prompt.strip()
+        ):
             raise MagiException(
                 MagiError(
                     code=ErrorCode.CONFIG_INVALID_VALUE.value,
                     message="system_prompt must be a non-empty string",
-                    details={"provider": self.provider_id, "value": request.system_prompt},
+                    details={
+                        "provider": self.provider_id,
+                        "value": request.system_prompt,
+                    },
                     recoverable=False,
                 )
             )
-        if not request.user_prompt or not isinstance(request.user_prompt, str) or not request.user_prompt.strip():
+        if (
+            not request.user_prompt
+            or not isinstance(request.user_prompt, str)
+            or not request.user_prompt.strip()
+        ):
             raise MagiException(
                 MagiError(
                     code=ErrorCode.CONFIG_INVALID_VALUE.value,
                     message="user_prompt must be a non-empty string",
-                    details={"provider": self.provider_id, "value": request.user_prompt},
+                    details={
+                        "provider": self.provider_id,
+                        "value": request.user_prompt,
+                    },
                     recoverable=False,
                 )
             )
         url = f"{self.endpoint}/v1beta/models/{self.model}:generateContent"
-        
+
         # partsを構築: テキスト + 添付ファイル
         parts = [{"text": request.user_prompt}]
-        
+
         # 添付ファイルがある場合、inline_dataとして追加
         if request.attachments:
             for attachment in request.attachments:
-                parts.append({
-                    "inline_data": {
-                        "mime_type": attachment.mime_type,
-                        "data": base64.b64encode(attachment.data).decode("utf-8"),
+                parts.append(
+                    {
+                        "inline_data": {
+                            "mime_type": attachment.mime_type,
+                            "data": base64.b64encode(attachment.data).decode("utf-8"),
+                        }
                     }
-                })
-        
+                )
+
         payload = {
-            "contents": [
-                {
-                    "parts": parts
-                }
-            ],
+            "contents": [{"parts": parts}],
             "system_instruction": {"parts": [{"text": request.system_prompt}]},
             "generationConfig": {
                 "maxOutputTokens": request.max_tokens,
