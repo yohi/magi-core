@@ -204,10 +204,10 @@ class OutputFormatter:
         final_emoji = ""
         final_color = self.ENDC
         if not self.plain:
-            if final_decision == "APPROVE":
+            if final_decision == "APPROVED":
                 final_emoji = self.EMOJI_APPROVE
                 final_color = self.GREEN
-            elif final_decision == "DENY":
+            elif final_decision == "DENIED":
                 final_emoji = self.EMOJI_DENY
                 final_color = self.RED
             elif final_decision == "CONDITIONAL":

@@ -214,6 +214,8 @@ class TestOutputFormatter(unittest.TestCase):
         
         self.assertIn("## 最終判定", output)
         self.assertIn("APPROVED", output)
+        # 絵文字も含まれていることを確認 (バグ修正の確認)
+        self.assertIn("✅", output)
 
     def test_format_markdown_plain_returns_string_without_colors(self):
         """Markdown形式(plain=True)で色や絵文字が含まれないこと"""
