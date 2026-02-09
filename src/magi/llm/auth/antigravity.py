@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 import secrets
+import socket
 import sys
 import threading
 import time
@@ -25,6 +26,20 @@ from magi.llm.auth.storage import TokenManager
 logger = logging.getLogger(__name__)
 
 # Antigravity (Google OAuth) Constants
+ANTIGRAVITY_VERSION = "1.15.8"
+ANTIGRAVITY_ENDPOINT_DAILY = "https://daily.cloudcode-pa.googleapis.com"
+ANTIGRAVITY_ENDPOINT_AUTOPUSH = "https://autopush.cloudcode-pa.googleapis.com"
+ANTIGRAVITY_ENDPOINT_PROD = "https://cloudcode-pa.googleapis.com"
+ANTIGRAVITY_ENDPOINTS = [
+    ANTIGRAVITY_ENDPOINT_DAILY,
+    ANTIGRAVITY_ENDPOINT_AUTOPUSH,
+    ANTIGRAVITY_ENDPOINT_PROD,
+]
+ANTIGRAVITY_HEADERS = {
+    "User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Antigravity/{ANTIGRAVITY_VERSION} Chrome/138.0.7204.235 Electron/37.3.1 Safari/537.36",
+    "X-Goog-Api-Client": "google-cloud-sdk vscode_cloudshelleditor/0.1",
+    "Client-Metadata": '{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}',
+}
 DEFAULT_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 DEFAULT_TOKEN_URL = "https://oauth2.googleapis.com/token"
 DEFAULT_SCOPES = [
@@ -45,6 +60,30 @@ class AuthState:
         self.code: Optional[str] = None
         self.error: Optional[str] = None
         self.completed = threading.Event()
+
+
+class DualStackServer(HTTPServer):
+    """IPv6とIPv4の両方でリッスンを試みるサーバー
+    
+    環境に応じて柔軟にバインドを試みる。
+    デフォルトではIPv6 (::) でリッスンし、IPv4も受け入れる設定を試みる。
+    """
+    
+    address_family = socket.AF_INET6
+    allow_reuse_address = True  # ポート再利用を許可
+
+    def server_bind(self):
+        # IPV6_V6ONLY を 0 に設定してデュアルスタック化を試みる
+        try:
+            self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        except (AttributeError, OSError):
+            pass
+        super().server_bind()
+
+class IPv4Server(HTTPServer):
+    """IPv4専用の再利用可能サーバー"""
+    address_family = socket.AF_INET
+    allow_reuse_address = True
 
 
 class OAuthCallbackHandler(BaseHTTPRequestHandler):
@@ -68,60 +107,125 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
 
             if "error" in query_params:
                 auth_state.error = query_params["error"][0]
-                self._send_response("Authentication failed. You can close this window.")
+                self._send_response("Authentication failed. You can close this window.", is_error=True)
             elif "code" in query_params:
                 code = query_params["code"][0]
                 auth_state.code = code
                 self._send_response("Authentication successful!", code=code)
             else:
                 auth_state.error = "No code or error found in response"
-                self._send_response("Invalid response. You can close this window.")
+                self._send_response("Invalid response. You can close this window.", is_error=True)
         finally:
             # 処理完了を通知
             auth_state.completed.set()
+            
+            # 自動検知メッセージを表示（標準入力待ちユーザーへのフィードバック）
+            if auth_state.code:
+                pass
 
-    def _send_response(self, message: str, code: Optional[str] = None) -> None:
+    def _send_response(self, message: str, code: Optional[str] = None, is_error: bool = False) -> None:
         self.send_response(200)
         self.send_header("Content-type", "text/html; charset=utf-8")
         self.end_headers()
+
+        # デザイン設定
+        icon = "✓" if not is_error else "✕"
+        icon_color = "#4CAF50" if not is_error else "#F44336"
+        title = "認証に成功しました" if not is_error else "認証エラー"
         
-        code_html = ""
-        if code:
-            code_html = f"""
-            <div style="margin-top: 20px; padding: 15px; background-color: #f5f5f5; border-radius: 5px; border: 1px solid #ddd;">
-                <p style="margin: 0 0 10px; color: #666; font-size: 14px;">
-                    もしCLIが自動的に反応しない場合は、以下のコードをコピーしてターミナルに貼り付けてください:
-                </p>
-                <div style="font-family: monospace; font-size: 16px; font-weight: bold; word-break: break-all; color: #333; padding: 10px; background: #fff; border: 1px solid #ccc; border-radius: 3px; max-height: 200px; overflow-y: auto;">
-                    {code}
+        if is_error:
+            description = f"<p style='color: #D32F2F;'>{message}</p>"
+            fallback_html = ""
+        else:
+            description = "<p>このウィンドウを閉じて、ターミナルに戻ってください。</p>"
+            fallback_html = f"""
+            <div class="fallback">
+                <p style="font-size: 14px; margin-bottom: 8px;">自動的に反応しない場合は、以下のコードをコピーしてターミナルに貼り付けてください：</p>
+                <div class="code-container">
+                    <span class="code" id="auth-code">{code}</span>
+                    <button class="copy-btn" onclick="copyCode()">コピー</button>
                 </div>
-                <button onclick="copyCode()" style="margin-top: 10px; padding: 5px 10px; cursor: pointer;">コードをコピー</button>
             </div>
-            <script>
-            function copyCode() {{
-                const code = `{code}`;
-                navigator.clipboard.writeText(code).then(() => {{
-                    alert("クリップボードにコピーしました");
-                }}).catch(err => {{
-                    console.error("Failed to copy: ", err);
-                }});
-            }}
-            </script>
             """
 
-        html = f"""
-        <html>
-        <head>
-            <title>Authentication Status</title>
-            <meta charset="utf-8">
-        </head>
-        <body style="font-family: sans-serif; text-align: center; padding-top: 50px; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #4CAF50;">{message}</h2>
-            <p>You can close this window.</p>
-            {code_html}
-        </body>
-        </html>
-        """
+        html = f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title}</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #f4f7f6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }}
+        .card {{
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }}
+        .icon {{
+            color: {icon_color};
+            font-size: 48px;
+            margin-bottom: 1rem;
+        }}
+        h1 {{ font-size: 24px; color: #333; margin-bottom: 0.5rem; }}
+        p {{ color: #666; line-height: 1.5; margin-bottom: 1.5rem; }}
+        .code-container {{
+            background: #f0f0f0;
+            padding: 1rem;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }}
+        .code {{ font-family: monospace; font-size: 16px; color: #333; word-break: break-all; }}
+        .copy-btn {{
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+            white-space: nowrap;
+            margin-left: 10px;
+        }}
+        .copy-btn:hover {{ background: #1976D2; }}
+        .footer {{ font-size: 12px; color: #999; }}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon">{icon}</div>
+        <h1>{title}</h1>
+        {description}
+        {fallback_html}
+        <div class="footer">MAGI System - Advanced Agentic Coding</div>
+    </div>
+    <script>
+        function copyCode() {{
+            const code = document.getElementById('auth-code').innerText;
+            navigator.clipboard.writeText(code).then(() => {{
+                const btn = document.querySelector('.copy-btn');
+                btn.innerText = 'コピー完了';
+                setTimeout(() => btn.innerText = 'コピー', 2000);
+            }});
+        }}
+    </script>
+</body>
+</html>"""
         self.wfile.write(html.encode("utf-8"))
 
     def log_message(self, format: str, *args: Any) -> None:
@@ -160,6 +264,63 @@ class AntigravityAuthProvider(AuthProvider):
         self._service_name = "magi.antigravity"
         self._refresh_lock = asyncio.Lock()
         self._refresh_task: asyncio.Task[str] | None = None
+        self._project_id: str | None = None
+
+    def _get_headers(self, token: str) -> dict[str, str]:
+        """Antigravity APIリクエスト用のヘッダーを生成する。"""
+        headers = ANTIGRAVITY_HEADERS.copy()
+        headers["Authorization"] = f"Bearer {token}"
+        headers["Content-Type"] = "application/json"
+        return headers
+
+    async def _fetch_with_fallback(
+        self, url_suffix: str, headers: dict[str, str], json_body: dict[str, Any]
+    ) -> httpx.Response:
+        """複数のエンドポイントに対してフォールバックを行いながらリクエストを実行する。"""
+        last_exception = None
+        
+        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+            for base_url in ANTIGRAVITY_ENDPOINTS:
+                url = f"{base_url}{url_suffix}"
+                try:
+                    response = await client.post(url, headers=headers, json=json_body)
+                    # 5xx エラーの場合は次のエンドポイントを試す
+                    if 500 <= response.status_code < 600:
+                        logger.warning(f"Endpoint {base_url} returned {response.status_code}. Retrying with next endpoint.")
+                        continue
+                    return response
+                except (httpx.RequestError, asyncio.TimeoutError) as e:
+                    logger.warning(f"Failed to connect to {base_url}: {e}. Retrying with next endpoint.")
+                    last_exception = e
+                    continue
+        
+        if last_exception:
+            raise last_exception
+        raise RuntimeError("All endpoints failed and no specific exception was caught.")
+
+    def _extract_code_from_input(self, text: str) -> Optional[str]:
+        import re
+        text = text.strip()
+        if not text:
+            return None
+            
+        if "code=" in text:
+            match = re.search(r'[?&]code=([^&]+)', text)
+            if match:
+                return match.group(1)
+
+        code_match = re.search(r'(4/[0-9A-Za-z_-]+)', text)
+        if code_match:
+            return code_match.group(1)
+            
+        if not text.startswith("http") and len(text) > 10:
+            return text
+            
+        return None
+
+    def _readline(self) -> str:
+        """標準入力から1行読み込む（テスト用に分離）"""
+        return sys.stdin.readline()
 
     async def authenticate(self) -> None:
         """初回認証を行い、トークンを保存する（PKCEフロー）。"""
@@ -175,17 +336,44 @@ class AntigravityAuthProvider(AuthProvider):
         )
 
         # 2. ローカルサーバー起動
-        # 固定ポートを使用（Google Cloud Consoleで登録済みのURIと一致させるため）
-        host = "127.0.0.1"
+        # ポートバインド戦略:
+        # 1. まず IPv6 (Dual Stack) を試みる ("::")
+        # 2. ダメなら IPv4 ("0.0.0.0") を試みる
+        # 3. それでもダメなら従来の "127.0.0.1"
+        
+        server = None
+        server_url_log = ""
+
+        # 戦略1: Dual Stack (IPv6 + IPv4)
         try:
-            server = HTTPServer((host, REDIRECT_PORT), OAuthCallbackHandler)
-            print(f"Local server running on http://{host}:{REDIRECT_PORT}", file=sys.stderr)
-        except OSError as e:
-            if e.errno == 98:  # Address already in use
-                raise RuntimeError(
-                    f"Port {REDIRECT_PORT} is already in use. Please stop other processes using this port."
-                )
-            raise
+            # "::" はIPv6の全インターフェース。DualStackServerでIPv4も拾う設定にする。
+            server = DualStackServer(("::", REDIRECT_PORT), OAuthCallbackHandler)
+            server_url_log = f"http://localhost:{REDIRECT_PORT} (Dual Stack)"
+        except (OSError, socket.error):
+            # IPv6非対応などの場合、次へ
+            pass
+
+        # 戦略2: IPv4 Any (0.0.0.0)
+        if server is None:
+            try:
+                server = IPv4Server(("0.0.0.0", REDIRECT_PORT), OAuthCallbackHandler)
+                server_url_log = f"http://localhost:{REDIRECT_PORT} (IPv4 Any)"
+            except OSError:
+                pass
+
+        # 戦略3: IPv4 Localhost (127.0.0.1) - 最終手段
+        if server is None:
+            try:
+                server = IPv4Server(("127.0.0.1", REDIRECT_PORT), OAuthCallbackHandler)
+                server_url_log = f"http://127.0.0.1:{REDIRECT_PORT}"
+            except OSError as e:
+                if e.errno == 98:  # Address already in use
+                    raise RuntimeError(
+                        f"Port {REDIRECT_PORT} is already in use. Please stop other processes using this port."
+                    )
+                raise
+
+        print(f"Local server running on {server_url_log}", file=sys.stderr)
 
         # 状態オブジェクトをサーバーにアタッチ
         auth_state = AuthState()
@@ -215,85 +403,118 @@ class AntigravityAuthProvider(AuthProvider):
             print(f"Opening browser for authentication: {auth_url}")
             webbrowser.open(auth_url)
 
-            # 4. コード待機（手動入力対応）
-            print("\n" + "=" * 60)
-            print("【手動認証の手順 (Manual Authentication Steps)】")
-            print("1. ブラウザでGoogleアカウントにログインし、アクセスを許可してください。")
-            print("2. 認証後、ブラウザが 'http://localhost:51121/...' にリダイレクトされます。")
-            print("3. もし「接続が拒否されました (Connection refused)」等のエラーが表示されても")
-            print("   **認証は成功しています**。")
-            print("4. エラー画面の **アドレスバーのURLすべて** をコピーしてください。")
-            print("   または、認証成功画面に表示された **認証コード** をコピーしてください。")
-            print("5. コピーしたURLまたはコードを以下に貼り付けて、Enterキーを押してください。")
-            print("   (自動的に検知された場合は、何も入力せずにEnterを押してください)")
-            print("=" * 60 + "\n")
+            # プロンプト表示を少し遅らせる（ブラウザ起動メッセージとの被りを避けるため）
+            # これにより「既存のブラウザセッション...」などの出力が先に出ることを期待
+            time.sleep(2.0)
 
-            auth_code = None
+            # 4. コード待機（手動入力対応 & 自動検知並行）
+            print("\nWaiting for authorization...")
+            print("(If automatic redirect fails, paste the full redirect URL or code below)")
+            print("Code: ", end="", flush=True)
+
+            auth_code: Optional[str] = None
             start_time = time.time()
+            
+            # --- ハイブリッド待機ロジックの開始 ---
 
-            while not auth_code:
-                # タイムアウトチェック
-                if time.time() - start_time > self._timeout_seconds:
-                    raise RuntimeError("Authentication timed out")
-                
-                if auth_state.error:
-                    raise RuntimeError(f"Authentication failed: {auth_state.error}")
-
-                # ユーザー入力を待機（非ブロッキングにするため run_in_executor を使用）
-                # これによりバックグラウンドのサーバー処理を阻害しない
-                try:
-                    # プロンプトを表示して入力を待つ
-                    # 注意: input() はブロックするため、サーバーからの自動検知をリアルタイムに反映するには
-                    # ユーザーがEnterを押す必要がある。
-                    redirect_url_or_empty = await asyncio.to_thread(input, "Paste URL or Code here (or Enter to check auto-detect): ")
-                    redirect_url_or_empty = redirect_url_or_empty.strip()
-                except (EOFError, KeyboardInterrupt):
-                    raise RuntimeError("Authentication canceled by user")
-
-                    # 1. ユーザー入力からコード抽出を試みる
-                if redirect_url_or_empty:
-                    import re
-                    # 指定された正規表現パターンでコードをピンポイントで探す
-                    code_match = re.search(r'(4/[0-9A-Za-z_-]+)', redirect_url_or_empty)
-                    if code_match:
-                        auth_code = code_match.group(1)
-                    else:
-                        # URLパラメータ解析 (フォールバック)
-                        # code=... のパターンを探す
-                        match = re.search(r'[?&]code=([^&]+)', redirect_url_or_empty)
-                        if match:
-                            auth_code = match.group(1)
-                        # code= がない場合、入力値そのものがコードである可能性
-                        elif not redirect_url_or_empty.startswith("http") and len(redirect_url_or_empty) > 10:
-                            # URL形式でなく、ある程度の長さがあればコードとみなす
-                            auth_code = redirect_url_or_empty
-                    
-                    if auth_code:
-                        print("Manual code entry detected.")
-                        print("サーバーを停止しています... (Stopping local server...)")
-                        break
-                    else:
-                        print("入力からコードを検出できませんでした。もう一度試してください。")
-
-                # 2. 自動検知（ローカルサーバー）の結果を確認
+            # タスクA: ローカルサーバーからの通知待機
+            async def wait_for_server() -> str:
+                loop = asyncio.get_running_loop()
+                while not auth_state.completed.is_set():
+                    # threading.Eventを非同期に待つためにexecutorを使用
+                    await loop.run_in_executor(None, auth_state.completed.wait, 0.5)
+                    if auth_state.error:
+                        raise RuntimeError(f"Authentication failed: {auth_state.error}")
                 if auth_state.code:
-                    auth_code = auth_state.code
-                    print("\nAuto-authentication detected.")
-                    break
+                    return auth_state.code
+                raise RuntimeError("No code received from server")
+
+            # タスクB: 標準入力からの手動入力待機
+            async def wait_for_input() -> str:
+                loop = asyncio.get_running_loop()
                 
-                if auth_state.error:
-                    raise RuntimeError(f"Authentication failed: {auth_state.error}")
+                while True:
+                    # プロンプトはすでに出ているので空文字
+                    line = await loop.run_in_executor(None, self._readline)
+                    if not line:
+                        # EOF
+                        raise RuntimeError("Stdin closed")
+                    
+                    text = line.strip()
+                    extracted = self._extract_code_from_input(text)
+                    if extracted:
+                        return extracted
+                    
+                    # 無効な入力の場合
+                    print(f"\nCould not detect code from input: '{text[:20]}...'")
+                    print("Please paste the full URL or code again.")
+                    print("Code: ", end="", flush=True)
+
+            # タイムアウト付きで並行実行
+            server_task = asyncio.create_task(wait_for_server())
+            input_task = asyncio.create_task(wait_for_input())
+
+            done, pending = await asyncio.wait(
+                [server_task, input_task],
+                return_when=asyncio.FIRST_COMPLETED,
+                timeout=self._timeout_seconds
+            )
+
+            # 結果処理
+            if not done:
+                # タイムアウト
+                server_task.cancel()
+                input_task.cancel()
+                raise RuntimeError("Authentication timed out")
+
+            # 完了したタスクから結果を取得
+            for task in done:
+                try:
+                    auth_code = task.result()
+                    break
+                except Exception as e:
+                    # エラーが発生した場合はもう一方のタスクの結果を見るか、エラーを伝播
+                    logger.warning(f"Task failed: {e}")
+                    pass
+            
+            # まだ auth_code が取れておらず、かつペンディングタスクがある場合
+            if not auth_code and pending:
+                # 残りのタスクを待機する（タイムアウトまで）
+                elapsed = time.time() - start_time
+                remaining = self._timeout_seconds - elapsed
+                
+                # wait(timeout=...) に負数を渡してエラーになるか、即時タイムアウトするのを防ぐ
+                if remaining < 0.1:
+                    remaining = 0.1
+
+                done2, pending2 = await asyncio.wait(
+                    pending,
+                    return_when=asyncio.FIRST_COMPLETED,
+                    timeout=remaining
+                )
+                for task in done2:
+                    try:
+                        auth_code = task.result()
+                        break
+                    except Exception as e:
+                        logger.warning(f"Remaining task failed: {e}")
+                pending = pending2
+
+            # 残りのタスクをキャンセル
+            for task in pending:
+                task.cancel()
 
             if not auth_code:
-                raise RuntimeError("Failed to receive authorization code")
+                raise RuntimeError("Authentication failed or timed out")
+
+            # 成功時の表示調整（入力待ちプロンプトの後始末）
+            print()
 
         finally:
-            print("サーバーを停止しています... (Stopping local server...)")
             server.shutdown()
             server.server_close()
 
         # 5. トークン交換
-        print("認証コードをトークンと交換しています... (Exchanging code for tokens...)")
         token_payload = await self._exchange_code_for_token(
             auth_code, code_verifier, redirect_uri
         )
@@ -395,9 +616,34 @@ class AntigravityAuthProvider(AuthProvider):
     # 不要な古いメソッドを削除
 
     async def get_project_id(self) -> str | None:
-        """トークンを使用してProject IDを取得する（未実装）"""
-        # TODO: /v1internal:loadCodeAssist エンドポイントを叩いてProject IDを取得する実装を追加
-        return None
+        if self._project_id:
+            return self._project_id
+
+        token = await self.get_token()
+        url_suffix = "/v1internal:loadCodeAssist"
+        headers = self._get_headers(token)
+        body = {"metadata": {"ideType": "ANTIGRAVITY"}}
+
+        try:
+            response = await self._fetch_with_fallback(url_suffix, headers, body)
+            if response.status_code == 401:
+                token = await self.get_token(force_refresh=True)
+                headers = self._get_headers(token)
+                response = await self._fetch_with_fallback(url_suffix, headers, body)
+
+            response.raise_for_status()
+            data = response.json()
+
+            project_info = data.get("cloudaicompanionProject")
+            if isinstance(project_info, str):
+                self._project_id = project_info
+            elif isinstance(project_info, dict):
+                self._project_id = project_info.get("id")
+
+            return self._project_id
+        except Exception as e:
+            logger.warning(f"Failed to get project ID: {e}")
+            return None
 
     async def _refresh_token_flow(self, refresh_token: str) -> dict[str, Any]:
         token_url = self._require_token_url()
