@@ -42,15 +42,20 @@ class OutputFormatter:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
+    # Persona Colors - MAGI System Color Pattern
+    COLOR_MELCHIOR = '\033[96m'  # シアン - 論理・冷静
+    COLOR_BALTHASAR = '\033[93m'  # イエロー - 警戒・注意
+    COLOR_CASPER = '\033[95m'  # マゼンタ - 情熱・行動
+
     # Emojis
     EMOJI_MAGI = "🧠"
     EMOJI_THINKING = "🤔"
     EMOJI_DEBATE = "🗣️"
     EMOJI_VOTE = "🗳️"
     
-    EMOJI_MELCHIOR = "🔬" # Scientist
-    EMOJI_BALTHASAR = "⚖️" # Mother
-    EMOJI_CASPER = "💰"   # Pragmatist
+    EMOJI_MELCHIOR = "🔷"
+    EMOJI_BALTHASAR = "🔶"
+    EMOJI_CASPER = "🔴"
 
     EMOJI_APPROVE = "✅"
     EMOJI_DENY = "❌"
@@ -80,14 +85,14 @@ class OutputFormatter:
         """ペルソナに応じた色と絵文字を返す"""
         if self.plain:
             return "", ""
-        
+
         name = persona_name.lower()
         if "melchior" in name:
-            return self.BLUE, self.EMOJI_MELCHIOR
+            return self.COLOR_MELCHIOR, self.EMOJI_MELCHIOR
         if "balthasar" in name:
-            return self.YELLOW, self.EMOJI_BALTHASAR
+            return self.COLOR_BALTHASAR, self.EMOJI_BALTHASAR
         if "casper" in name:
-            return self.MAGENTA, self.EMOJI_CASPER
+            return self.COLOR_CASPER, self.EMOJI_CASPER
         return self.WHITE, ""
 
     def _colorize(self, text: str, color: str) -> str:
