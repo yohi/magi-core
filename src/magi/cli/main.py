@@ -236,31 +236,61 @@ class MagiCLI:
                     # Attempt to get from env vars or fail
                     if not auth_context.client_id:
                         auth_context.client_id = (
-                            os.environ.get("MAGI_ANTIGRAVITY_CLIENT_ID") or ""
+                            os.environ.get("MAGI_ANTIGRAVITY_CLIENT_ID")
+                            or os.environ.get("ANTIGRAVITY_CLIENT_ID")
+                            or ""
                         )
                     if not auth_context.client_secret:
                         auth_context.client_secret = (
-                            os.environ.get("MAGI_ANTIGRAVITY_CLIENT_SECRET") or ""
+                            os.environ.get("MAGI_ANTIGRAVITY_CLIENT_SECRET")
+                            or os.environ.get("ANTIGRAVITY_CLIENT_SECRET")
+                            or ""
                         )
 
                     if not auth_context.client_id or not auth_context.client_secret:
                         raise RuntimeError(
                             "Non-interactive environment detected. "
-                            "Please set MAGI_ANTIGRAVITY_CLIENT_ID and MAGI_ANTIGRAVITY_CLIENT_SECRET environment variables, "
+                            "Please set MAGI_ANTIGRAVITY_CLIENT_ID/MAGI_ANTIGRAVITY_CLIENT_SECRET or "
+                            "ANTIGRAVITY_CLIENT_ID/ANTIGRAVITY_CLIENT_SECRET environment variables, "
                             "or configure them in magi.yaml."
                         )
                 else:
                     # Interactive input
                     if not auth_context.client_id:
-                        val = input("Antigravity Client ID: ").strip()
+                        default_client_id = (
+                            os.environ.get("MAGI_ANTIGRAVITY_CLIENT_ID")
+                            or os.environ.get("ANTIGRAVITY_CLIENT_ID")
+                            or ""
+                        )
+                        prompt = (
+                            f"Antigravity Client ID [{default_client_id}]: "
+                            if default_client_id
+                            else "Antigravity Client ID: "
+                        )
+                        val = input(prompt).strip()
                         if val:
                             auth_context.client_id = val
+                        elif default_client_id:
+                            auth_context.client_id = default_client_id
+
                     if not auth_context.client_secret:
+                        default_client_secret = (
+                            os.environ.get("MAGI_ANTIGRAVITY_CLIENT_SECRET")
+                            or os.environ.get("ANTIGRAVITY_CLIENT_SECRET")
+                            or ""
+                        )
                         from getpass import getpass
 
-                        val = getpass("Antigravity Client Secret: ").strip()
+                        prompt = (
+                            f"Antigravity Client Secret [{'*' * 8}]: "
+                            if default_client_secret
+                            else "Antigravity Client Secret: "
+                        )
+                        val = getpass(prompt).strip()
                         if val:
                             auth_context.client_secret = val
+                        elif default_client_secret:
+                            auth_context.client_secret = default_client_secret
 
                 if not auth_context.token_url:
                     default_url = "https://oauth2.googleapis.com/token"
@@ -450,9 +480,15 @@ class MagiCLI:
 
                 # Check for non-interactive environment
                 if not sys.stdin.isatty():
-                    client_id = os.environ.get("MAGI_ANTIGRAVITY_CLIENT_ID") or ""
+                    client_id = (
+                        os.environ.get("MAGI_ANTIGRAVITY_CLIENT_ID")
+                        or os.environ.get("ANTIGRAVITY_CLIENT_ID")
+                        or ""
+                    )
                     client_secret = (
-                        os.environ.get("MAGI_ANTIGRAVITY_CLIENT_SECRET") or ""
+                        os.environ.get("MAGI_ANTIGRAVITY_CLIENT_SECRET")
+                        or os.environ.get("ANTIGRAVITY_CLIENT_SECRET")
+                        or ""
                     )
                     token_url = (
                         os.environ.get("MAGI_ANTIGRAVITY_TOKEN_URL") or token_url
@@ -462,11 +498,36 @@ class MagiCLI:
                     print(
                         "Antigravity configuration (optional if already logged in with magi auth):"
                     )
-                    client_id = input("Antigravity Client ID: ").strip()
+                    default_client_id = (
+                        os.environ.get("MAGI_ANTIGRAVITY_CLIENT_ID")
+                        or os.environ.get("ANTIGRAVITY_CLIENT_ID")
+                        or ""
+                    )
+                    prompt = (
+                        f"Antigravity Client ID [{default_client_id}]: "
+                        if default_client_id
+                        else "Antigravity Client ID: "
+                    )
+                    client_id = input(prompt).strip()
+                    if not client_id and default_client_id:
+                        client_id = default_client_id
+
                     if client_id:
+                        default_client_secret = (
+                            os.environ.get("MAGI_ANTIGRAVITY_CLIENT_SECRET")
+                            or os.environ.get("ANTIGRAVITY_CLIENT_SECRET")
+                            or ""
+                        )
                         from getpass import getpass
 
-                        client_secret = getpass("Antigravity Client Secret: ").strip()
+                        prompt = (
+                            f"Antigravity Client Secret [{'*' * 8}]: "
+                            if default_client_secret
+                            else "Antigravity Client Secret: "
+                        )
+                        client_secret = getpass(prompt).strip()
+                        if not client_secret and default_client_secret:
+                            client_secret = default_client_secret
 
                     token_url_input = input(
                         f"Antigravity Token URL [default: {token_url}]: "
@@ -488,15 +549,23 @@ class MagiCLI:
                     # ここでトークンを取得・リフレッシュを試みる
                     auth_provider = get_auth_provider(selected_provider, auth_context)
                     # 非同期メソッドを同期的に実行
-                    token = asyncio.run(auth_provider.get_token())
-
-                    print("Fetching available models...")
-                    fetched_models = fetch_available_models(selected_provider, token)
+                    try:
+                        print("Fetching available models...")
+                        fetched_models = asyncio.run(auth_provider.get_available_models())
+                    except (RuntimeError, ValueError) as e:
+                        # 認証失敗やモデル取得失敗は警告を出してデフォルトモデルへフォールバック
+                        # テスト環境などで発生しやすい
+                        print(f"Warning: Failed to fetch models for {selected_provider} ({e})", file=sys.stderr)
+                        # 空リストにして続行
+                        fetched_models = []
                 except Exception as e:
+                    # クリティカルでないエラーは警告のみ
                     print(
-                        f"Warning: Failed to authenticate with {selected_provider}: {e}",
+                        f"Warning: Failed to authenticate with {selected_provider} (error hidden to protect secrets)",
                         file=sys.stderr,
                     )
+                    # デバッグ用に詳細を出力したい場合はコメントアウトを外す
+                    # print(f"Details: {e}", file=sys.stderr)
                     print(
                         "Using default models. Run 'magi auth login antigravity' to fix authentication.",
                         file=sys.stderr,

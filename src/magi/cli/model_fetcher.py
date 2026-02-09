@@ -103,51 +103,13 @@ def _fetch_google(api_key: str, provider_id: str, timeout: float) -> List[str]:
     return models
 
 
-def _fetch_antigravity(api_key: str, timeout: float) -> List[str]:
-    """
-    Antigravity (Cloud Code) から利用可能なモデルの一覧を取得します。
-
-    Args:
-        api_key: Bearerトークン
-        timeout: タイムアウト秒数
-
-    Returns:
-        利用可能なモデルのIDのリスト
-    """
-    import os
-
-    base_url = os.environ.get(
-        "ANTIGRAVITY_ENDPOINT", "https://cloudcode-pa.googleapis.com"
-    )
-    url = f"{base_url}/v1internal:fetchAvailableModels"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "User-Agent": "antigravity",
-        "Content-Type": "application/json",
-    }
-    # Project IDは現状取得手段がないため、空のJSONボディを送信する
-    # サーバー側でトークンからプロジェクトを推測してくれることを期待
-    response = httpx.post(url, headers=headers, json={}, timeout=timeout)
-    _ = response.raise_for_status()
-    data = response.json()
-
-    if not isinstance(data, dict):
-        return []
-
-    models_dict = data.get("models", {})
-    if not isinstance(models_dict, dict):
-        return []
-
-    return sorted(list(models_dict.keys()))
-
-
 def fetch_available_models(provider_id: str, api_key: str) -> List[str]:
     """
     指定されたプロバイダーから利用可能なモデルの一覧を取得します。
 
     Args:
-        provider_id: プロバイダーのID ('openai', 'anthropic', 'google', 'antigravity' など)
-        api_key: APIキー（または認証用の認証情報/credential）
+        provider_id: プロバイダーのID ('openai', 'anthropic', 'google' など)
+        api_key: APIキー
 
     Returns:
         利用可能なモデルのIDのリスト
@@ -162,7 +124,13 @@ def fetch_available_models(provider_id: str, api_key: str) -> List[str]:
         elif provider_id == "google":
             return _fetch_google(api_key, provider_id, timeout)
         elif provider_id == "antigravity":
-            return _fetch_antigravity(api_key, timeout)
+            # Antigravityの場合は AntigravityAuthProvider.get_available_models を使用してください
+            print(
+                "Warning: fetch_available_models should not be used for antigravity. "
+                "Use AntigravityAuthProvider.get_available_models instead.",
+                file=sys.stderr,
+            )
+            return []
         else:
             print(f"Warning: Unknown provider ID: {provider_id}", file=sys.stderr)
             return []

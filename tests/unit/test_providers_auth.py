@@ -161,3 +161,41 @@ class TestAntigravityAdapter(unittest.TestCase):
         self.assertEqual(result.content, "success")
         self.assertEqual(result.usage["input_tokens"], 100)
         self.assertEqual(result.usage["output_tokens"], 50)
+
+    @patch("magi.llm.providers_auth.httpx.AsyncClient")
+    def test_project_id_auto_discovery(self, mock_client_cls):
+        """プロジェクトIDが設定されていない場合、自動探索されるか"""
+        client = AsyncMock()
+        mock_client_cls.return_value = client
+
+        # プロジェクトIDを空にする
+        self.context.options = {}
+
+        # 正常なレスポンス
+        response200 = MagicMock()
+        response200.status_code = 200
+        response200.json.return_value = {
+            "response": {"candidates": [{"content": {"parts": [{"text": "success"}]}}]}
+        }
+        client.post.return_value = response200
+
+        # プロジェクトIDの自動探索をモック
+        auto_project_id = "auto-discovered-project"
+        self.auth_provider.get_project_id.return_value = auto_project_id
+
+        adapter = AntigravityAdapter(
+            self.context, self.auth_provider, http_client=client
+        )
+        request = LLMRequest(user_prompt="test", system_prompt="sys")
+
+        # 環境変数をクリアしてテスト
+        with patch.dict(os.environ, {}, clear=True):
+            result = asyncio.run(adapter.send(request))
+
+        self.assertEqual(result.content, "success")
+        self.auth_provider.get_project_id.assert_awaited_once()
+
+        # postの呼び出し引数を確認
+        args, kwargs = client.post.call_args
+        payload = kwargs["json"]
+        self.assertEqual(payload["project"], auto_project_id)

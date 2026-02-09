@@ -127,7 +127,9 @@ class AntigravityAdapter(AuthenticatedOpenAIAdapter):
             chat_endpoint="/v1internal:generateContent",
         )
 
-    def _convert_to_google_format(self, request: LLMRequest) -> Dict[str, Any]:
+    def _convert_to_google_format(
+        self, request: LLMRequest, project_id: str
+    ) -> Dict[str, Any]:
         """OpenAI形式からAntigravity API形式に変換する。"""
         import base64
         import uuid
@@ -159,20 +161,6 @@ class AntigravityAdapter(AuthenticatedOpenAIAdapter):
             "generationConfig": generation_config,
         }
 
-        options = self.context.options or {}
-        project_id = options.get("project_id")
-        if not project_id:
-            project_id = os.environ.get("ANTIGRAVITY_PROJECT_ID")
-
-        if not project_id:
-            # TODO: Fetch Project ID from /v1internal:loadCodeAssist
-            # See implementation plan in src/magi/llm/auth/antigravity.py
-            raise ValueError(
-                "Antigravity Project ID is not configured. "
-                "Please set 'project_id' in magi.yaml options or "
-                "export ANTIGRAVITY_PROJECT_ID environment variable."
-            )
-
         wrapped_body = {
             "project": project_id,
             "model": self.model,
@@ -189,7 +177,22 @@ class AntigravityAdapter(AuthenticatedOpenAIAdapter):
 
         self._validate_prompts(request)
 
-        payload = self._convert_to_google_format(request)
+        options = self.context.options or {}
+        project_id = options.get("project_id")
+        if not project_id:
+            project_id = os.environ.get("ANTIGRAVITY_PROJECT_ID")
+
+        if not project_id:
+            project_id = await self._auth_provider.get_project_id()
+
+        if not project_id:
+            raise ValueError(
+                "Antigravity Project ID is not configured. "
+                "Please set 'project_id' in magi.yaml options or "
+                "export ANTIGRAVITY_PROJECT_ID environment variable."
+            )
+
+        payload = self._convert_to_google_format(request, project_id)
 
         token = await self._auth_provider.get_token()
         self.context.api_key = token
