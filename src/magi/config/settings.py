@@ -53,6 +53,7 @@ class MagiSettings(BaseSettings):
 
     # プロバイダ設定
     providers: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    default_provider: Optional[str] = None
 
     # 合議設定
     debate_rounds: int = Field(default=1, ge=1)
