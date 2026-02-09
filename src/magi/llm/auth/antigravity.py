@@ -640,10 +640,95 @@ class AntigravityAuthProvider(AuthProvider):
             elif isinstance(project_info, dict):
                 self._project_id = project_info.get("id")
 
+            if not self._project_id:
+                logger.info("No project ID found in loadCodeAssist, attempting onboardUser...")
+                self._project_id = await self._onboard_user()
+
             return self._project_id
         except Exception as e:
-            logger.warning(f"Failed to get project ID: {e}")
-            return None
+            logger.warning(f"Failed to get project ID from loadCodeAssist: {e}")
+            # エラー時もオンボーディングを試みる
+            self._project_id = await self._onboard_user()
+            return self._project_id
+
+    async def get_available_models(self) -> list[str]:
+        """利用可能なモデルの一覧を取得する。"""
+        token = await self.get_token()
+        url_suffix = "/v1internal:fetchAvailableModels"
+        headers = self._get_headers(token)
+        body = {"metadata": {"ideType": "ANTIGRAVITY"}}
+
+        try:
+            response = await self._fetch_with_fallback(url_suffix, headers, body)
+            if response.status_code == 401:
+                token = await self.get_token(force_refresh=True)
+                headers = self._get_headers(token)
+                response = await self._fetch_with_fallback(url_suffix, headers, body)
+
+            response.raise_for_status()
+            data = response.json()
+
+            models = data.get("models", [])
+            if not isinstance(models, list):
+                logger.warning(f"Unexpected response format for fetchAvailableModels: {data}")
+                return []
+
+            model_names = []
+            for m in models:
+                if isinstance(m, dict) and "name" in m:
+                    model_names.append(m["name"])
+                elif isinstance(m, str):
+                    model_names.append(m)
+
+            return sorted(model_names)
+        except Exception as e:
+            logger.warning(f"Failed to fetch available models: {e}")
+            return []
+
+    async def _onboard_user(self) -> str | None:
+        """ユーザーのオンボーディング（プロジェクト作成）を試みる。"""
+        token = await self.get_token()
+        url_suffix = "/v1internal:onboardUser"
+        headers = self._get_headers(token)
+        body = {"metadata": {"ideType": "ANTIGRAVITY"}}
+
+        max_attempts = 10
+        delay_seconds = 5.0
+
+        for attempt in range(1, max_attempts + 1):
+            logger.info(f"Onboarding attempt {attempt}/{max_attempts}...")
+            try:
+                response = await self._fetch_with_fallback(url_suffix, headers, body)
+                if response.status_code == 401:
+                    token = await self.get_token(force_refresh=True)
+                    headers = self._get_headers(token)
+                    response = await self._fetch_with_fallback(url_suffix, headers, body)
+
+                response.raise_for_status()
+                data = response.json()
+
+                project_info = data.get("cloudaicompanionProject")
+                project_id = None
+                if isinstance(project_info, str):
+                    project_id = project_info
+                elif isinstance(project_info, dict):
+                    project_id = project_info.get("id")
+
+                if project_id:
+                    logger.info(f"Onboarding successful. Project ID: {project_id}")
+                    return project_id
+
+                logger.warning(
+                    f"Onboarding attempt {attempt} succeeded but no project ID returned."
+                )
+            except Exception as e:
+                logger.warning(f"Onboarding attempt {attempt} failed: {e}")
+
+            if attempt < max_attempts:
+                await asyncio.sleep(delay_seconds)
+
+        logger.error("All onboarding attempts failed.")
+        return None
 
     async def _refresh_token_flow(self, refresh_token: str) -> dict[str, Any]:
         token_url = self._require_token_url()
