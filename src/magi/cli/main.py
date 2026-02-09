@@ -558,7 +558,7 @@ class MagiCLI:
                         print(f"Warning: Failed to fetch models for {selected_provider} ({e})", file=sys.stderr)
                         # 空リストにして続行
                         fetched_models = []
-                except Exception:
+                except Exception as e:
                     # クリティカルでないエラーは警告のみ
                     print(
                         f"Warning: Failed to authenticate with {selected_provider} (error hidden to protect secrets)",
