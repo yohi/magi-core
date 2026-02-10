@@ -143,7 +143,7 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
             yield {"type": "phase", "phase": "THINKING"}
             yield {"type": "progress", "pct": 5}
 
-            async for event in engine.run_stream(prompt):
+            async for event in engine.run_stream(prompt, attachments=options.attachments):
                 if event["type"] == "stream":
                     unit_type = self._map_persona_to_unit(event["persona"])
                     if unit_type:

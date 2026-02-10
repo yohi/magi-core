@@ -6,7 +6,7 @@ from datetime import datetime
 from magi.webui_backend.adapter import MockMagiAdapter, ConsensusEngineMagiAdapter
 from magi.webui_backend.models import SessionOptions, UnitType, UnitState
 from magi.config.manager import Config
-from magi.models import ConsensusResult, ThinkingOutput, DebateRound, VoteOutput, Vote, Decision, PersonaType
+from magi.models import ConsensusResult, ThinkingOutput, DebateRound, VoteOutput, Vote, Decision, PersonaType, ConsensusPhase
 
 class TestMockMagiAdapter(unittest.IsolatedAsyncioTestCase):
     async def test_run_yields_events(self):
@@ -69,15 +69,32 @@ class TestConsensusEngineMagiAdapter(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_run_orchestration(self):
+        async def mock_run_stream(prompt, attachments=None):
+            yield {"type": "stream", "content": "thought", "persona": PersonaType.MELCHIOR, "phase": ConsensusPhase.THINKING}
+            yield {"type": "event", "event_type": "phase.transition", "payload": {"phase": "DEBATE"}}
+            yield {"type": "event", "event_type": "phase.transition", "payload": {"phase": "VOTING"}}
+            yield {"type": "result", "data": ConsensusResult(
+                thinking_results=self.mock_thinking_result,
+                debate_results=self.mock_debate_result,
+                voting_results=self.mock_voting_result["voting_results"],
+                final_decision=self.mock_voting_result["decision"],
+                exit_code=self.mock_voting_result["exit_code"],
+                all_conditions=self.mock_voting_result["all_conditions"]
+            )}
+
+        self.mock_engine.run_stream.side_effect = mock_run_stream
+
         events = []
         async for event in self.adapter.run("test prompt", SessionOptions()):
             events.append(event)
             
         self.engine_factory.assert_called_once()
         
-        self.mock_engine._run_thinking_phase.assert_called_once_with("test prompt")
-        self.mock_engine._run_debate_phase.assert_called_once()
-        self.mock_engine._run_voting_phase.assert_called_once()
+        self.mock_engine.run_stream.assert_called_once()
+        args, kwargs = self.mock_engine.run_stream.call_args
+        self.assertEqual(args[0], "test prompt")
+        self.assertIn("attachments", kwargs)
+        self.assertIsNone(kwargs["attachments"])
         
         phases = [e["phase"] for e in events if e["type"] == "phase"]
         self.assertEqual(phases, ["THINKING", "DEBATE", "VOTING"])
@@ -89,7 +106,7 @@ class TestConsensusEngineMagiAdapter(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(final_events[0]["votes"]["MELCHIOR-1"]["vote"], "YES")
 
     async def test_error_handling(self):
-        self.mock_engine._run_thinking_phase.side_effect = Exception("Test Error")
+        self.mock_engine.run_stream.side_effect = Exception("Test Error")
         
         events = []
         async for event in self.adapter.run("test prompt", SessionOptions()):
