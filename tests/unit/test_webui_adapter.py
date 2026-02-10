@@ -69,7 +69,7 @@ class TestConsensusEngineMagiAdapter(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_run_orchestration(self):
-        async def mock_run_stream(prompt, attachments=None):
+        async def mock_run_stream(prompt, plugin=None, attachments=None):
             yield {"type": "stream", "content": "thought", "persona": PersonaType.MELCHIOR, "phase": ConsensusPhase.THINKING}
             yield {"type": "event", "event_type": "phase.transition", "payload": {"phase": "DEBATE"}}
             yield {"type": "event", "event_type": "phase.transition", "payload": {"phase": "VOTING"}}
@@ -93,7 +93,9 @@ class TestConsensusEngineMagiAdapter(unittest.IsolatedAsyncioTestCase):
         self.mock_engine.run_stream.assert_called_once()
         args, kwargs = self.mock_engine.run_stream.call_args
         self.assertEqual(args[0], "test prompt")
+        self.assertIn("plugin", kwargs)
         self.assertIn("attachments", kwargs)
+        self.assertIsNone(kwargs["plugin"])
         self.assertIsNone(kwargs["attachments"])
         
         phases = [e["phase"] for e in events if e["type"] == "phase"]

@@ -23,7 +23,8 @@ class TestConsensusStreaming(unittest.IsolatedAsyncioTestCase):
                 await engine.streaming_emitter.emit(
                     "MELCHIOR", 
                     "thinking...", 
-                    ConsensusPhase.THINKING.value
+                    ConsensusPhase.THINKING.value,
+                    round_number=1
                 )
                 
             return ConsensusResult(
@@ -49,6 +50,7 @@ class TestConsensusStreaming(unittest.IsolatedAsyncioTestCase):
             stream_chunks = [e for e in events if e.get("type") == "stream"]
             self.assertTrue(len(stream_chunks) > 0)
             self.assertEqual(stream_chunks[0]["content"], "thinking...")
+            self.assertEqual(stream_chunks[0]["round"], 1)
             
             # Verify result
             results = [e for e in events if e.get("type") == "result"]
