@@ -45,6 +45,8 @@ class SessionOptions(BaseModel):
     model: Optional[str] = None
     max_rounds: Optional[int] = None
     timeout_sec: float = 120.0
+    attachments: Optional[List[Dict[str, Any]]] = None
+    plugin: Optional[Any] = None
 
 class Session(BaseModel):
     """セッション状態を保持するモデル"""
