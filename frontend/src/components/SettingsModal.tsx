@@ -45,11 +45,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleTempChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    if (value === "") return;
+    
+    const parsed = parseFloat(value);
+    if (isNaN(parsed)) return;
+    
+    const MIN_TEMP = 0;
+    const MAX_TEMP = 1;
+    const clamped = Math.min(MAX_TEMP, Math.max(MIN_TEMP, parsed));
+    
     setUnitSettings((prev) => ({
       ...prev,
       [currentEditingUnit]: {
         ...prev[currentEditingUnit],
-        temp: Number(event.target.value),
+        temp: clamped,
       },
     }));
   };

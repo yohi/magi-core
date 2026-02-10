@@ -41,7 +41,7 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({
         PHASE: <span id="phase-txt">{phase}</span>
       </div>
       <div className="progress-track">
-        <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+        <div className="progress-fill" style={{ width: `${Math.min(Math.max(progress, 0), 100)}%` }}></div>
       </div>
     </div>
   );

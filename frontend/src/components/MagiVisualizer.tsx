@@ -147,6 +147,14 @@ export const MagiVisualizer: React.FC<MagiVisualizerProps> = ({
             activeUnit === "BALTHASAR-2" ? "active" : ""
           }`}
           onClick={() => openModal("balthasar")}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              openModal("balthasar");
+            }
+          }}
         >
           <svg viewBox="0 0 255 300" preserveAspectRatio="none">
             <polygon
@@ -179,6 +187,14 @@ export const MagiVisualizer: React.FC<MagiVisualizerProps> = ({
             activeUnit === "CASPER-3" ? "active" : ""
           }`}
           onClick={() => openModal("casper")}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              openModal("casper");
+            }
+          }}
         >
           <svg viewBox="0 0 295 215" preserveAspectRatio="none">
             <polygon
@@ -211,6 +227,14 @@ export const MagiVisualizer: React.FC<MagiVisualizerProps> = ({
             activeUnit === "MELCHIOR-1" ? "active" : ""
           }`}
           onClick={() => openModal("melchior")}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              openModal("melchior");
+            }
+          }}
         >
           <svg viewBox="0 0 295 215" preserveAspectRatio="none">
             <polygon
