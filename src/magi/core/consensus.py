@@ -253,18 +253,19 @@ class ConsensusEngine:
             phase: 遷移先のフェーズ
         """
         logger.info(f"フェーズ遷移: {self.current_phase.value} -> {phase.value}")
+        previous = getattr(self, "current_phase", None)
         self.current_phase = phase
         self._record_event(
             "phase.transition",
             phase=phase.value,
-            previous=self.current_phase.value if hasattr(self, "current_phase") else None
+            previous=previous.value if previous else None
         )
 
     async def run_stream(
         self,
         prompt: str,
         plugin: Optional[object] = None,
-        attachments: list = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
     ):
         """合議プロセスをストリーミング実行する。
 
@@ -593,7 +594,7 @@ class ConsensusEngine:
         )
 
     async def _run_thinking_phase(
-        self, prompt: str, attachments: list = None
+        self, prompt: str, attachments: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[PersonaType, ThinkingOutput]:
         """Thinking Phaseを実行
 
@@ -1495,7 +1496,7 @@ class ConsensusEngine:
         self,
         prompt: str,
         plugin: Optional[object] = None,
-        attachments: list = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
     ) -> ConsensusResult:
         """合議プロセスを実行.
 
