@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useMagiSession } from "./hooks/useMagiSession";
 import { StatusPanel } from "./components/StatusPanel";
 import { LogPanel } from "./components/LogPanel";
@@ -36,6 +36,14 @@ export default function App() {
   const [currentEditingUnit, setCurrentEditingUnit] = useState<
     "melchior" | "balthasar" | "casper" | null
   >(null);
+  
+  const logRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [logs]);
 
   const openModal = useCallback((unitKey: "melchior" | "balthasar" | "casper") => {
     setCurrentEditingUnit(unitKey);
@@ -52,18 +60,21 @@ export default function App() {
     
     setUnitSettings((prev) => {
       const next = { ...prev };
-      const rawTemp = next[currentEditingUnit].temp;
-      const safeTemp = Number.isNaN(rawTemp) ? 0.5 : Math.min(1, Math.max(0, rawTemp));
+      const rawTemp = Number(next[currentEditingUnit].temp);
+      const safeTemp = Number.isFinite(rawTemp)
+        ? Math.min(1, Math.max(0, rawTemp))
+        : 0.5;
       next[currentEditingUnit] = {
         ...next[currentEditingUnit],
         temp: safeTemp,
       };
+      
+      addLog(`UPDATED ${next[currentEditingUnit].name}`, "info");
       return next;
     });
     
-    addLog(`UPDATED ${unitSettings[currentEditingUnit].name}`, "info");
     closeModal();
-  }, [currentEditingUnit, unitSettings, setUnitSettings, addLog, closeModal]);
+  }, [currentEditingUnit, setUnitSettings, addLog, closeModal]);
 
   return (
     <div className="app-root">
@@ -84,7 +95,7 @@ export default function App() {
           serverMode={serverMode}
         />
 
-        <LogPanel logs={logs} />
+        <LogPanel logs={logs} ref={logRef} />
 
         <ResultConsole finalResult={finalResult} />
 
