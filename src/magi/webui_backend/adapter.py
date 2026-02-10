@@ -121,129 +121,81 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
         self.engine_factory = engine_factory or ConsensusEngine
 
     async def run(self, prompt: str, options: SessionOptions) -> AsyncIterator[Dict[str, Any]]:
-        queue: asyncio.Queue = asyncio.Queue()
-        
-        async def _bridge_send(chunk: StreamChunk):
-            unit_type = self._map_persona_to_unit(chunk.persona)
-            if unit_type:
-                await queue.put({
-                    "type": "unit",
-                    "unit": unit_type.value,
-                    "state": self._map_phase_to_unit_state(chunk.phase).value,
-                    "message": chunk.chunk,
-                    "stream": True
-                })
-
-        def _on_event(event_type: str, payload: Dict[str, Any]):
-            if event_type in ("streaming.drop", "streaming.timeout"):
-                reason = payload.get("reason", "unknown")
-                asyncio.create_task(queue.put({
-                    "type": "log",
-                    "lines": [f"Streaming warning: {event_type} ({reason})"],
-                    "level": "WARN"
-                }))
-
-        emitter = QueueStreamingEmitter(
-            send_func=_bridge_send,
-            queue_size=100,
-            emit_timeout_seconds=2.0,
-            on_event=_on_event
-        )
-        
         # 設定のディープコピーを作成して、セッション固有の設定として扱う
         run_config = copy.deepcopy(self.config)
         if options.model is not None:
             run_config.model = options.model
         if options.max_rounds is not None:
-            # UIオプションのmax_roundsをrun_configに反映
             run_config.debate_rounds = int(options.max_rounds)
 
-        async def _run_engine():
-            engine = None
-            try:
-                logger.info("Initializing ConsensusEngine")
-                engine = self.engine_factory(
-                    config=run_config,
-                    llm_client_factory=self.llm_client_factory,
-                    streaming_emitter=emitter
-                )
-                
-                await queue.put({"type": "phase", "phase": "THINKING"})
-                await queue.put({"type": "progress", "pct": 10})
-                
-                logger.info("Starting Thinking Phase")
-                thinking_results = await engine._run_thinking_phase(prompt)
-                logger.info("Thinking Phase done")
-                
-                await queue.put({"type": "phase", "phase": "DEBATE"})
-                await queue.put({"type": "progress", "pct": 40})
-                
-                logger.info("Starting Debate Phase")
-                debate_results = await engine._run_debate_phase(
-                    thinking_results, close_streaming=False
-                )
-                logger.info("Debate Phase done")
-                
-                await queue.put({"type": "phase", "phase": "VOTING"})
-                await queue.put({"type": "progress", "pct": 80})
-                
-                logger.info("Starting Voting Phase")
-                voting_result_dict = await engine._run_voting_phase(
-                    thinking_results, debate_results
-                )
-                logger.info("Voting Phase done")
-                
-                str_thinking_results = {
-                    k.value if hasattr(k, "value") else str(k): v 
-                    for k, v in thinking_results.items()
-                }
-
-                result = ConsensusResult(
-                    thinking_results=str_thinking_results,
-                    debate_results=debate_results,
-                    voting_results=voting_result_dict["voting_results"],
-                    final_decision=voting_result_dict["decision"],
-                    exit_code=voting_result_dict["exit_code"],
-                    all_conditions=voting_result_dict["all_conditions"]
-                )
-                
-                await queue.put({"type": "progress", "pct": 100})
-                
-                final_payload = self._build_final_payload(result)
-                await queue.put(final_payload)
-                
-            except Exception as e:
-                logger.exception("ConsensusEngine execution failed")
-                await queue.put({
-                    "type": "error",
-                    "code": "MAGI_CORE_ERROR",
-                    "message": str(e)
-                })
-            finally:
-                if engine and engine.streaming_emitter:
-                    await engine.streaming_emitter.aclose()
-                await queue.put(None)
-
-        task = asyncio.create_task(_run_engine())
-        
+        engine = None
         try:
-            while True:
-                item = await queue.get()
-                if item is None:
-                    break
-                yield item
-        finally:
-            # ジェネレータが早期終了した場合でもタスクをクリーンアップ
-            if not task.done():
-                task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                # キャンセルは想定内
-                pass
-            except Exception as e:
-                # その他の例外はログに記録
-                logger.exception("Background task cleanup failed: %s", e)
+            logger.info("Initializing ConsensusEngine")
+            engine = self.engine_factory(
+                config=run_config,
+                llm_client_factory=self.llm_client_factory,
+                # run_streamが内部でemitterを設定するため、ここではNoneでよいが、
+                # コンストラクタの互換性のために渡す必要があれば渡す（通常はNoneでOK）
+                streaming_emitter=None
+            )
+
+            # 初期状態の送信
+            yield {"type": "phase", "phase": "THINKING"}
+            yield {"type": "progress", "pct": 5}
+
+            async for event in engine.run_stream(
+                prompt,
+                plugin=options.plugin,
+                attachments=options.attachments
+            ):
+                if event["type"] == "stream":
+                    unit_type = self._map_persona_to_unit(event["persona"])
+                    if unit_type:
+                        yield {
+                            "type": "unit",
+                            "unit": unit_type.value,
+                            "state": self._map_phase_to_unit_state(event["phase"]).value,
+                            "message": event["content"],
+                            "stream": True
+                        }
+                
+                elif event["type"] == "event":
+                    event_type = event["event_type"]
+                    payload = event["payload"]
+                    
+                    if event_type == "phase.transition":
+                        phase_val = str(payload.get("phase", "")).upper()
+                        yield {"type": "phase", "phase": phase_val}
+                        
+                        # フェーズに応じた進捗更新
+                        if "THINKING" in phase_val:
+                            yield {"type": "progress", "pct": 10}
+                        elif "DEBATE" in phase_val:
+                            yield {"type": "progress", "pct": 40}
+                        elif "VOTING" in phase_val:
+                            yield {"type": "progress", "pct": 80}
+                        elif "COMPLETED" in phase_val:
+                            yield {"type": "progress", "pct": 100}
+                    
+                    elif event_type in ("streaming.drop", "streaming.timeout"):
+                        reason = payload.get("reason", "unknown")
+                        yield {
+                            "type": "log",
+                            "lines": [f"Streaming warning: {event_type} ({reason})"],
+                            "level": "WARN"
+                        }
+
+                elif event["type"] == "result":
+                    result = event["data"]
+                    yield self._build_final_payload(result)
+
+        except Exception as e:
+            logger.exception("ConsensusEngine execution failed")
+            yield {
+                "type": "error",
+                "code": "MAGI_CORE_ERROR",
+                "message": str(e)
+            }
 
     def _map_persona_to_unit(self, persona: Any) -> Optional[UnitType]:
         val = persona.value if hasattr(persona, "value") else str(persona)
