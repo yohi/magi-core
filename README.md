@@ -333,37 +333,66 @@ uv run coverage html  # HTMLレポート生成
 magi-core/
 ├── src/
 │   └── magi/
-│       ├── __init__.py       # パッケージ初期化
-│       ├── __main__.py       # CLIエントリーポイント
-│       ├── models.py         # 共通データモデル
-│       ├── errors.py         # エラー定義
-│       ├── agents/           # エージェントシステム
-│       │   ├── persona.py    # ペルソナ管理
-│       │   └── agent.py      # エージェント実装
-│       ├── cli/              # CLIレイヤー
-│       │   ├── parser.py     # 引数パーサー
-│       │   └── main.py       # MagiCLI
-│       ├── config/           # 設定管理
-│       │   └── manager.py    # ConfigManager
-│       ├── core/             # コアエンジン
-│       │   ├── consensus.py  # 合議エンジン
-│       │   └── context.py    # コンテキスト管理
-│       ├── llm/              # LLM通信
-│       │   └── client.py     # LLMClient
-│       ├── output/           # 出力フォーマット
-│       │   └── formatter.py  # OutputFormatter
-│       └── plugins/          # プラグインシステム
-│           ├── loader.py     # PluginLoader
-│           └── executor.py   # CommandExecutor
+│       ├── __main__.py          # CLIエントリーポイント (magi コマンド)
+│       ├── models.py            # 共通データモデル (dataclass, Enum)
+│       ├── errors.py            # エラーコード・例外階層
+│       ├── agents/              # エージェントシステム
+│       │   ├── persona.py       # ペルソナ管理
+│       │   └── agent.py         # エージェント実装 (think/debate/vote)
+│       ├── cli/                 # CLIレイヤー
+│       │   ├── parser.py        # 引数パーサー
+│       │   ├── main.py          # MagiCLI
+│       │   └── model_fetcher.py # モデル一覧取得
+│       ├── config/              # 設定管理
+│       │   ├── manager.py       # ConfigManager
+│       │   ├── provider.py      # ProviderConfigLoader (マルチプロバイダ)
+│       │   └── settings.py      # MagiSettings (Pydantic V2 BaseSettings)
+│       ├── core/                # コアエンジン・ハードニング
+│       │   ├── consensus.py     # 合議エンジン (async)
+│       │   ├── context.py       # コンテキスト管理
+│       │   ├── concurrency.py   # ConcurrencyController (Semaphore)
+│       │   ├── streaming.py     # QueueStreamingEmitter
+│       │   ├── token_budget.py  # トークン予算管理
+│       │   ├── quorum.py        # クオーラム・フェイルセーフ判定
+│       │   ├── schema_validator.py # JSONスキーマ検証
+│       │   ├── template_loader.py  # テンプレート外部化・キャッシュ
+│       │   ├── spec_sync.py     # spec.json/tasks.md 同期
+│       │   └── providers.py     # プロバイダコンテキスト定義
+│       ├── llm/                 # LLM通信
+│       │   ├── client.py        # LLMClient 共通インターフェース
+│       │   ├── providers.py     # プロバイダアダプタ (Anthropic/OpenAI/Gemini)
+│       │   ├── providers_auth.py # 認証付きプロバイダ
+│       │   └── auth/            # 認証モジュール (OAuth/Copilot/Claude)
+│       ├── output/              # 出力フォーマット
+│       │   └── formatter.py     # OutputFormatter
+│       ├── plugins/             # プラグインシステム
+│       │   ├── loader.py        # PluginLoader
+│       │   ├── executor.py      # CommandExecutor
+│       │   ├── guard.py         # PluginGuard
+│       │   ├── bridge.py        # BridgeAdapter (外部CLI連携)
+│       │   ├── permission_guard.py # プロンプト上書き権限制御
+│       │   └── signature.py     # プラグイン署名検証
+│       ├── security/            # セキュリティ
+│       │   ├── filter.py        # SecurityFilter
+│       │   └── guardrails.py    # GuardrailsAdapter
+│       └── webui_backend/       # FastAPI WebUI (Preview)
+│           ├── app.py           # FastAPIアプリ
+│           ├── adapter.py       # WebUIアダプタ
+│           ├── session_manager.py # セッション管理
+│           ├── broadcaster.py   # WebSocket配信
+│           └── models.py        # WebUI用データモデル
 ├── tests/
-│   ├── unit/                 # ユニットテスト
-│   ├── property/             # プロパティベーステスト
-│   └── integration/          # 統合テスト
-├── plugins/                  # プラグインディレクトリ
-│   └── magi-cc-sdd-plugin/   # SDDプラグイン
-├── docs/                     # ドキュメント
-├── pyproject.toml            # プロジェクト設定
-└── README.md                 # このファイル
+│   ├── unit/                    # ユニットテスト
+│   ├── property/                # プロパティベーステスト (Hypothesis)
+│   ├── integration/             # 統合テスト
+│   └── e2e/                     # エンドツーエンドテスト (Playwright)
+├── plugins/                     # プラグインディレクトリ
+│   └── magi-cc-sdd-plugin/      # SDDプラグイン
+├── .kiro/                       # SDD仕様・ステアリング
+├── docs/                        # ドキュメント
+├── pyproject.toml               # プロジェクト設定
+├── AGENTS.md                    # 開発ガイドライン
+└── README.md                    # このファイル
 ```
 
 ## アーキテクチャ
