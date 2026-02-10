@@ -2,7 +2,10 @@ import { UnitKey, UnitState, Decision } from "./types";
 
 export const joinPath = (base: string, path: string) => {
   if (!base) return path;
-  return `${base.replace(/\/+$/, "")}${path}`;
+  if (!path) return base;
+  const cleanBase = base.replace(/\/+$/, "");
+  const cleanPath = path.replace(/^\/+/, "");
+  return `${cleanBase}/${cleanPath}`;
 };
 
 export const normalizeWsBase = (base: string) => {
