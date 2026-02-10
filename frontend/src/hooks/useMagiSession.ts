@@ -251,6 +251,20 @@ export function useMagiSession() {
 
       const data = (await response.json()) as { session_id: string; ws_url: string };
       
+      if (!data.session_id || typeof data.session_id !== "string" || data.session_id.trim() === "") {
+        throw new Error("Invalid session_id in response");
+      }
+      
+      if (!data.ws_url || typeof data.ws_url !== "string") {
+        throw new Error("Invalid ws_url in response");
+      }
+      
+      try {
+        new URL(data.ws_url.startsWith("ws") ? data.ws_url : `ws://${data.ws_url}`);
+      } catch {
+        throw new Error("Invalid ws_url format in response");
+      }
+      
       if (controller.signal.aborted) return;
 
       setSessionId(data.session_id);
