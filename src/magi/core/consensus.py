@@ -255,6 +255,8 @@ class ConsensusEngine:
         logger.info(f"フェーズ遷移: {self.current_phase.value} -> {phase.value}")
         previous = getattr(self, "current_phase", None)
         self.current_phase = phase
+        # 以前のフェーズのストリームバッファをクリア
+        self._stream_buffer = []
         self._record_event(
             "phase.transition",
             phase=phase.value,
@@ -283,7 +285,7 @@ class ConsensusEngine:
                 - type="event": 構造化イベント (event_type, payload)
                 - type="result": 最終結果 (data: ConsensusResult)
         """
-        queue = asyncio.Queue()
+        queue = asyncio.Queue(maxsize=getattr(self.config, "streaming_queue_size", 100))
         
         # 元の状態を保存
         original_emitter = self.streaming_emitter
@@ -328,7 +330,6 @@ class ConsensusEngine:
         self._record_event = capture_event
         
         # TemplateLoaderのフックも更新が必要な場合がある
-        original_template_hook = None
         if hasattr(self.template_loader, "set_event_hook"):
             # 現在のフックをバックアップできないAPIなら諦めるか、
             # template_loaderの実装を知っている前提で差し替える
@@ -342,15 +343,23 @@ class ConsensusEngine:
             while not task.done():
                 # タスク完了またはキュー受信を待機
                 get_task = asyncio.create_task(queue.get())
-                done, _ = await asyncio.wait(
-                    [task, get_task], 
-                    return_when=asyncio.FIRST_COMPLETED
-                )
-                
-                if get_task in done:
-                    yield get_task.result()
-                else:
+                try:
+                    done, _ = await asyncio.wait(
+                        [task, get_task], 
+                        return_when=asyncio.FIRST_COMPLETED
+                    )
+                    
+                    if get_task in done:
+                        yield get_task.result()
+                    else:
+                        get_task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await get_task
+                except Exception:
                     get_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await get_task
+                    raise
                     
                 if task in done:
                     # 残りのキューを処理
