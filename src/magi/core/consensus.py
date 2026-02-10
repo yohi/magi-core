@@ -254,6 +254,132 @@ class ConsensusEngine:
         """
         logger.info(f"フェーズ遷移: {self.current_phase.value} -> {phase.value}")
         self.current_phase = phase
+        self._record_event(
+            "phase.transition",
+            phase=phase.value,
+            previous=self.current_phase.value if hasattr(self, "current_phase") else None
+        )
+
+    async def run_stream(
+        self,
+        prompt: str,
+        plugin: Optional[object] = None,
+        attachments: list = None,
+    ):
+        """合議プロセスをストリーミング実行する。
+
+        Thinking, Debate, Voting の各フェーズの進行状況や
+        エージェントの思考生成プロセスをリアルタイムでイベントとして送出する。
+
+        Args:
+            prompt: ユーザーからのプロンプト
+            plugin: プラグインオブジェクト（オプション）
+            attachments: マルチモーダル添付ファイル（オプション）
+
+        Yields:
+            Dict[str, Any]: イベントとストリームチャンク
+                - type="stream": ストリーミングチャンク (content, persona, phase)
+                - type="event": 構造化イベント (event_type, payload)
+                - type="result": 最終結果 (data: ConsensusResult)
+        """
+        queue = asyncio.Queue()
+        
+        # 元の状態を保存
+        original_emitter = self.streaming_emitter
+        original_record_event = self._record_event
+        original_streaming_enabled = self._streaming_enabled
+        
+        # ストリーミングを強制有効化
+        self._streaming_enabled = True
+        
+        async def capture_chunk(chunk: StreamChunk):
+            await queue.put({
+                "type": "stream",
+                "content": chunk.chunk,
+                "persona": chunk.persona,
+                "phase": chunk.phase,
+                "round": chunk.round_number
+            })
+
+        def capture_event(event_type: str, **payload):
+            # 元の処理も実行 (内部ログ記録など)
+            original_record_event(event_type, **payload)
+            try:
+                queue.put_nowait({
+                    "type": "event",
+                    "event_type": event_type,
+                    "payload": payload
+                })
+            except asyncio.QueueFull:
+                logger.warning("Stream queue full, dropping event: %s", event_type)
+
+        # インターセプタを設定
+        # 内部で使われるEmitterを差し替え
+        # on_eventは同期呼び出しなのでlambdaでラップ
+        self.streaming_emitter = QueueStreamingEmitter(
+            send_func=capture_chunk,
+            on_event=lambda et, pl: capture_event(et, **pl)
+        )
+        
+        # イベントフックを差し替え
+        # _record_event はインスタンスメソッドだが、ここで関数オブジェクトで上書きする
+        # (Pythonではインスタンス属性として関数を代入可能)
+        self._record_event = capture_event
+        
+        # TemplateLoaderのフックも更新が必要な場合がある
+        original_template_hook = None
+        if hasattr(self.template_loader, "set_event_hook"):
+            # 現在のフックをバックアップできないAPIなら諦めるか、
+            # template_loaderの実装を知っている前提で差し替える
+            # ここでは set_event_hook があるのでそれを使う
+            self.template_loader.set_event_hook(capture_event)
+
+        # バックグラウンドで実行
+        task = asyncio.create_task(self.execute(prompt, plugin, attachments))
+        
+        try:
+            while not task.done():
+                # タスク完了またはキュー受信を待機
+                get_task = asyncio.create_task(queue.get())
+                done, _ = await asyncio.wait(
+                    [task, get_task], 
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+                
+                if get_task in done:
+                    yield get_task.result()
+                else:
+                    get_task.cancel()
+                    
+                if task in done:
+                    # 残りのキューを処理
+                    while not queue.empty():
+                        yield queue.get_nowait()
+                    
+                    # 例外があれば再送出
+                    if task.exception():
+                        raise task.exception()
+                    
+                    # 最終結果をYield
+                    result = task.result()
+                    yield {"type": "result", "data": result}
+                    
+        finally:
+            # 状態を復元
+            self.streaming_emitter = original_emitter
+            self._record_event = original_record_event
+            self._streaming_enabled = original_streaming_enabled
+            if hasattr(self.template_loader, "set_event_hook"):
+                self.template_loader.set_event_hook(original_record_event)
+            
+            # タスクがまだ動いていればキャンセル
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
 
     def _create_agents(self) -> Dict[PersonaType, Agent]:
         """3つのエージェントを作成
