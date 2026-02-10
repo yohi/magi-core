@@ -379,11 +379,13 @@ magi-core/
 │           ├── app.py           # FastAPIアプリ
 │           ├── adapter.py       # WebUIアダプタ
 │           ├── session_manager.py # セッション管理
-│           └── broadcaster.py   # WebSocket配信
+│           ├── broadcaster.py   # WebSocket配信
+│           └── models.py        # WebUI用データモデル
 ├── tests/
 │   ├── unit/                    # ユニットテスト
 │   ├── property/                # プロパティベーステスト (Hypothesis)
-│   └── integration/             # 統合テスト
+│   ├── integration/             # 統合テスト
+│   └── e2e/                     # エンドツーエンドテスト (Playwright)
 ├── plugins/                     # プラグインディレクトリ
 │   └── magi-cc-sdd-plugin/      # SDDプラグイン
 ├── .kiro/                       # SDD仕様・ステアリング

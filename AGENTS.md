@@ -6,9 +6,10 @@ Python CLI tool providing multi-perspective judgment through a consensus process
 
 ## Language Policy
 
-- **All responses, documentation, comments, docstrings, and commit messages MUST be in Japanese.**
-- Markdown content (requirements.md, design.md, tasks.md, etc.) must also be in Japanese.
-- Technical terms, commands, and international standards (protocol names, etc.) may remain in English.
+- **All responses, documentation, comments, docstrings, and commit messages SHOULD be in Japanese.**
+- Markdown content (requirements.md, design.md, tasks.md, etc.) should preferably be in Japanese.
+- Technical terms, commands, international standards (protocol names, etc.), and file names may remain in English.
+- This document (AGENTS.md) serves as a reference and is written in English for international contributors.
 
 ## Environment
 
@@ -54,7 +55,7 @@ uv run coverage html
 
 ## Directory Structure
 
-```
+```text
 src/magi/
 ├── __main__.py              # CLI entry point (magi command)
 ├── models.py                # Shared data models (dataclass, Enum)
@@ -109,6 +110,7 @@ def create_config_error(message: str, details: Optional[Dict[str, Any]] = None) 
 - In Pydantic models, use `Field()` with explicit validation constraints.
 
 ### Naming Conventions
+
 | Target | Convention | Example |
 |--------|------------|---------|
 | Files/Modules | `snake_case` | `consensus_engine.py` |
@@ -118,6 +120,7 @@ def create_config_error(message: str, details: Optional[Dict[str, Any]] = None) 
 | Enum members | `UPPER_SNAKE_CASE` | `Vote.APPROVE` |
 
 ### Data Model Selection
+
 | Purpose | Choice | Example |
 |---------|--------|---------|
 | Simple data structures | `dataclasses.dataclass` | `MagiError`, `VotingTally`, `ThinkingOutput` |
