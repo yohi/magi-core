@@ -58,6 +58,8 @@ export default function App() {
   const saveSettings = useCallback(() => {
     if (!currentEditingUnit) return;
     
+    const unitName = unitSettings[currentEditingUnit].name;
+    
     setUnitSettings((prev) => {
       const next = { ...prev };
       const rawTemp = Number(next[currentEditingUnit].temp);
@@ -68,13 +70,12 @@ export default function App() {
         ...next[currentEditingUnit],
         temp: safeTemp,
       };
-      
-      addLog(`UPDATED ${next[currentEditingUnit].name}`, "info");
       return next;
     });
     
+    addLog(`UPDATED ${unitName}`, "info");
     closeModal();
-  }, [currentEditingUnit, setUnitSettings, addLog, closeModal]);
+  }, [currentEditingUnit, unitSettings, setUnitSettings, addLog, closeModal]);
 
   return (
     <div className="app-root">
