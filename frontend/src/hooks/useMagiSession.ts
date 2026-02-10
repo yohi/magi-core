@@ -185,7 +185,7 @@ export function useMagiSession() {
 
       ws.addEventListener("close", () => {
         addLog("WEBSOCKET CLOSED", "info");
-        if (isRunning && !cancelledRef.current) {
+        if (!cancelledRef.current) {
           finalizeRun();
         }
       });
@@ -194,7 +194,7 @@ export function useMagiSession() {
         addLog("WEBSOCKET ERROR", "error");
       });
     },
-    [addLog, finalizeRun, handleEvent, isRunning]
+    [addLog, finalizeRun, handleEvent]
   );
 
   const startSequence = useCallback(async () => {
