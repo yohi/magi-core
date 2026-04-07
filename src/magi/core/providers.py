@@ -21,6 +21,7 @@ from magi.llm.providers import (
     AnthropicAdapter,
     GeminiAdapter,
     OpenAIAdapter,
+    OpenRouterAdapter,
     ProviderAdapter,
 )
 from magi.llm.providers_auth import AntigravityAdapter, CopilotAdapter
@@ -174,6 +175,7 @@ class ProviderAdapterFactory:
             "anthropic": AnthropicAdapter,
             "openai": OpenAIAdapter,
             "gemini": GeminiAdapter,
+            "openrouter": OpenRouterAdapter,
         }
 
     def build(

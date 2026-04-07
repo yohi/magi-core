@@ -15,6 +15,7 @@ from magi.llm.providers import (
     GeminiAdapter,
     HealthStatus,
     OpenAIAdapter,
+    OpenRouterAdapter,
 )
 from magi.models import Attachment
 
@@ -458,6 +459,51 @@ class TestGeminiAdapter(unittest.TestCase):
         self.assertTrue(status.skipped)
         self.assertFalse(status.ok)
         self.assertEqual(status.provider, "gemini")
+
+
+class TestOpenRouterAdapter(unittest.TestCase):
+    """OpenRouterAdapterのテスト"""
+
+    def test_default_endpoint_is_openrouter(self):
+        """エンドポイント未指定時に OpenRouter の既定値がセットされる"""
+        ctx = ProviderContext(
+            provider_id="openrouter",
+            api_key="or-key",
+            model="anthropic/claude-3",
+            endpoint=None,
+        )
+        adapter = OpenRouterAdapter(ctx, http_client=AsyncMock())
+
+        self.assertEqual(adapter.endpoint, "https://openrouter.ai/api/v1")
+
+    def test_auth_headers_contain_openrouter_specifics(self):
+        """OpenRouter 推奨のヘッダーが含まれる"""
+        ctx = ProviderContext(
+            provider_id="openrouter",
+            api_key="or-key",
+            model="anthropic/claude-3",
+            options={"referer": "http://test.com", "title": "Test App"},
+        )
+        adapter = OpenRouterAdapter(ctx, http_client=AsyncMock())
+        headers = adapter._auth_headers()
+
+        self.assertEqual(headers["Authorization"], "Bearer or-key")
+        self.assertEqual(headers["HTTP-Referer"], "http://test.com")
+        self.assertEqual(headers["X-Title"], "Test App")
+
+    def test_auth_headers_use_default_if_options_missing(self):
+        """オプション未指定時でもデフォルトヘッダーがセットされる"""
+        ctx = ProviderContext(
+            provider_id="openrouter",
+            api_key="or-key",
+            model="anthropic/claude-3",
+        )
+        adapter = OpenRouterAdapter(ctx, http_client=AsyncMock())
+        headers = adapter._auth_headers()
+
+        self.assertEqual(headers["Authorization"], "Bearer or-key")
+        self.assertIn("github.com/yohi/magi-core", headers["HTTP-Referer"])
+        self.assertEqual(headers["X-Title"], "MAGI System")
 
 
 if __name__ == "__main__":

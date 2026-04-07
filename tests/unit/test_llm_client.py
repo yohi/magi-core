@@ -52,11 +52,11 @@ class TestLLMResponse(unittest.TestCase):
         response = LLMResponse(
             content="応答内容",
             usage={"input_tokens": 100, "output_tokens": 50},
-            model="claude-sonnet-4-20250514",
+            model="claude-3-5-sonnet-20241022",
         )
         self.assertEqual(response.content, "応答内容")
         self.assertEqual(response.usage["input_tokens"], 100)
-        self.assertEqual(response.model, "claude-sonnet-4-20250514")
+        self.assertEqual(response.model, "claude-3-5-sonnet-20241022")
 
 
 class TestAPIErrorType(unittest.TestCase):
@@ -77,7 +77,7 @@ class TestLLMClient(unittest.TestCase):
         """デフォルト値での初期化"""
         client = LLMClient(api_key="test-key")
         self.assertEqual(client.api_key, "test-key")
-        self.assertEqual(client.model, "claude-sonnet-4-20250514")
+        self.assertEqual(client.model, "claude-3-5-sonnet-20241022")
         self.assertEqual(client.retry_count, 3)
         self.assertEqual(client.timeout, 60)
 
@@ -200,7 +200,7 @@ class TestLLMClientAsync(unittest.TestCase):
         mock_response.content = [MagicMock(text="応答テキスト")]
         mock_response.usage.input_tokens = 100
         mock_response.usage.output_tokens = 50
-        mock_response.model = "claude-sonnet-4-20250514"
+        mock_response.model = "claude-3-5-sonnet-20241022"
 
         with patch.object(
             client._client.messages,
@@ -214,7 +214,7 @@ class TestLLMClientAsync(unittest.TestCase):
                 response = await client.send(request)
                 self.assertEqual(response.content, "応答テキスト")
                 self.assertEqual(response.usage["input_tokens"], 100)
-                self.assertEqual(response.model, "claude-sonnet-4-20250514")
+                self.assertEqual(response.model, "claude-3-5-sonnet-20241022")
 
             asyncio.run(run_test())
 
@@ -227,7 +227,7 @@ class TestLLMClientAsync(unittest.TestCase):
         mock_response.content = [MagicMock(text="成功")]
         mock_response.usage.input_tokens = 50
         mock_response.usage.output_tokens = 25
-        mock_response.model = "claude-sonnet-4-20250514"
+        mock_response.model = "claude-3-5-sonnet-20241022"
 
         call_count = 0
 
@@ -493,7 +493,7 @@ class TestLLMClientAsync(unittest.TestCase):
         mock_response.content = [MagicMock(text="画像を確認しました")]
         mock_response.usage.input_tokens = 150
         mock_response.usage.output_tokens = 30
-        mock_response.model = "claude-sonnet-4-20250514"
+        mock_response.model = "claude-3-5-sonnet-20241022"
 
         # テスト用の画像データ
         image_data = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
@@ -611,7 +611,7 @@ class TestLLMClientStreaming(unittest.TestCase):
             self.assertEqual(response.content, "Hello, World")
             self.assertEqual(response.usage["input_tokens"], 10)
             self.assertEqual(response.usage["output_tokens"], 25)
-            self.assertEqual(response.model, "claude-sonnet-4-20250514")
+            self.assertEqual(response.model, "claude-3-5-sonnet-20241022")
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ def test_migration_guide_exists():
     content = doc_path.read_text(encoding="utf-8")
     assert "# 設定移行ガイド" in content or "# Configuration Migration Guide" in content
     assert "MagiSettings" in content
-    assert "MAGI_API_KEY" in content
+    assert "MAGI_ANTHROPIC_API_KEY" in content
 
 def test_production_guide_exists():
     """Verify that the production operation guide exists."""

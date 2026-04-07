@@ -18,8 +18,8 @@
 | 新設定キー (MagiSettings) | 環境変数 | 説明 | デフォルト値 |
 | :--- | :--- | :--- | :--- |
 | **API設定** | | | |
-| `api_key` | `MAGI_API_KEY` | Anthropic API Key (必須) | - |
-| `model` | `MAGI_MODEL` | 使用するモデル | `claude-sonnet-4-20250514` |
+| `api_key` | `MAGI_ANTHROPIC_API_KEY` | Anthropic API Key (必須) | - |
+| `model` | `MAGI_MODEL` | 使用するモデル | `claude-3-5-sonnet-20241022` |
 | `timeout` | `MAGI_TIMEOUT` | APIタイムアウト(秒) | 60 |
 | `retry_count` | `MAGI_RETRY_COUNT` | リトライ回数 | 3 |
 | `personas` | `MAGI_PERSONAS` | ペルソナ別設定 (JSON文字列) | `{}` |
@@ -117,9 +117,9 @@ streaming:
 
 **例1: APIキー不足**
 ```text
-MagiException: APIキーが設定されていません。環境変数 MAGI_API_KEY または設定ファイルで設定してください。
+MagiException: プロバイダ設定が不足しています: anthropic
 ```
--> `MAGI_API_KEY` 環境変数をセットするか、`magi.yaml` に `api_key` を記述してください。
+-> `MAGI_ANTHROPIC_API_KEY` 環境変数をセットするか、`magi.yaml` の `providers.anthropic.api_key` に記述してください。
 
 **例2: 型不正**
 ```text

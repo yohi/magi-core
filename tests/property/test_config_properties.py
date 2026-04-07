@@ -62,7 +62,7 @@ class TestConfigLoadingProperty(unittest.TestCase):
             if key.startswith("MAGI_"):
                 del os.environ[key]
 
-        os.environ["MAGI_API_KEY"] = api_key
+        os.environ["MAGI_ANTHROPIC_API_KEY"] = api_key
         os.environ["MAGI_DEBATE_ROUNDS"] = str(debate_rounds)
         os.environ["MAGI_VOTING_THRESHOLD"] = voting_threshold
         os.environ["MAGI_OUTPUT_FORMAT"] = output_format
@@ -72,7 +72,7 @@ class TestConfigLoadingProperty(unittest.TestCase):
         manager = ConfigManager()
         config = manager.load(force_reload=True)
 
-        self.assertEqual(config.api_key, api_key)
+        self.assertEqual(config.providers["anthropic"]["api_key"], api_key)
         self.assertEqual(config.debate_rounds, debate_rounds)
         self.assertEqual(config.voting_threshold, voting_threshold)
         self.assertEqual(config.output_format, output_format)
@@ -155,7 +155,7 @@ debate_rounds: {file_debate_rounds}
             config_path = Path(f.name)
 
         try:
-            os.environ["MAGI_API_KEY"] = env_api_key
+            os.environ["MAGI_ANTHROPIC_API_KEY"] = env_api_key
             os.environ["MAGI_DEBATE_ROUNDS"] = str(env_debate_rounds)
 
             manager = ConfigManager()
@@ -200,8 +200,8 @@ class TestConfigValidationProperty(unittest.TestCase):
 
         manager = ConfigManager()
         result = manager.validate(config)
-
         self.assertTrue(result.is_valid)
+
         self.assertEqual(result.errors, [])
 
     @given(

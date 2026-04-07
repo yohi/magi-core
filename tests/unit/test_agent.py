@@ -53,7 +53,7 @@ class TestAgentThink(unittest.IsolatedAsyncioTestCase):
         mock_client.send = AsyncMock(return_value=LLMResponse(
             content="これは論理的な分析です。",
             usage={"input_tokens": 100, "output_tokens": 50},
-            model="claude-sonnet-4-20250514"
+            model="claude-3-5-sonnet-20241022"
         ))
 
         agent = Agent(persona=persona, llm_client=mock_client)
@@ -81,7 +81,7 @@ class TestAgentThink(unittest.IsolatedAsyncioTestCase):
         mock_client.send = AsyncMock(return_value=LLMResponse(
             content="分析結果",
             usage={"input_tokens": 100, "output_tokens": 50},
-            model="claude-sonnet-4-20250514"
+            model="claude-3-5-sonnet-20241022"
         ))
 
         agent = Agent(persona=persona, llm_client=mock_client)
@@ -144,7 +144,7 @@ class TestAgentDebate(unittest.IsolatedAsyncioTestCase):
         mock_client.send = AsyncMock(return_value=LLMResponse(
             content="MELCHIORの意見に対して：リスクがあります。",
             usage={"input_tokens": 150, "output_tokens": 75},
-            model="claude-sonnet-4-20250514"
+            model="claude-3-5-sonnet-20241022"
         ))
 
         agent = Agent(persona=persona, llm_client=mock_client)
@@ -178,7 +178,7 @@ class TestAgentDebate(unittest.IsolatedAsyncioTestCase):
         mock_client.send = AsyncMock(return_value=LLMResponse(
             content="反論",
             usage={"input_tokens": 150, "output_tokens": 75},
-            model="claude-sonnet-4-20250514"
+            model="claude-3-5-sonnet-20241022"
         ))
 
         agent = Agent(persona=persona, llm_client=mock_client)
@@ -221,7 +221,7 @@ class TestAgentVote(unittest.IsolatedAsyncioTestCase):
         mock_client.send = AsyncMock(return_value=LLMResponse(
             content='{"vote": "APPROVE", "reason": "論理的に問題ありません。"}',
             usage={"input_tokens": 200, "output_tokens": 50},
-            model="claude-sonnet-4-20250514"
+            model="claude-3-5-sonnet-20241022"
         ))
 
         agent = Agent(persona=persona, llm_client=mock_client)
@@ -248,7 +248,7 @@ class TestAgentVote(unittest.IsolatedAsyncioTestCase):
         mock_client.send = AsyncMock(return_value=LLMResponse(
             content='{"vote": "DENY", "reason": "重大なリスクがあります。"}',
             usage={"input_tokens": 200, "output_tokens": 50},
-            model="claude-sonnet-4-20250514"
+            model="claude-3-5-sonnet-20241022"
         ))
 
         agent = Agent(persona=persona, llm_client=mock_client)
@@ -274,7 +274,7 @@ class TestAgentVote(unittest.IsolatedAsyncioTestCase):
         mock_client.send = AsyncMock(return_value=LLMResponse(
             content='{"vote": "CONDITIONAL", "reason": "条件付きで承認します。", "conditions": ["条件1", "条件2"]}',
             usage={"input_tokens": 200, "output_tokens": 75},
-            model="claude-sonnet-4-20250514"
+            model="claude-3-5-sonnet-20241022"
         ))
 
         agent = Agent(persona=persona, llm_client=mock_client)
@@ -304,7 +304,7 @@ class TestAgentVote(unittest.IsolatedAsyncioTestCase):
         mock_client.send = AsyncMock(return_value=LLMResponse(
             content="これは有効なJSONではありません。APPROVE します。",
             usage={"input_tokens": 200, "output_tokens": 50},
-            model="claude-sonnet-4-20250514"
+            model="claude-3-5-sonnet-20241022"
         ))
 
         agent = Agent(persona=persona, llm_client=mock_client)

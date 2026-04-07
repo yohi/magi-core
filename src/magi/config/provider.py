@@ -22,6 +22,7 @@ SUPPORTED_PROVIDERS = (
     "claude",
     "copilot",
     "antigravity",
+    "openrouter",
 )
 AUTH_BASED_PROVIDERS = ("claude", "copilot", "antigravity")
 RECOMMENDED_MODELS = {
@@ -31,6 +32,7 @@ RECOMMENDED_MODELS = {
     "antigravity": ["gemini-2.0-flash-exp"],
     "claude": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
     "copilot": ["gpt-4o", "gpt-4"],
+    "openrouter": ["anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001"],
 }
 
 logger = logging.getLogger(__name__)
@@ -171,13 +173,12 @@ class ProviderConfigLoader:
 
         # 既存の単一プロバイダ設定をデフォルトとして扱う
         if DEFAULT_PROVIDER_ID not in providers:
-            legacy_key = data.get("api_key")
             legacy_model = data.get("model")
-            if legacy_key or legacy_model:
+            if legacy_model:
                 providers[DEFAULT_PROVIDER_ID] = ProviderConfig(
                     provider_id=DEFAULT_PROVIDER_ID,
-                    api_key=str(legacy_key or ""),
-                    model=str(legacy_model or ""),
+                    api_key=None,
+                    model=str(legacy_model),
                 )
 
         default_provider = None
@@ -210,12 +211,11 @@ class ProviderConfigLoader:
 
         # 既存の単一プロバイダ環境変数をAnthropic扱いで読み込む
         if DEFAULT_PROVIDER_ID not in providers:
-            legacy_key = os.environ.get("MAGI_API_KEY", "")
             legacy_model = os.environ.get("MAGI_MODEL", "")
-            if legacy_key or legacy_model:
+            if legacy_model:
                 providers[DEFAULT_PROVIDER_ID] = ProviderConfig(
                     provider_id=DEFAULT_PROVIDER_ID,
-                    api_key=legacy_key,
+                    api_key=None,
                     model=legacy_model,
                 )
 
@@ -288,7 +288,7 @@ class ProviderConfigLoader:
         errors = []
         for provider_id, cfg in providers.items():
             required_fields = ["model"]
-            if provider_id not in AUTH_BASED_PROVIDERS:
+            if provider_id not in AUTH_BASED_PROVIDERS and cfg.api_key is not None:
                 required_fields.insert(0, "api_key")
             missing_fields = [
                 field
@@ -398,3 +398,4 @@ class ProviderConfigLoader:
             return {}
 
         return parsed
+

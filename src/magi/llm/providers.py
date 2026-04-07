@@ -526,8 +526,41 @@ class GeminiAdapter:
         if self._owns_client and self._client is not None:
             await self._client.aclose()
 
-    async def __aenter__(self) -> "GeminiAdapter":
-        return self
-
     async def __aexit__(self, *_exc: Any) -> None:
         await self.close()
+
+
+class OpenRouterAdapter(OpenAIAdapter):
+    """OpenRouter 向けアダプタ (OpenAI 互換 API)"""
+
+    def __init__(
+        self,
+        context: ProviderContext,
+        *,
+        http_client: Optional[Any] = None,
+        timeout: float = 30.0,
+        chat_endpoint: str = "/chat/completions",
+    ) -> None:
+        # コンテキストにエンドポイントがない場合は OpenRouter の既定値を使用
+        endpoint = context.endpoint or "https://openrouter.ai/api/v1"
+
+        # 親クラスの初期化。context自体は変更せずに値を渡す
+        super().__init__(
+            context,
+            http_client=http_client,
+            timeout=timeout,
+            chat_endpoint=chat_endpoint,
+        )
+        # OpenAIAdapter が self.endpoint を context.endpoint から設定している可能性があるため、
+        # 確実に上書きする (または super 呼び出し前に context を一時的に変更して戻す)
+        self.endpoint = endpoint
+
+    def _auth_headers(self) -> Dict[str, str]:
+        headers = super()._auth_headers()
+        # OpenRouter 推奨の追加ヘッダー
+        # https://openrouter.ai/docs#headers
+        headers["HTTP-Referer"] = self.context.options.get(
+            "referer", "https://github.com/yohi/magi-core"
+        )
+        headers["X-Title"] = self.context.options.get("title", "MAGI System")
+        return headers

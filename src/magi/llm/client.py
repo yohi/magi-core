@@ -95,7 +95,7 @@ class LLMClient:
     def __init__(
         self,
         api_key: str,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = "claude-3-5-sonnet-20241022",
         retry_count: int = 3,
         timeout: int = 60,
         temperature: float = 0.7,

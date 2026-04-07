@@ -36,9 +36,27 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-MAX_CONCURRENCY = int(os.environ.get("MAX_CONCURRENCY", "10"))
-SESSION_TTL_SEC = int(os.environ.get("SESSION_TTL_SEC", "600"))
-CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "")
+# 設定読み込み
+config_manager = ConfigManager()
+try:
+    config = config_manager.load()
+    use_mock = False
+    # 環境変数で強制的にモックモードにする
+    if os.environ.get("MAGI_USE_MOCK", "0") == "1":
+        use_mock = True
+except (MagiException, ValidationError, FileNotFoundError) as e:
+    if os.environ.get("MAGI_USE_MOCK", "0") == "1":
+        logger.warning(f"Configuration load failed, falling back to MockMagiAdapter as requested: {e}")
+        from magi.config.settings import MagiSettings
+        config = MagiSettings()  # デフォルト値を使用
+        use_mock = True
+    else:
+        logger.error(f"Failed to load configuration: {e}")
+        raise e
+
+MAX_CONCURRENCY = config.max_concurrency
+SESSION_TTL_SEC = config.session_ttl_sec
+CORS_ORIGINS = config.cors_origins
 
 if CORS_ORIGINS:
     origins = [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()]
@@ -50,20 +68,6 @@ if CORS_ORIGINS:
             allow_methods=["*"],
             allow_headers=["*"],
         )
-
-# 設定読み込み
-config_manager = ConfigManager()
-try:
-    config = config_manager.load()
-    use_mock = False
-except (MagiException, ValidationError, FileNotFoundError) as e:
-    logger.warning(f"Configuration load failed, falling back to MockMagiAdapter: {e}")
-    config = None
-    use_mock = True
-
-# 環境変数でMock強制も可能にする (例: MAGI_USE_MOCK=1)
-if os.environ.get("MAGI_USE_MOCK", "0") == "1":
-    use_mock = True
 
 def create_adapter():
     if use_mock or config is None:
