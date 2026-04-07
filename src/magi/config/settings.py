@@ -2,6 +2,7 @@
 
 import logging
 import os
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, Literal, Optional, Tuple
 
@@ -14,6 +15,8 @@ from pydantic import (
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from magi.config.provider import ProviderConfig
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +57,7 @@ class MagiSettings(BaseSettings):
     api_key: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices(
-            "MAGI_ANTHROPIC_API_KEY", "MAGI_API_KEY", "api_key"
+            "MAGI_ANTHROPIC_API_KEY", "MAGI_API_KEY"
         ),
     )
     model: str = Field(default="claude-3-5-sonnet-20241022")
@@ -204,12 +207,24 @@ class MagiSettings(BaseSettings):
         coerced = dict(data)
 
         # 指摘事項: 呼び出し元の辞書を壊さないよう、ネストされた辞書も明示的にコピーする
-        if "providers" in coerced and isinstance(coerced["providers"], dict):
-            coerced["providers"] = dict(coerced["providers"])
-            if "anthropic" in coerced["providers"] and isinstance(
-                coerced["providers"]["anthropic"], dict
-            ):
-                coerced["providers"]["anthropic"] = dict(coerced["providers"]["anthropic"])
+        # また、ProviderConfig インスタンスの正規化と検証を行う
+        def _normalize_config(val: Any) -> Dict[str, Any]:
+            if val is None:
+                return {}
+            if isinstance(val, ProviderConfig):
+                return asdict(val)
+            if isinstance(val, dict):
+                return dict(val)
+            raise TypeError(f"Unsupported config type: {type(val)}. Expected None, dict, or ProviderConfig.")
+
+        if "providers" in coerced:
+            p_val = coerced["providers"]
+            if p_val is not None and not isinstance(p_val, dict):
+                raise TypeError(f"Unsupported 'providers' type: {type(p_val)}. Expected None or dict.")
+            coerced["providers"] = _normalize_config(p_val)
+
+            if "anthropic" in coerced["providers"]:
+                coerced["providers"]["anthropic"] = _normalize_config(coerced["providers"]["anthropic"])
 
         for legacy, new in mapping.items():
             if legacy in coerced:
@@ -231,24 +246,18 @@ class MagiSettings(BaseSettings):
         )
         api_key = env_api_key or coerced.get("api_key")
 
-        # プロバイダ設定の正規化(キーが存在し、辞書でない場合のみ)
-        if "providers" in coerced and not isinstance(coerced["providers"], dict):
-            coerced["providers"] = {}
-        if (
-            "providers" in coerced
-            and isinstance(coerced["providers"], dict)
-            and "anthropic" in coerced["providers"]
-            and not isinstance(coerced["providers"]["anthropic"], dict)
-        ):
-            coerced["providers"]["anthropic"] = {}
-
         if api_key:
             coerced["api_key"] = api_key
             # api_key 同期のために必要な階層を作成
-            if "providers" not in coerced:
+            if "providers" not in coerced or coerced["providers"] is None:
                 coerced["providers"] = {}
-            if "anthropic" not in coerced["providers"]:
+            if not isinstance(coerced["providers"], dict):
+                 raise TypeError(f"Unexpected 'providers' type during sync: {type(coerced['providers'])}")
+
+            if "anthropic" not in coerced["providers"] or coerced["providers"]["anthropic"] is None:
                 coerced["providers"]["anthropic"] = {}
+            if not isinstance(coerced["providers"]["anthropic"], dict):
+                 raise TypeError(f"Unexpected 'anthropic' type during sync: {type(coerced['providers']['anthropic'])}")
 
             # 指摘事項: 上位プライオリティが勝つよう、常に同期する
             coerced["providers"]["anthropic"]["api_key"] = api_key
