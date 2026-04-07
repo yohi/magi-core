@@ -144,7 +144,7 @@ class MagiSettings(BaseSettings):
         dotenv_settings,
         file_secret_settings,
     ) -> Tuple[Any, ...]:
-        """設定ソースの優先順位をカスタマイズ（env > dotenv > init）"""
+        """設定ソースの優先順位をカスタマイズ(env > dotenv > init)"""
         allowed_fields = set(cls.model_fields)
 
         def _filtered(source):
@@ -225,7 +225,7 @@ class MagiSettings(BaseSettings):
         )
         api_key = env_api_key or coerced.get("api_key")
 
-        # プロバイダ設定の正規化（キーが存在し、辞書でない場合のみ）
+        # プロバイダ設定の正規化(キーが存在し、辞書でない場合のみ)
         if "providers" in coerced and not isinstance(coerced["providers"], dict):
             coerced["providers"] = {}
         if (
@@ -253,7 +253,7 @@ class MagiSettings(BaseSettings):
         """機微情報をマスクした設定を返却する"""
         data = self.model_dump()
 
-        # トップレベルの api_key を削除（テストの期待値に合わせる）
+        # トップレベルの api_key を削除(テストの期待値に合わせる)
         data.pop("api_key", None)
 
         def _mask(val: str) -> str:
@@ -274,7 +274,7 @@ class MagiSettings(BaseSettings):
                     options = p_cfg.get("options")
                     if isinstance(options, dict):
                         for k, v in options.items():
-                            if isinstance(v, str):
+                            if isinstance(v, str) and v:  # 指摘事項: 空文字列はスキップ
                                 options[k] = _mask(v)
 
         # 各ペルソナの LLM 設定をマスク
@@ -290,7 +290,7 @@ class MagiSettings(BaseSettings):
 
     @model_validator(mode="after")
     def _sync_api_key_to_providers(self) -> "MagiSettings":
-        """トップレベルの api_key を providers['anthropic'] に同期する（双方向）"""
+        """トップレベルの api_key を providers['anthropic'] に同期する(双方向)"""
         # 1. 逆方向同期: providers['anthropic']['api_key'] があり、api_key が空の場合
         if not self.api_key and isinstance(self.providers, dict):
             anthropic_cfg = self.providers.get("anthropic")
@@ -312,7 +312,7 @@ class MagiSettings(BaseSettings):
             self.providers["anthropic"]["api_key"] = self.api_key
         return self
 
-    # 互換性プロパティ（既存コードを壊さないためのエイリアス）
+    # 互換性プロパティ(既存コードを壊さないためのエイリアス)
     @property
     def enable_streaming_output(self) -> bool:
         return self.streaming_enabled
