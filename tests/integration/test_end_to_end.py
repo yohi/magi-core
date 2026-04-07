@@ -485,6 +485,7 @@ class TestConfigManagerIntegration(unittest.TestCase):
             config = manager.load()
 
             self.assertEqual(config.api_key, "test-env-api-key")
+            self.assertEqual(config.providers["anthropic"]["api_key"], "test-env-api-key")
             self.assertEqual(config.debate_rounds, 3)
 
     def test_missing_api_key_is_allowed(self):

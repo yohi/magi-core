@@ -53,7 +53,9 @@ class MagiSettings(BaseSettings):
     # API 設定
     api_key: Optional[str] = Field(
         default=None,
-        validation_alias=AliasChoices("ANTHROPIC_API_KEY", "API_KEY", "api_key"),
+        validation_alias=AliasChoices(
+            "MAGI_ANTHROPIC_API_KEY", "MAGI_API_KEY", "api_key"
+        ),
     )
     model: str = Field(default="claude-3-5-sonnet-20241022")
     timeout: int = Field(default=60, ge=1)

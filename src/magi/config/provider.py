@@ -177,7 +177,7 @@ class ProviderConfigLoader:
             if legacy_model:
                 providers[DEFAULT_PROVIDER_ID] = ProviderConfig(
                     provider_id=DEFAULT_PROVIDER_ID,
-                    api_key="",
+                    api_key=None,
                     model=str(legacy_model),
                 )
 
@@ -288,7 +288,7 @@ class ProviderConfigLoader:
         errors = []
         for provider_id, cfg in providers.items():
             required_fields = ["model"]
-            if provider_id not in AUTH_BASED_PROVIDERS:
+            if provider_id not in AUTH_BASED_PROVIDERS and cfg.api_key is not None:
                 required_fields.insert(0, "api_key")
             missing_fields = [
                 field
