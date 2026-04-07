@@ -42,8 +42,7 @@ class MagiSettings(BaseSettings):
         super().__init__(**data)
 
     # API 設定
-    api_key: Optional[str] = Field(None, description="Anthropic API Key")
-    model: str = Field(default="claude-sonnet-4-20250514")
+    model: str = Field(default="claude-3-5-sonnet-20241022")
     timeout: int = Field(default=60, ge=1)
     retry_count: int = Field(default=3, ge=0, le=10)
     temperature: float = Field(default=0.7, ge=0.0, le=1.0)
@@ -178,11 +177,16 @@ class MagiSettings(BaseSettings):
     def dump_masked(self) -> dict:
         """機微情報をマスクした設定を返却する"""
         data = self.model_dump()
-        api_key = data.get("api_key")
-        if api_key:
-            data["api_key"] = (
-                f"{api_key[:8]}...{api_key[-4:]}" if len(api_key) > 12 else "***"
-            )
+        # 各プロバイダの設定は providers 辞書内にあるため、
+        # 必要に応じてそこでマスク処理が行われることを期待するか、
+        # ここで providers 内の api_key を一括マスクする。
+        if "providers" in data and data["providers"]:
+            for p_cfg in data["providers"].values():
+                if isinstance(p_cfg, dict) and "api_key" in p_cfg and p_cfg["api_key"]:
+                    val = p_cfg["api_key"]
+                    p_cfg["api_key"] = (
+                        f"{val[:8]}...{val[-4:]}" if len(val) > 12 else "***"
+                    )
         return data
 
     # 互換性プロパティ（既存コードを壊さないためのエイリアス）

@@ -174,6 +174,7 @@ class ProviderAdapterFactory:
             "anthropic": AnthropicAdapter,
             "openai": OpenAIAdapter,
             "gemini": GeminiAdapter,
+            "openrouter": OpenRouterAdapter,
         }
 
     def build(

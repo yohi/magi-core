@@ -62,7 +62,7 @@ class TestConfigLoadingProperty(unittest.TestCase):
             if key.startswith("MAGI_"):
                 del os.environ[key]
 
-        os.environ["MAGI_API_KEY"] = api_key
+        os.environ["MAGI_ANTHROPIC_API_KEY"] = api_key
         os.environ["MAGI_DEBATE_ROUNDS"] = str(debate_rounds)
         os.environ["MAGI_VOTING_THRESHOLD"] = voting_threshold
         os.environ["MAGI_OUTPUT_FORMAT"] = output_format
@@ -155,7 +155,7 @@ debate_rounds: {file_debate_rounds}
             config_path = Path(f.name)
 
         try:
-            os.environ["MAGI_API_KEY"] = env_api_key
+            os.environ["MAGI_ANTHROPIC_API_KEY"] = env_api_key
             os.environ["MAGI_DEBATE_ROUNDS"] = str(env_debate_rounds)
 
             manager = ConfigManager()

@@ -229,7 +229,7 @@
 
 * backend:
 
-  * `MAGI_API_KEY`（仮。実際のmagi-core要件に合わせて確定）
+  * `MAGI_ANTHROPIC_API_KEY`（仮。実際のmagi-core要件に合わせて確定）
   * `MAX_CONCURRENCY`（default 10）
   * `SESSION_TTL_SEC`（default 600）
   * `CORS_ORIGINS`（devのみ）
@@ -327,7 +327,7 @@
    * GET /api/health
 5. Secrets対応:
 
-   * `MAGI_API_KEY` 等は backend のみ参照、ログ出力禁止
+   * `MAGI_ANTHROPIC_API_KEY` 等は backend のみ参照、ログ出力禁止
 
 #### 4) Frontend 実装手順（MAGI風UI）
 

@@ -17,10 +17,9 @@ class TestMagiSettings(unittest.TestCase):
 
     def test_default_values(self):
         """必須項目のみで生成した場合にデフォルト値が適用される"""
-        settings = MagiSettings(api_key="test-api-key")
+        settings = MagiSettings()
 
-        self.assertEqual(settings.api_key, "test-api-key")
-        self.assertEqual(settings.model, "claude-sonnet-4-20250514")
+        self.assertEqual(settings.model, "claude-3-5-sonnet-20241022")
         self.assertEqual(settings.timeout, 60)
         self.assertEqual(settings.retry_count, 3)
         self.assertEqual(settings.debate_rounds, 1)
@@ -56,7 +55,6 @@ class TestMagiSettings(unittest.TestCase):
     @patch.dict(
         os.environ,
         {
-            "MAGI_API_KEY": "env-api-key",
             "MAGI_MODEL": "env-model",
             "MAGI_STREAMING_OVERFLOW_POLICY": "backpressure",
         },
@@ -66,65 +64,65 @@ class TestMagiSettings(unittest.TestCase):
         """環境変数が env_prefix 付きで読み込まれる"""
         settings = MagiSettings()
 
-        self.assertEqual(settings.api_key, "env-api-key")
         self.assertEqual(settings.model, "env-model")
         self.assertEqual(settings.streaming_overflow_policy, "backpressure")
 
     def test_production_mode_requires_public_key_path(self):
         """production_mode 有効時は公開鍵パスが必須"""
         with self.assertRaises(ValidationError):
-            MagiSettings(api_key="test", production_mode=True)
+            MagiSettings(production_mode=True)
 
     def test_production_mode_accepts_public_key_path(self):
         """production_mode 有効かつ公開鍵パス指定で通過する"""
         key_path = Path("/tmp/public_key.pem")
 
         settings = MagiSettings(
-            api_key="test",
             production_mode=True,
             plugin_public_key_path=key_path,
         )
 
         self.assertEqual(settings.plugin_public_key_path, key_path)
 
-    def test_dump_masked_masks_api_key(self):
-        """dump_masked で API キーがマスクされる"""
-        settings = MagiSettings(api_key="1234567890abcdef")
+    def test_dump_masked_masks_provider_api_key(self):
+        """dump_masked で providers 内の API キーがマスクされる"""
+        settings = MagiSettings(
+            providers={"anthropic": {"api_key": "1234567890abcdef", "model": "m1"}}
+        )
 
         masked = settings.dump_masked()
 
-        self.assertEqual(masked["api_key"], "12345678...cdef")
+        self.assertEqual(masked["providers"]["anthropic"]["api_key"], "12345678...cdef")
         self.assertEqual(masked["output_format"], "markdown")
 
     def test_extra_fields_forbidden(self):
         """未知フィールドはバリデーションエラーとなる"""
         with self.assertRaises(ValidationError):
-            MagiSettings(api_key="test", unknown_field="value")
+            MagiSettings(unknown_field="value")
 
     def test_env_overrides_init_settings(self):
         """env が init 引数より優先される (settings_customise_sources の検証)"""
         with patch.dict(
             os.environ,
-            {"MAGI_MODEL": "env-model", "MAGI_API_KEY": "env-key"},
+            {"MAGI_MODEL": "env-model"},
             clear=True,
         ):
-            settings = MagiSettings(api_key="init-key", model="init-model")
+            settings = MagiSettings(model="init-model")
 
-        self.assertEqual(settings.api_key, "env-key")
         self.assertEqual(settings.model, "env-model")
 
     def test_dump_masked_short_api_key_is_redacted(self):
         """短い API キーは '***' にマスクされる"""
-        settings = MagiSettings(api_key="short-key")
+        settings = MagiSettings(
+            providers={"anthropic": {"api_key": "short-key", "model": "m1"}}
+        )
 
         masked = settings.dump_masked()
 
-        self.assertEqual(masked["api_key"], "***")
+        self.assertEqual(masked["providers"]["anthropic"]["api_key"], "***")
 
     @patch.dict(
         os.environ,
         {
-            "MAGI_API_KEY": "test-api-key",
             "MAGI_PERSONAS": '{"melchior": {"llm": {"model": "m1", "timeout": 120}}}',
         },
         clear=True,
@@ -143,7 +141,6 @@ class TestMagiSettings(unittest.TestCase):
     @patch.dict(
         os.environ,
         {
-            "MAGI_API_KEY": "test-api-key",
             "MAGI_PERSONAS__melchior__llm__model": "m2",
             "MAGI_PERSONAS__melchior__llm__timeout": "180",
         },

@@ -27,30 +27,30 @@ class TestConfigManagerWithMagiSettings(unittest.TestCase):
 
     def test_load_returns_magi_settings_and_defaults(self):
         """最低限の必須項目のみで MagiSettings が返る"""
-        os.environ["MAGI_API_KEY"] = "env-api-key"
+        os.environ["MAGI_PROVIDERS__anthropic__api_key"] = "env-api-key"
 
         config = self.manager.load()
 
         self.assertIsInstance(config, MagiSettings)
-        self.assertEqual(config.api_key, "env-api-key")
-        self.assertEqual(config.model, "claude-sonnet-4-20250514")
+        self.assertEqual(config.providers["anthropic"]["api_key"], "env-api-key")
+        self.assertEqual(config.model, "claude-3-5-sonnet-20241022")
         self.assertEqual(config.llm_concurrency_limit, 5)
         self.assertTrue(config.log_context_reduction_key)
 
     def test_env_overrides_file_settings(self):
         """環境変数がファイル設定より優先される"""
-        yaml_content = "api_key: file-key\nmodel: file-model\n"
+        yaml_content = "providers:\n  anthropic:\n    api_key: file-key\nmodel: file-model\n"
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             config_path = Path(f.name)
 
         try:
-            os.environ["MAGI_API_KEY"] = "env-key"
+            os.environ["MAGI_PROVIDERS__anthropic__api_key"] = "env-key"
             os.environ["MAGI_MODEL"] = "env-model"
 
             config = self.manager.load(config_path=config_path)
 
-            self.assertEqual(config.api_key, "env-key")
+            self.assertEqual(config.providers["anthropic"]["api_key"], "env-key")
             self.assertEqual(config.model, "env-model")
         finally:
             config_path.unlink()
@@ -62,11 +62,12 @@ class TestConfigManagerWithMagiSettings(unittest.TestCase):
                 del os.environ[key]
 
         config = self.manager.load()
-        self.assertIsNone(config.api_key)
+        # providers 自体は default_factory=dict により空辞書になるはず
+        self.assertNotIn("anthropic", config.providers)
 
     def test_invalid_value_raises_magi_exception(self):
         """無効な値は MagiException(CONFIG_002) を送出"""
-        os.environ["MAGI_API_KEY"] = "env-api-key"
+        os.environ["MAGI_PROVIDERS__anthropic__api_key"] = "env-api-key"
         yaml_content = "voting_threshold: invalid\n"
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
@@ -82,7 +83,7 @@ class TestConfigManagerWithMagiSettings(unittest.TestCase):
 
     def test_unknown_fields_are_rejected(self):
         """未知フィールドはバリデーションエラーとなる"""
-        os.environ["MAGI_API_KEY"] = "env-api-key"
+        os.environ["MAGI_PROVIDERS__anthropic__api_key"] = "env-api-key"
         yaml_content = "unknown_field: value\n"
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
@@ -96,7 +97,7 @@ class TestConfigManagerWithMagiSettings(unittest.TestCase):
 
     def test_default_config_file_path(self):
         """デフォルトパス探索で magi.yaml が読み込まれる"""
-        yaml_content = "api_key: default-file-api-key\n"
+        yaml_content = "providers:\n  anthropic:\n    api_key: default-file-api-key\n"
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "magi.yaml"
             config_path.write_text(yaml_content)
@@ -106,29 +107,30 @@ class TestConfigManagerWithMagiSettings(unittest.TestCase):
             ):
                 config = self.manager.load()
 
-                self.assertEqual(config.api_key, "default-file-api-key")
+                self.assertEqual(config.providers["anthropic"]["api_key"], "default-file-api-key")
 
     def test_config_cache_and_force_reload(self):
         """キャッシュと強制リロードが機能する"""
-        os.environ["MAGI_API_KEY"] = "first"
+        os.environ["MAGI_PROVIDERS__anthropic__api_key"] = "first"
         first = self.manager.load()
 
-        os.environ["MAGI_API_KEY"] = "second"
+        os.environ["MAGI_PROVIDERS__anthropic__api_key"] = "second"
         cached = self.manager.load()
         reloaded = self.manager.load(force_reload=True)
 
         self.assertIs(first, cached)
         self.assertIsNot(first, reloaded)
-        self.assertEqual(reloaded.api_key, "second")
+        self.assertEqual(reloaded.providers["anthropic"]["api_key"], "second")
 
     def test_dump_masked_provides_masked_values(self):
         """マスク済み設定を取得できる"""
-        os.environ["MAGI_API_KEY"] = "1234567890abcdef"
+        os.environ["MAGI_PROVIDERS__anthropic__api_key"] = "1234567890abcdef"
         config = self.manager.load()
 
         masked = self.manager.dump_masked()
 
-        self.assertEqual(masked["api_key"], "12345678...cdef")
+        self.assertNotIn("api_key", masked)
+        self.assertEqual(masked["providers"]["anthropic"]["api_key"], "12345678...cdef")
         self.assertEqual(masked["model"], config.model)
 
 

@@ -68,7 +68,7 @@ cd magi-core
 uv sync
 
 # 環境変数の設定
-export MAGI_API_KEY="your-anthropic-api-key"
+export MAGI_ANTHROPIC_API_KEY="your-anthropic-api-key"
 
 # 動作確認
 uv run magi --version
@@ -149,8 +149,10 @@ docker compose up --build
 
 | 変数名 | 説明 | デフォルト |
 |--------|------|-----------|
-| `MAGI_API_KEY` | Anthropic APIキー（**必須**） | - |
-| `MAGI_MODEL` | 使用するLLMモデル | `claude-sonnet-4-20250514` |
+| `MAGI_ANTHROPIC_API_KEY` | Anthropic APIキー | - |
+| `MAGI_OPENAI_API_KEY` | OpenAI APIキー | - |
+| `MAGI_OPENROUTER_API_KEY` | OpenRouter APIキー | - |
+| `MAGI_MODEL` | 使用するLLMモデル | `claude-3-5-sonnet-20241022` |
 | `MAGI_DEBATE_ROUNDS` | Debateフェーズのラウンド数 | `1` |
 | `MAGI_VOTING_THRESHOLD` | 投票閾値（majority/unanimous） | `majority` |
 | `MAGI_TIMEOUT` | APIタイムアウト（秒） | `60` |

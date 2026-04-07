@@ -190,19 +190,9 @@ class ConfigManager:
     def _convert_validation_error(self, exc: ValidationError) -> MagiException:
         """Pydantic の ValidationError を MagiException に変換"""
         errors = exc.errors()
-        # locが空のリストの場合のIndexErrorを回避
-        missing_api_key = any(
-            (loc := err.get("loc"))
-            and isinstance(loc, (list, tuple))
-            and loc
-            and loc[0] == "api_key"
-            for err in errors
-        )
-        code = (
-            ErrorCode.CONFIG_MISSING_API_KEY.value
-            if missing_api_key
-            else ErrorCode.CONFIG_INVALID_VALUE.value
-        )
+        # プロバイダ別のAPIキーチェックは ProviderConfigLoader で行われるため、
+        # ここでは一般的な設定値エラーとして扱う。
+        code = ErrorCode.CONFIG_INVALID_VALUE.value
         message = "; ".join(err.get("msg", "validation error") for err in errors)
         return MagiException(
             MagiError(

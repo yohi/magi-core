@@ -477,7 +477,7 @@ class TestConfigManagerIntegration(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "MAGI_API_KEY": "test-env-api-key",
+                "MAGI_ANTHROPIC_API_KEY": "test-env-api-key",
                 "MAGI_DEBATE_ROUNDS": "3",
             },
         ):
@@ -490,10 +490,10 @@ class TestConfigManagerIntegration(unittest.TestCase):
     def test_missing_api_key_is_allowed(self):
         """APIキー未設定が許可される"""
         with patch.dict(os.environ, {}, clear=True):
-            # MAGI_API_KEY環境変数を削除
+            # MAGI_ANTHROPIC_API_KEY環境変数を削除
             env = os.environ.copy()
-            if "MAGI_API_KEY" in env:
-                del env["MAGI_API_KEY"]
+            if "MAGI_ANTHROPIC_API_KEY" in env:
+                del env["MAGI_ANTHROPIC_API_KEY"]
 
             with patch.dict(os.environ, env, clear=True):
                 manager = ConfigManager()

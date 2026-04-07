@@ -20,17 +20,17 @@ from fastapi.testclient import TestClient
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-_prev_api_key = os.environ.get("MAGI_API_KEY")
+_prev_api_key = os.environ.get("MAGI_ANTHROPIC_API_KEY")
 _prev_use_mock = os.environ.get("MAGI_USE_MOCK")
-os.environ["MAGI_API_KEY"] = "test-api-key"
+os.environ["MAGI_ANTHROPIC_API_KEY"] = "test-api-key"
 os.environ["MAGI_USE_MOCK"] = "1"
 
 from magi.webui_backend.app import app, session_manager
 
 if _prev_api_key is None:
-    os.environ.pop("MAGI_API_KEY", None)
+    os.environ.pop("MAGI_ANTHROPIC_API_KEY", None)
 else:
-    os.environ["MAGI_API_KEY"] = _prev_api_key
+    os.environ["MAGI_ANTHROPIC_API_KEY"] = _prev_api_key
 
 if _prev_use_mock is None:
     os.environ.pop("MAGI_USE_MOCK", None)
