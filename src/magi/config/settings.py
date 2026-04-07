@@ -216,13 +216,23 @@ class MagiSettings(BaseSettings):
         )
         api_key = env_api_key or coerced.get("api_key")
 
+        # プロバイダ設定の正規化（キーが存在し、辞書でない場合のみ）
+        if "providers" in coerced and not isinstance(coerced["providers"], dict):
+            coerced["providers"] = {}
+        if (
+            "providers" in coerced
+            and isinstance(coerced["providers"], dict)
+            and "anthropic" in coerced["providers"]
+            and not isinstance(coerced["providers"]["anthropic"], dict)
+        ):
+            coerced["providers"]["anthropic"] = {}
+
         if api_key:
             coerced["api_key"] = api_key
-            if "providers" not in coerced or not isinstance(coerced["providers"], dict):
+            # api_key 同期のために必要な階層を作成
+            if "providers" not in coerced:
                 coerced["providers"] = {}
-            if "anthropic" not in coerced["providers"] or not isinstance(
-                coerced["providers"]["anthropic"], dict
-            ):
+            if "anthropic" not in coerced["providers"]:
                 coerced["providers"]["anthropic"] = {}
 
             if "api_key" not in coerced["providers"]["anthropic"] or env_api_key:
@@ -237,22 +247,42 @@ class MagiSettings(BaseSettings):
         # トップレベルの api_key を削除（テストの期待値に合わせる）
         data.pop("api_key", None)
 
+        def _mask(val: str) -> str:
+            return f"{val[:8]}...{val[-4:]}" if len(val) > 12 else "***"
+
         # 各プロバイダの設定は providers 辞書内にあるため、
         # 必要に応じてそこでマスク処理が行われることを期待するか、
         # ここで providers 内の api_key を一括マスクする。
-        if "providers" in data and data["providers"]:
+        if "providers" in data and isinstance(data["providers"], dict):
             for p_cfg in data["providers"].values():
                 if isinstance(p_cfg, dict):
                     val = p_cfg.get("api_key")
                     if val:
-                        p_cfg["api_key"] = (
-                            f"{val[:8]}...{val[-4:]}" if len(val) > 12 else "***"
-                        )
+                        p_cfg["api_key"] = _mask(val)
+
+        # 各ペルソナの LLM 設定をマスク
+        if "personas" in data and isinstance(data["personas"], dict):
+            for p_cfg in data["personas"].values():
+                if isinstance(p_cfg, dict) and "llm" in p_cfg:
+                    llm_cfg = p_cfg["llm"]
+                    if isinstance(llm_cfg, dict):
+                        val = llm_cfg.get("api_key")
+                        if val:
+                            llm_cfg["api_key"] = _mask(val)
         return data
 
     @model_validator(mode="after")
     def _sync_api_key_to_providers(self) -> "MagiSettings":
-        """トップレベルの api_key を providers['anthropic'] に同期する"""
+        """トップレベルの api_key を providers['anthropic'] に同期する（双方向）"""
+        # 1. 逆方向同期: providers['anthropic']['api_key'] があり、api_key が空の場合
+        if not self.api_key and isinstance(self.providers, dict):
+            anthropic_cfg = self.providers.get("anthropic")
+            if isinstance(anthropic_cfg, dict):
+                p_api_key = anthropic_cfg.get("api_key")
+                if p_api_key:
+                    self.api_key = p_api_key
+
+        # 2. 順方向同期: api_key がある場合
         if self.api_key:
             if not isinstance(self.providers, dict):
                 self.providers = {}

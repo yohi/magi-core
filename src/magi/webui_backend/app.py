@@ -41,15 +41,18 @@ config_manager = ConfigManager()
 try:
     config = config_manager.load()
     use_mock = False
+    # 環境変数で強制的にモックモードにする
+    if os.environ.get("MAGI_USE_MOCK", "0") == "1":
+        use_mock = True
 except (MagiException, ValidationError, FileNotFoundError) as e:
-    logger.warning(f"Configuration load failed, falling back to MockMagiAdapter: {e}")
-    from magi.config.settings import MagiSettings
-    config = MagiSettings()  # デフォルト値を使用
-    use_mock = True
-
-# 環境変数でMock強制も可能にする (例: MAGI_USE_MOCK=1)
-if os.environ.get("MAGI_USE_MOCK", "0") == "1":
-    use_mock = True
+    if os.environ.get("MAGI_USE_MOCK", "0") == "1":
+        logger.warning(f"Configuration load failed, falling back to MockMagiAdapter as requested: {e}")
+        from magi.config.settings import MagiSettings
+        config = MagiSettings()  # デフォルト値を使用
+        use_mock = True
+    else:
+        logger.error(f"Failed to load configuration: {e}")
+        raise e
 
 MAX_CONCURRENCY = config.max_concurrency
 SESSION_TTL_SEC = config.session_ttl_sec
