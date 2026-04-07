@@ -196,6 +196,15 @@ class MagiSettings(BaseSettings):
             "guardrails_on_error_policy": "guardrails_on_error",
         }
         coerced = dict(data)
+
+        # 指摘事項: 呼び出し元の辞書を壊さないよう、ネストされた辞書も明示的にコピーする
+        if "providers" in coerced and isinstance(coerced["providers"], dict):
+            coerced["providers"] = dict(coerced["providers"])
+            if "anthropic" in coerced["providers"] and isinstance(
+                coerced["providers"]["anthropic"], dict
+            ):
+                coerced["providers"]["anthropic"] = dict(coerced["providers"]["anthropic"])
+
         for legacy, new in mapping.items():
             if legacy in coerced:
                 if new not in coerced:
@@ -235,8 +244,8 @@ class MagiSettings(BaseSettings):
             if "anthropic" not in coerced["providers"]:
                 coerced["providers"]["anthropic"] = {}
 
-            if "api_key" not in coerced["providers"]["anthropic"] or env_api_key:
-                coerced["providers"]["anthropic"]["api_key"] = api_key
+            # 指摘事項: 上位プライオリティが勝つよう、常に同期する
+            coerced["providers"]["anthropic"]["api_key"] = api_key
 
         return coerced
 
@@ -256,9 +265,17 @@ class MagiSettings(BaseSettings):
         if "providers" in data and isinstance(data["providers"], dict):
             for p_cfg in data["providers"].values():
                 if isinstance(p_cfg, dict):
+                    # api_key のマスク
                     val = p_cfg.get("api_key")
                     if val:
                         p_cfg["api_key"] = _mask(val)
+
+                    # 指摘事項: options 内のトークン/ヘッダもマスクする
+                    options = p_cfg.get("options")
+                    if isinstance(options, dict):
+                        for k, v in options.items():
+                            if isinstance(v, str):
+                                options[k] = _mask(v)
 
         # 各ペルソナの LLM 設定をマスク
         if "personas" in data and isinstance(data["personas"], dict):
@@ -291,10 +308,8 @@ class MagiSettings(BaseSettings):
             ):
                 self.providers["anthropic"] = {}
 
-            if "api_key" not in self.providers["anthropic"] or not self.providers[
-                "anthropic"
-            ].get("api_key"):
-                self.providers["anthropic"]["api_key"] = self.api_key
+            # 指摘事項: 常に同期して乖離を防ぐ
+            self.providers["anthropic"]["api_key"] = self.api_key
         return self
 
     # 互換性プロパティ（既存コードを壊さないためのエイリアス）
