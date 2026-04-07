@@ -115,6 +115,12 @@ class MagiSettings(BaseSettings):
     output_format: Literal["json", "markdown"] = "markdown"
 
     # WebUI 設定 (from .env/env)
+    #
+    # 以下のフィールドは global env_prefix="MAGI_" をバイパスするために validation_alias を使用しています。
+    # - MAX_CONCURRENCY / SESSION_TTL_SEC / CORS_ORIGINS: バックエンドの一般的な命名規則に従うため。
+    # - VITE_API_BASE / VITE_WS_BASE: Vite クライアント側で参照するために "VITE_" プレフィックスが必須であるため。
+    #
+    # 互換性維持または外部フレームワーク(Vite)の制約により、これらのエイリアスは意図的に設定されています。
     max_concurrency: int = Field(
         default=10,
         ge=1,
