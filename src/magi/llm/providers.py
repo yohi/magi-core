@@ -542,15 +542,18 @@ class OpenRouterAdapter(OpenAIAdapter):
         chat_endpoint: str = "/v1/chat/completions",
     ) -> None:
         # コンテキストにエンドポイントがない場合は OpenRouter の既定値を使用
-        if not context.endpoint:
-            context.endpoint = "https://openrouter.ai/api/v1"
+        endpoint = context.endpoint or "https://openrouter.ai/api/v1"
 
+        # 親クラスの初期化。context自体は変更せずに値を渡す
         super().__init__(
             context,
             http_client=http_client,
             timeout=timeout,
             chat_endpoint=chat_endpoint,
         )
+        # OpenAIAdapter が self.endpoint を context.endpoint から設定している可能性があるため、
+        # 確実に上書きする（または super 呼び出し前に context を一時的に変更して戻す）
+        self.endpoint = endpoint
 
     def _auth_headers(self) -> Dict[str, str]:
         headers = super()._auth_headers()

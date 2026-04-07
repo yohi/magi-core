@@ -215,7 +215,7 @@ class ProviderConfigLoader:
             if legacy_model:
                 providers[DEFAULT_PROVIDER_ID] = ProviderConfig(
                     provider_id=DEFAULT_PROVIDER_ID,
-                    api_key="",
+                    api_key=None,
                     model=legacy_model,
                 )
 

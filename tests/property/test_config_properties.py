@@ -72,7 +72,7 @@ class TestConfigLoadingProperty(unittest.TestCase):
         manager = ConfigManager()
         config = manager.load(force_reload=True)
 
-        self.assertEqual(config.api_key, api_key)
+        self.assertEqual(config.providers["anthropic"]["api_key"], api_key)
         self.assertEqual(config.debate_rounds, debate_rounds)
         self.assertEqual(config.voting_threshold, voting_threshold)
         self.assertEqual(config.output_format, output_format)
@@ -200,8 +200,8 @@ class TestConfigValidationProperty(unittest.TestCase):
 
         manager = ConfigManager()
         result = manager.validate(config)
-
         self.assertTrue(result.is_valid)
+
         self.assertEqual(result.errors, [])
 
     @given(

@@ -499,7 +499,10 @@ class TestConfigManagerIntegration(unittest.TestCase):
                 manager = ConfigManager()
                 # 以前は MagiException を送出していたが、現在は Optional なので例外は出ないはず
                 config = manager.load()
-                self.assertIsNone(config.api_key)
+                self.assertTrue(
+                    "anthropic" not in config.providers
+                    or config.providers["anthropic"].get("api_key") is None
+                )
 
 
 class TestFullWorkflowIntegration(unittest.TestCase):

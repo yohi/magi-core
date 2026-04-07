@@ -164,7 +164,7 @@ docker compose up --build
 
 ```yaml
 # magi.yaml (Global Settings)
-model: claude-sonnet-4-20250514
+model: claude-3-5-sonnet-20241022
 debate_rounds: 2
 voting_threshold: majority
 output_format: markdown

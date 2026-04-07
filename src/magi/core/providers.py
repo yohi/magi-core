@@ -21,6 +21,7 @@ from magi.llm.providers import (
     AnthropicAdapter,
     GeminiAdapter,
     OpenAIAdapter,
+    OpenRouterAdapter,
     ProviderAdapter,
 )
 from magi.llm.providers_auth import AntigravityAdapter, CopilotAdapter
