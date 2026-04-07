@@ -218,14 +218,15 @@ class MagiSettings(BaseSettings):
 
         if api_key:
             coerced["api_key"] = api_key
-            if "providers" not in coerced:
+            if "providers" not in coerced or not isinstance(coerced["providers"], dict):
                 coerced["providers"] = {}
-            if "anthropic" not in coerced["providers"]:
+            if "anthropic" not in coerced["providers"] or not isinstance(
+                coerced["providers"]["anthropic"], dict
+            ):
                 coerced["providers"]["anthropic"] = {}
 
-            if isinstance(coerced["providers"]["anthropic"], dict):
-                if "api_key" not in coerced["providers"]["anthropic"] or env_api_key:
-                    coerced["providers"]["anthropic"]["api_key"] = api_key
+            if "api_key" not in coerced["providers"]["anthropic"] or env_api_key:
+                coerced["providers"]["anthropic"]["api_key"] = api_key
 
         return coerced
 
@@ -253,16 +254,17 @@ class MagiSettings(BaseSettings):
     def _sync_api_key_to_providers(self) -> "MagiSettings":
         """トップレベルの api_key を providers['anthropic'] に同期する"""
         if self.api_key:
-            if self.providers is None:
+            if not isinstance(self.providers, dict):
                 self.providers = {}
-            if "anthropic" not in self.providers:
+            if "anthropic" not in self.providers or not isinstance(
+                self.providers["anthropic"], dict
+            ):
                 self.providers["anthropic"] = {}
 
-            if isinstance(self.providers["anthropic"], dict):
-                if "api_key" not in self.providers["anthropic"] or not self.providers[
-                    "anthropic"
-                ].get("api_key"):
-                    self.providers["anthropic"]["api_key"] = self.api_key
+            if "api_key" not in self.providers["anthropic"] or not self.providers[
+                "anthropic"
+            ].get("api_key"):
+                self.providers["anthropic"]["api_key"] = self.api_key
         return self
 
     # 互換性プロパティ（既存コードを壊さないためのエイリアス）
