@@ -47,7 +47,7 @@ def create_test_config() -> Config:
     """テスト用の設定を作成"""
     return Config(
         api_key="test-api-key",
-        model="claude-sonnet-4-20250514",
+        model="claude-3-5-sonnet-20241022",
         debate_rounds=1,
         voting_threshold="majority",
         output_format="markdown",
@@ -523,7 +523,7 @@ class TestRoundBasedStateTransition(unittest.TestCase):
         # ラウンド数を設定したコンフィグを作成
         config = Config(
             api_key="test-api-key",
-            model="claude-sonnet-4-20250514",
+            model="claude-3-5-sonnet-20241022",
             debate_rounds=debate_rounds,
             voting_threshold="majority",
             output_format="markdown",
@@ -587,7 +587,7 @@ class TestRoundBasedStateTransition(unittest.TestCase):
         """
         config = Config(
             api_key="test-api-key",
-            model="claude-sonnet-4-20250514",
+            model="claude-3-5-sonnet-20241022",
             debate_rounds=debate_rounds,
             voting_threshold="majority",
             output_format="markdown",
@@ -723,7 +723,7 @@ class TestVotingAccuracy(unittest.TestCase):
         """
         config = Config(
             api_key="test-api-key",
-            model="claude-sonnet-4-20250514",
+            model="claude-3-5-sonnet-20241022",
             debate_rounds=1,
             voting_threshold=threshold,
             output_format="markdown",
