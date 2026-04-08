@@ -141,6 +141,11 @@ class TestProviderSelector(unittest.TestCase):
                     api_key="key",
                     model="google/gemini-pro",
                 ),
+                "gemini_alt": ProviderConfig(
+                    provider_id="gemini",
+                    api_key="key",
+                    model="gemini/gemini-1.5-pro",
+                ),
                 "openrouter": ProviderConfig(
                     provider_id="openrouter",
                     api_key="key",

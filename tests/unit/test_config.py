@@ -18,7 +18,6 @@ class TestConfigManagerWithMagiSettings(unittest.TestCase):
     """ConfigManager が MagiSettings を返すことを検証する"""
 
     def setUp(self):
-        self.manager = ConfigManager()
         self.original_env = os.environ.copy()
         # テストの隔離性を確保するため、MAGI_ で始まる環境変数を一旦クリアする
         for key in list(os.environ.keys()):
@@ -27,6 +26,8 @@ class TestConfigManagerWithMagiSettings(unittest.TestCase):
         # ローカルの magi.yaml などを読み込まないようにデフォルトパスを空にする
         self.patcher = patch.object(ConfigManager, "_get_default_config_paths", return_value=[])
         self.patcher.start()
+        # 最後にマネージャを初期化し、クリーンな環境とパッチ後の状態を認識させる
+        self.manager = ConfigManager()
 
     def tearDown(self):
         self.patcher.stop()

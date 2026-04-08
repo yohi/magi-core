@@ -1,3 +1,9 @@
+"""
+ConsensusEngine のフォールバックに関するユニットテスト
+
+ProviderSelector によるプロバイダ解決が失敗した際に、
+レガシーな LLMClient へ適切にフォールバックされることを検証します。
+"""
 import unittest
 from unittest.mock import MagicMock, patch
 from magi.core.consensus import ConsensusEngine
@@ -7,6 +13,7 @@ from magi.llm.client import LLMClient
 from magi.models import PersonaType
 
 class TestConsensusFallback(unittest.TestCase):
+    """ConsensusEngine のフォールバックロジックを検証するテストクラス"""
     def test_consensus_engine_fallback_to_legacy_llm_client(self):
         """ProviderSelector が失敗した場合にレガシー LLMClient にフォールバックすることを確認"""
         config = Config()

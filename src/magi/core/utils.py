@@ -9,7 +9,7 @@ def normalize_model_name(model_name: str, target_provider: Optional[str] = None)
 
     Args:
         model_name: プレフィックスを含む可能性のあるモデル名
-        target_provider: 既知のターゲットプロバイダ（OpenRouter等の場合は剥離ルールが変わる）
+        target_provider: 既知のターゲットプロバイダ(OpenRouter等の場合は剥離ルールが変わる)
 
     Returns:
         Tuple[Optional[str], str]: (推測されたプロバイダID, プレフィックス剥離後のモデル名)

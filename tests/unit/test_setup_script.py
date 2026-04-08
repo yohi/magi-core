@@ -1,11 +1,19 @@
+"""
+セットアップスクリプトの動作検証用テスト
+
+scripts/setup.sh がシステム環境（uv, npm の有無など）に応じて
+適切に動作し、必要な依存関係のチェックや警告を行うことを確認します。
+"""
 import os
 import subprocess
 import unittest
 import shutil
 import tempfile
+import stat
 from pathlib import Path
 
 class TestSetupScript(unittest.TestCase):
+    """セットアップスクリプトの実行フローを検証するクラス"""
     def setUp(self):
         self.root_dir = Path(__file__).parent.parent.parent
         self.setup_sh = self.root_dir / "scripts" / "setup.sh"
@@ -25,9 +33,10 @@ class TestSetupScript(unittest.TestCase):
             env = os.environ.copy()
             env["PATH"] = str(tmpdir_path)
             
-            # 実行権限があるか確認
+            # 実行権限があるか確認し、なければ付与
             if not os.access(self.setup_sh, os.X_OK):
-                subprocess.run(["chmod", "+x", str(self.setup_sh)])
+                current_mode = os.stat(self.setup_sh).st_mode
+                os.chmod(self.setup_sh, current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
             result = subprocess.run(
                 [str(self.setup_sh)],

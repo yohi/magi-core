@@ -5,7 +5,8 @@ import yaml
 from magi.core.template_loader import TemplateLoader
 
 class TestVoteTemplate(unittest.TestCase):
-    def test_vote_prompt_template_rendering(self):
+    """vote_prompt テンプレートのレンダリングを検証するテストクラス"""
+    def test_vote_prompt_template_rendering(self) -> None:
         """vote_prompt テンプレートが正しくレンダリングされ、波括弧が適切に処理されることを確認"""
         template_content = {
             "name": "vote_prompt",

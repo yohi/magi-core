@@ -2,6 +2,7 @@ import unittest
 from magi.core.utils import normalize_model_name
 
 class TestUtils(unittest.TestCase):
+    """ユーティリティ関数の動作を検証するテストクラス"""
     def test_normalize_model_name_strips_prefixes(self):
         """モデル名のプレフィックス剥離が正しく行われることを確認"""
         # (input_model, target_provider) -> (expected_provider, expected_model)
