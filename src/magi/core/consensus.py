@@ -29,6 +29,11 @@ from magi.agents.persona import PersonaManager
 from magi.config.manager import Config
 from magi.core.concurrency import ConcurrencyController, ConcurrencyLimitError
 from magi.core.context import ContextManager
+from magi.core.providers import (
+    ProviderAdapterFactory,
+    ProviderContext,
+    ProviderSelector,
+)
 from magi.core.quorum import QuorumManager
 from magi.core.schema_validator import SchemaValidationError, SchemaValidator
 from magi.core.template_loader import TemplateLoader
@@ -144,6 +149,8 @@ class ConsensusEngine:
         event_context: Optional[Dict[str, Any]] = None,
         concurrency_controller: Optional[ConcurrencyController] = None,
         token_budget_manager: Optional[TokenBudgetManagerProtocol] = None,
+        provider_selector: Optional[ProviderSelector] = None,
+        provider_factory: Optional[ProviderAdapterFactory] = None,
     ):
         """ConsensusEngineを初期化
 
@@ -151,6 +158,8 @@ class ConsensusEngine:
             config: MAGI設定
         """
         self.config = config
+        self.provider_selector = provider_selector
+        self.provider_factory = provider_factory or ProviderAdapterFactory()
         self.persona_manager = persona_manager or PersonaManager()
         self.context_manager = context_manager or ContextManager()
         self.current_phase = ConsensusPhase.THINKING
@@ -413,14 +422,14 @@ class ConsensusEngine:
 
         return agents
 
-    def _resolve_llm_client(self, persona_type: PersonaType) -> LLMClient:
+    def _resolve_llm_client(self, persona_type: PersonaType) -> Any:
         """ペルソナ固有の設定に基づいてLLMクライアントを解決する
 
         Args:
             persona_type: ペルソナタイプ
 
         Returns:
-            解決されたLLMClientインスタンス
+            解決されたLLMClientまたはアダプタのインスタンス
         """
         persona_key = persona_type.value
         persona_config = self.config.personas.get(persona_key)
@@ -429,7 +438,52 @@ class ConsensusEngine:
             return self.llm_client_factory()
 
         llm_config = persona_config.llm
-        
+
+        # プロバイダセレクタが利用可能な場合は、それを使用して解決を試みる
+        if self.provider_selector:
+            model_name = llm_config.model
+            target_provider = None
+            if model_name:
+                # モデル名からプロバイダを推測し、必要に応じてプレフィックスを剥離
+                if model_name.startswith("openrouter/"):
+                    target_provider = "openrouter"
+                    model_name = model_name[len("openrouter/") :]
+                elif model_name.startswith("anthropic/"):
+                    target_provider = "anthropic"
+                    model_name = model_name[len("anthropic/") :]
+                elif model_name.startswith("openai/"):
+                    target_provider = "openai"
+                    model_name = model_name[len("openai/") :]
+                elif model_name.startswith("google/"):
+                    target_provider = "gemini"
+                    model_name = model_name[len("google/") :]
+                elif model_name.startswith("gemini/"):
+                    target_provider = "gemini"
+                    model_name = model_name[len("gemini/") :]
+
+            try:
+                provider_ctx = self.provider_selector.select(target_provider)
+                if model_name:
+                    provider_ctx.model = model_name
+                if llm_config.api_key:
+                    provider_ctx.api_key = llm_config.api_key
+
+                # オプションの上書き
+                if llm_config.temperature is not None:
+                    provider_ctx.options["temperature"] = llm_config.temperature
+                if llm_config.timeout is not None:
+                    provider_ctx.options["timeout"] = llm_config.timeout
+
+                return self.provider_factory.build(
+                    provider_ctx,
+                    concurrency_controller=self.concurrency_controller,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to resolve provider for {persona_type} using selector: {e}. "
+                    "Falling back to legacy LLMClient."
+                )
+
         return LLMClient(
             api_key=llm_config.api_key if llm_config.api_key is not None else self.config.api_key,
             model=llm_config.model if llm_config.model is not None else self.config.model,

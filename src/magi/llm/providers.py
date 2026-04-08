@@ -79,6 +79,11 @@ class AnthropicAdapter:
         """LLMClientに委譲してメッセージ送信"""
         return await self._llm_client.send(request)
 
+    @property
+    def temperature(self) -> float:
+        """temperature プロパティ"""
+        return self._llm_client.temperature
+
     async def health(self) -> HealthStatus:
         """課金回避のためデフォルトでスキップ"""
         return HealthStatus(
@@ -121,6 +126,11 @@ class OpenAIAdapter:
         self._owns_client = http_client is None
         self._client = http_client or self._httpx.AsyncClient(timeout=timeout)
         self._validate_required_fields(["api_key", "model"])
+
+    @property
+    def temperature(self) -> float:
+        """temperature プロパティ"""
+        return float(self.context.options.get("temperature", 0.7))
 
     def _validate_prompts(self, request: LLMRequest) -> None:
         """プロンプトが非空文字列であることを検証"""
@@ -351,6 +361,11 @@ class GeminiAdapter:
         self._owns_client = http_client is None
         self._client = http_client or self._httpx.AsyncClient(timeout=timeout)
         self._validate_required_fields(["api_key", "model", "endpoint"])
+
+    @property
+    def temperature(self) -> float:
+        """temperature プロパティ"""
+        return float(self.context.options.get("temperature", 0.7))
 
     async def send(self, request: LLMRequest) -> LLMResponse:
         """Gemini generateContent API を呼び出す"""

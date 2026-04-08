@@ -1,0 +1,23 @@
+# magi.yaml
+default_provider: openrouter
+model: openrouter/google/gemini-2.0-flash-001
+debate_rounds: 1
+voting_threshold: majority
+output_format: markdown
+timeout: 120
+retry_count: 3
+
+providers:
+  openrouter:
+    model: openrouter/google/gemini-2.0-flash-001
+    # APIキーは環境変数 MAGI_OPENROUTER_API_KEY または .env で設定してください
+
+personas:
+  melchior:
+    llm:
+      model: openrouter/openai/gpt-4o-mini
+      temperature: 0.0
+  casper:
+    llm:
+      model: openrouter/openai/gpt-4o-mini
+      timeout: 180

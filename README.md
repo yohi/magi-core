@@ -52,7 +52,23 @@ graph LR
 
 ## インストール
 
-### 前提条件
+### For Humans (推奨)
+
+> [!TIP]
+> **人間は設定を打ち間違えることがあります。** このプロジェクトのインストールと設定は、AIエージェント（Claude Code / Gemini CLI / Cursor 等）に丸投げすることを強く推奨します。
+
+以下のプロンプトをコピーしてエージェントに渡してください：
+
+```text
+Install and configure MAGI System by following the instructions here:
+https://raw.githubusercontent.com/yohi/magi-core/refs/heads/master/README.md
+```
+
+---
+
+### 手動セットアップ
+
+#### 前提条件
 
 - Python 3.11以上
 - [uv](https://github.com/astral-sh/uv) パッケージマネージャー

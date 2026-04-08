@@ -777,6 +777,8 @@ class MagiCLI:
             llm_client_factory=lambda: llm_client,
             event_context={"provider": provider.provider_id},
             concurrency_controller=concurrency_controller,
+            provider_selector=self.provider_selector,
+            provider_factory=self.provider_factory,
         )
         formatter = OutputFormatter(plain=options.get("plain", False))
 
@@ -1285,10 +1287,24 @@ class MagiCLI:
             )
 
         target = (provider_flag or DEFAULT_PROVIDER_ID).lower()
+        model_name = self.config.model
+        if model_name:
+            if model_name.startswith("openrouter/"):
+                model_name = model_name[len("openrouter/") :]
+            elif model_name.startswith("anthropic/") and target != "openrouter":
+                model_name = model_name[len("anthropic/") :]
+            elif model_name.startswith("openai/") and target != "openrouter":
+                model_name = model_name[len("openai/") :]
+            elif (
+                model_name.startswith("google/") or model_name.startswith("gemini/")
+            ) and target != "openrouter":
+                prefix = "google/" if model_name.startswith("google/") else "gemini/"
+                model_name = model_name[len(prefix) :]
+
         return ProviderContext(
             provider_id=target,
             api_key=self.config.api_key,
-            model=self.config.model,
+            model=model_name,
             endpoint=None,
             options={},
             used_default=provider_flag is None,

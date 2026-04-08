@@ -154,10 +154,24 @@ class ProviderSelector:
         used_default = provider_id is None
 
         config = self.registry.resolve(target)
+        model_name = config.model
+        if model_name:
+            if model_name.startswith("openrouter/"):
+                model_name = model_name[len("openrouter/") :]
+            elif model_name.startswith("anthropic/") and target != "openrouter":
+                model_name = model_name[len("anthropic/") :]
+            elif model_name.startswith("openai/") and target != "openrouter":
+                model_name = model_name[len("openai/") :]
+            elif (
+                model_name.startswith("google/") or model_name.startswith("gemini/")
+            ) and target != "openrouter":
+                prefix = "google/" if model_name.startswith("google/") else "gemini/"
+                model_name = model_name[len(prefix) :]
+
         return ProviderContext(
             provider_id=config.provider_id,
             api_key=config.api_key,
-            model=config.model,
+            model=model_name,
             endpoint=config.endpoint,
             options=config.options,
             used_default=used_default,

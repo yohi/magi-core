@@ -4,6 +4,25 @@ Python CLI tool providing multi-perspective judgment through a consensus process
 (MELCHIOR/BALTHASAR/CASPER). Core and Plugin are separated; multi-provider LLM support
 (Anthropic, OpenAI, Gemini).
 
+## Setup Workflow for Agents
+
+When a user asks you to "Install and configure MAGI System" (or any equivalent setup prompt), follow these steps to ensure a robust environment:
+
+1.  **Initialize with Setup Script**:
+    -   Execute `./scripts/setup.sh` to handle base dependencies (Python/uv, Node.js/npm) and initial `.env` creation.
+2.  **Verify & Configure Environment**:
+    -   Check the newly created `.env` file.
+    -   Identify required but missing environment variables (e.g., `MAGI_ANTHROPIC_API_KEY`, `MAGI_OPENAI_API_KEY`).
+    -   **Ask the user** for any missing API keys or secrets before proceeding if they are critical for the next steps.
+3.  **Validate Backend**:
+    -   Run `uv run magi --version` to ensure the core CLI is operational.
+    -   Run a subset of unit tests: `uv run python -m unittest tests/unit/test_cli.py`.
+4.  **Validate Frontend (Optional)**:
+    -   If the user intends to use the WebUI, verify `frontend/package.json` exists and `npm install` was successful.
+5.  **Report Completion**:
+    -   Provide a brief summary of what was installed and configured.
+    -   List the commands the user can now run (e.g., `uv run magi ask "Hello"`).
+
 ## Language Policy
 
 - **All responses, documentation, comments, docstrings, and commit messages SHOULD be in Japanese.**
