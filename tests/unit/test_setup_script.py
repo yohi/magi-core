@@ -14,7 +14,9 @@ from pathlib import Path
 
 class TestSetupScript(unittest.TestCase):
     """セットアップスクリプトの実行フローを検証するクラス"""
+
     def setUp(self):
+        """テスト用の root_dir と setup_sh パスを初期化する"""
         self.root_dir = Path(__file__).parent.parent.parent
         self.setup_sh = self.root_dir / "scripts" / "setup.sh"
 

@@ -1,6 +1,6 @@
 """vote_prompt テンプレートのレンダリングに関するユニットテスト
 
-テンプレートの読み込みと、変数の埋め込み（レンダリング）が期待通りに行われることを検証します。
+テンプレートの読み込みと、変数の埋め込み (レンダリング) が期待通りに行われることを検証します。
 特に、テンプレート内の波括弧のエスケープと、変数内の波括弧がリテラルとして扱われることを確認します。
 """
 
@@ -14,7 +14,14 @@ from magi.core.template_loader import TemplateLoader
 class TestVoteTemplate(unittest.TestCase):
     """vote_prompt テンプレートのレンダリングを検証するテストクラス
 
-    Attributes: None
+    TemplateLoader を介してテンプレートを読み込み、文字列フォーマットによって
+    変数が正しく埋め込まれることを検証します。
+
+    Args: None
+
+    Returns: None
+
+    Raises: None
     """
 
     @given(st.text(min_size=0, max_size=500))
