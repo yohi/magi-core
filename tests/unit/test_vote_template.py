@@ -14,7 +14,12 @@ from hypothesis import given, strategies as st
 from magi.core.template_loader import TemplateLoader
 
 class TestVoteTemplate(unittest.TestCase):
-    """vote_prompt テンプレートのレンダリングを検証するクラス"""
+    """vote_prompt テンプレートのレンダリングを検証するクラス。
+
+    このクラスは、テンプレート内の波括弧が正しくエスケープされること、
+    および変数が期待通りに埋め込まれ、出力される結果が正しい形式（JSON を含む）
+    であることを検証します。
+    """
 
     @given(st.text(min_size=0, max_size=500))
     def test_vote_prompt_template_rendering(self, context_val: str) -> None:
