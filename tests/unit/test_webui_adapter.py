@@ -131,3 +131,65 @@ class TestConsensusEngineMagiAdapter(unittest.IsolatedAsyncioTestCase):
         
         self.assertEqual(run_config.model, "test-model-999")
         self.assertEqual(run_config.debate_rounds, 5)
+
+    async def test_api_key_merging(self):
+        options = SessionOptions(api_keys={
+            "default": "sk-test-key-123",
+            "openai": "sk-openai-key-456"
+        })
+        pre_api_keys = dict(options.api_keys)
+        
+        async for _ in self.adapter.run("test prompt", options):
+            pass
+            
+        self.engine_factory.assert_called_once()
+        _, kwargs = self.engine_factory.call_args
+        run_config = kwargs.get("config")
+        
+        self.assertEqual(run_config.api_key, "sk-test-key-123")
+        self.assertEqual(run_config.providers["openai"]["api_key"], "sk-openai-key-456")
+        self.assertEqual(options.api_keys, pre_api_keys)
+
+    def test_build_final_payload_aggregation(self):
+        """投票集計とサマリーの正確性を検証"""
+        result = ConsensusResult(
+            final_decision=Decision.APPROVED,
+            voting_results={
+                PersonaType.MELCHIOR: VoteOutput(PersonaType.MELCHIOR, Vote.APPROVE, "Yes"),
+                PersonaType.BALTHASAR: VoteOutput(PersonaType.BALTHASAR, Vote.DENY, "No"),
+                PersonaType.CASPER: VoteOutput(PersonaType.CASPER, Vote.CONDITIONAL, "Maybe")
+            },
+            exit_code=0,
+            thinking_results={},
+            debate_results=[],
+            all_conditions=[]
+        )
+        
+        payload = self.adapter._build_final_payload(result)
+        
+        self.assertEqual(payload["decision"], "APPROVE")
+        self.assertEqual(payload["votes"]["MELCHIOR-1"]["vote"], "YES")
+        self.assertEqual(payload["votes"]["BALTHASAR-2"]["vote"], "NO")
+        self.assertEqual(payload["votes"]["CASPER-3"]["vote"], "ABSTAIN")
+        
+        # サマリー文字列の検証
+        self.assertIn("Votes: 1 YES, 1 NO, 1 ABSTAIN", payload["summary"])
+        self.assertIn("Final Decision: APPROVE", payload["summary"])
+
+    def test_unrecognized_vote_defaults_to_abstain(self):
+        """未知の投票ステータスがデフォルトで ABSTAIN になることを検証"""
+        # 現実的には起きにくいが、型定義にない値が入った場合を想定
+        result = ConsensusResult(
+            final_decision=Decision.DENIED,
+            voting_results={
+                PersonaType.MELCHIOR: VoteOutput(PersonaType.MELCHIOR, "unknown-vote", "???")
+            },
+            exit_code=1,
+            thinking_results={},
+            debate_results=[],
+            all_conditions=[]
+        )
+        
+        payload = self.adapter._build_final_payload(result)
+        self.assertEqual(payload["votes"]["MELCHIOR-1"]["vote"], "ABSTAIN")
+        self.assertIn("Votes: 0 YES, 0 NO, 1 ABSTAIN", payload["summary"])

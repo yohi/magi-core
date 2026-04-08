@@ -157,7 +157,7 @@ docker compose up --build
 
 起動後、ブラウザで以下のURLにアクセスしてください。
 
-- URL: `http://localhost:3000`
+- URL: `http://localhost:333`
 
 ## 設定
 

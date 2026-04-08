@@ -294,3 +294,18 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             # クリーンアップ処理でのエラーはログに記録するが、例外は伝播させない
             logger.exception(f"Error during session cleanup for {session_id}: {e}")
 
+
+if __name__ == "__main__":
+    import uvicorn
+    import os
+    
+    host = os.getenv("HOST", "127.0.0.1")
+    port_str = os.getenv("PORT", "8000")
+    try:
+        port = int(port_str)
+    except ValueError:
+        logger.warning(f"Invalid PORT environment variable: '{port_str}'. Falling back to 8000.")
+        port = 8000
+        
+    uvicorn.run(app, host=host, port=port)
+

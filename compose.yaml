@@ -18,6 +18,6 @@ services:
     env_file:
       - ./.env
     ports:
-      - "3333:80"
+      - "333:80"
     depends_on:
       - magi-backend
