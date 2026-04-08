@@ -100,7 +100,7 @@ class MockMagiAdapter(MagiAdapter):
             "type": "final",
             "decision": decision,
             "votes": voting_results,
-            "summary": f"Final Decision: {decision} (Votes: 3 YES, 0 NO, 0 ABSTAIN)",
+            "summary": f"Final Decision: {decision} (Mock Execution)",
             "result": {
                 "decision": decision,
                 "voting_results": voting_results,
@@ -130,11 +130,18 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
         if options.max_rounds is not None:
             run_config.debate_rounds = int(options.max_rounds)
 
-        # APIキーのマージ
-        if options.api_keys and "default" in options.api_keys:
-            api_key = options.api_keys["default"]
-            if api_key and api_key.strip():
-                run_config.api_key = api_key
+        # Merge API keys
+        if options.api_keys:
+            for provider, key in options.api_keys.items():
+                if key and key.strip():
+                    if provider == "default":
+                        run_config.api_key = key
+                    else:
+                        if not isinstance(run_config.providers, dict):
+                            run_config.providers = {}
+                        if provider not in run_config.providers or not isinstance(run_config.providers[provider], dict):
+                            run_config.providers[provider] = {}
+                        run_config.providers[provider]["api_key"] = key
 
         engine = None
         try:

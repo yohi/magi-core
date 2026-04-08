@@ -133,7 +133,10 @@ class TestConsensusEngineMagiAdapter(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(run_config.debate_rounds, 5)
 
     async def test_api_key_merging(self):
-        options = SessionOptions(api_keys={"default": "sk-test-key-123"})
+        options = SessionOptions(api_keys={
+            "default": "sk-test-key-123",
+            "openai": "sk-openai-key-456"
+        })
         pre_api_keys = dict(options.api_keys)
         
         async for _ in self.adapter.run("test prompt", options):
@@ -144,6 +147,7 @@ class TestConsensusEngineMagiAdapter(unittest.IsolatedAsyncioTestCase):
         run_config = kwargs.get("config")
         
         self.assertEqual(run_config.api_key, "sk-test-key-123")
+        self.assertEqual(run_config.providers["openai"]["api_key"], "sk-openai-key-456")
         self.assertEqual(options.api_keys, pre_api_keys)
 
     def test_build_final_payload_aggregation(self):
