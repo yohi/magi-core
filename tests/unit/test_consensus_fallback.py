@@ -5,7 +5,7 @@ ProviderSelector によるプロバイダ解決が失敗した際に、
 レガシーな LLMClient へ適切にフォールバックされることを検証します。
 """
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from magi.core.consensus import ConsensusEngine
 from magi.config.manager import Config
 from magi.config.settings import PersonaConfig, LLMConfig

@@ -1,7 +1,7 @@
 """
 セットアップスクリプトの動作検証用テスト
 
-scripts/setup.sh がシステム環境（uv, npm の有無など）に応じて
+scripts/setup.sh がシステム環境 (uv, npm の有無など) に応じて
 適切に動作し、必要な依存関係のチェックや警告を行うことを確認します。
 """
 import os
@@ -56,33 +56,39 @@ class TestSetupScript(unittest.TestCase):
         if uv_path is None:
             self.skipTest("uv is required for this test")
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir_path = Path(tmpdir)
-            # Link basic tools AND uv, but NOT npm
-            tools = ["bash", "sh", "ls", "grep", "cp", "touch", "mkdir", "chmod", "rm", "cat", "uv"]
-            for tool in tools:
-                path = shutil.which(tool)
-                if path:
-                    (tmpdir_path / tool).symlink_to(path)
-            
-            env = os.environ.copy()
-            env["PATH"] = str(tmpdir_path)
-            
-            # frontend ディレクトリがないと npm チェックに行かないので、既存の frontend ディレクトリを使用
-            # ただし、uv sync が Magis の uv.lock を読みに行くので、uv が動作する環境が必要
-            # ここでは Magis の root で実行される
-            
-            result = subprocess.run(
-                [str(self.setup_sh)],
-                env=env,
-                cwd=str(self.root_dir),
-                capture_output=True,
-                text=True
-            )
-            
-            # npm がないことによる警告は stdout または stderr に出るはず
-            output = result.stdout + result.stderr
-            self.assertIn("npm is not installed. Skipping frontend setup.", output)
+        frontend_dir = self.root_dir / "frontend"
+        frontend_created = False
+        if not frontend_dir.exists():
+            frontend_dir.mkdir(parents=True)
+            frontend_created = True
+
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmpdir_path = Path(tmpdir)
+                # Link basic tools AND uv, but NOT npm
+                tools = ["bash", "sh", "ls", "grep", "cp", "touch", "mkdir", "chmod", "rm", "cat", "uv"]
+                for tool in tools:
+                    path = shutil.which(tool)
+                    if path:
+                        (tmpdir_path / tool).symlink_to(path)
+                
+                env = os.environ.copy()
+                env["PATH"] = str(tmpdir_path)
+                
+                result = subprocess.run(
+                    [str(self.setup_sh)],
+                    env=env,
+                    cwd=str(self.root_dir),
+                    capture_output=True,
+                    text=True
+                )
+                
+                # npm がないことによる警告は stdout または stderr に出るはず
+                output = result.stdout + result.stderr
+                self.assertIn("npm is not installed. Skipping frontend setup.", output)
+        finally:
+            if frontend_created and frontend_dir.exists():
+                shutil.rmtree(frontend_dir)
 
 if __name__ == "__main__":
     unittest.main()
