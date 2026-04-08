@@ -5,7 +5,7 @@ scripts/setup.sh がシステム環境 (uv, npm の有無など) に応じて
 適切に動作し、必要な依存関係のチェックや警告を行うことを確認します。
 """
 import os
-import subprocess
+import subprocess  # nosec
 import unittest
 import shutil
 import tempfile
@@ -42,7 +42,7 @@ class TestSetupScript(unittest.TestCase):
                 os.chmod(self.setup_sh, original_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
             try:
-                result = subprocess.run(
+                result = subprocess.run(  # nosec
                     [str(self.setup_sh)],
                     env=env,
                     cwd=str(self.root_dir),
@@ -56,7 +56,7 @@ class TestSetupScript(unittest.TestCase):
                 if original_mode is not None:
                     os.chmod(self.setup_sh, original_mode)
 
-    def test_setup_warns_without_npm(self):
+    def test_setup_warns_without_npm(self) -> None:
         """npm が存在しない場合に setup.sh が警告を出して続行することを確認"""
         # PATH から npm を除外し、uv は残す
         uv_path = shutil.which("uv")
@@ -82,7 +82,7 @@ class TestSetupScript(unittest.TestCase):
                 env = os.environ.copy()
                 env["PATH"] = str(tmpdir_path)
                 
-                result = subprocess.run(
+                result = subprocess.run(  # nosec
                     [str(self.setup_sh)],
                     env=env,
                     cwd=str(self.root_dir),
@@ -113,7 +113,7 @@ class TestSetupScript(unittest.TestCase):
 
         try:
             # 実行環境の PATH をそのまま使用
-            result = subprocess.run(
+            result = subprocess.run(  # nosec
                 [str(self.setup_sh)],
                 cwd=str(self.root_dir),
                 capture_output=True,

@@ -32,7 +32,6 @@ from magi.core.concurrency import ConcurrencyController, ConcurrencyLimitError
 from magi.core.context import ContextManager
 from magi.core.providers import (
     ProviderAdapterFactory,
-    ProviderContext,
     ProviderSelector,
 )
 from magi.core.utils import normalize_model_name
