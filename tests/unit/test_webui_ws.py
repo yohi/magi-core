@@ -8,10 +8,6 @@ from typing import Dict, Any
 
 from fastapi.testclient import TestClient
 
-# 共通のベースとしてインポート
-import magi.webui_backend.app
-import magi.webui_backend.adapter
-
 class TestWebUIWebSocket(unittest.IsolatedAsyncioTestCase):
     """WebSocket接続とメッセージ受信のテスト"""
 
@@ -21,6 +17,8 @@ class TestWebUIWebSocket(unittest.IsolatedAsyncioTestCase):
         self.env_patcher = patch.dict("os.environ", {"MAGI_USE_MOCK": "1"})
         self.env_patcher.start()
         
+        import magi.webui_backend.adapter
+        import magi.webui_backend.app
         # モジュールのリロードにより、use_mock=True な状態の app/session_manager を得る
         importlib.reload(magi.webui_backend.adapter)
         importlib.reload(magi.webui_backend.app)
@@ -36,6 +34,11 @@ class TestWebUIWebSocket(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         """テスト後の後始末"""
         self.env_patcher.stop()
+        
+        import magi.webui_backend.adapter
+        import magi.webui_backend.app
+        importlib.reload(magi.webui_backend.adapter)
+        importlib.reload(magi.webui_backend.app)
 
     def test_ws_connect_success_and_receive_events(self):
         """正常なセッションIDでWS接続し、イベントを受信できることの確認"""

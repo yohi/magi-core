@@ -133,15 +133,18 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
         # Merge API keys
         if options.api_keys:
             for provider, key in options.api_keys.items():
-                if key and key.strip():
+                if key is None:
+                    continue
+                stripped_key = key.strip()
+                if stripped_key:
                     if provider == "default":
-                        run_config.api_key = key
+                        run_config.api_key = stripped_key
                     else:
                         if not isinstance(run_config.providers, dict):
                             run_config.providers = {}
                         if provider not in run_config.providers or not isinstance(run_config.providers[provider], dict):
                             run_config.providers[provider] = {}
-                        run_config.providers[provider]["api_key"] = key
+                        run_config.providers[provider]["api_key"] = stripped_key
 
         engine = None
         try:
@@ -157,6 +160,8 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
             # 初期状態の送信
             yield {"type": "phase", "phase": "THINKING"}
             yield {"type": "progress", "pct": 10}
+
+            sent_final_progress = False
 
             async for event in engine.run_stream(
                 prompt,
@@ -190,7 +195,9 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
                         elif "VOTING" in phase_val:
                             yield {"type": "progress", "pct": 80}
                         elif "COMPLETED" in phase_val:
-                            yield {"type": "progress", "pct": 100}
+                            if not sent_final_progress:
+                                yield {"type": "progress", "pct": 100}
+                                sent_final_progress = True
                     
                     elif event_type in ("streaming.drop", "streaming.timeout"):
                         reason = payload.get("reason", "unknown")
@@ -202,7 +209,9 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
 
                 elif event["type"] == "result":
                     # 結果が直接返された場合も進捗を100%にする
-                    yield {"type": "progress", "pct": 100}
+                    if not sent_final_progress:
+                        yield {"type": "progress", "pct": 100}
+                        sent_final_progress = True
                     result = event["data"]
                     yield self._build_final_payload(result)
 
