@@ -51,16 +51,18 @@ class MockMagiAdapter(MagiAdapter):
             }
         
         await asyncio.sleep(1)
-        yield {"type": "progress", "pct": 30}
+        yield {"type": "progress", "pct": 40}
         
         yield {"type": "phase", "phase": "DEBATE"}
-        for round_num in range(1, (options.max_rounds or 1) + 1):
+        max_rounds = options.max_rounds or 1
+        for round_num in range(1, max_rounds + 1):
             yield {
                 "type": "log",
                 "lines": [f"Debate Round {round_num} started"],
                 "level": "INFO"
             }
-            yield {"type": "progress", "pct": 30 + (round_num * 10)}
+            # ラウンドごとに40%から80%の間で進捗を刻む
+            yield {"type": "progress", "pct": 40 + int((round_num / max_rounds) * 40)}
             
             for unit in units:
                 yield {
@@ -73,7 +75,7 @@ class MockMagiAdapter(MagiAdapter):
             await asyncio.sleep(1)
 
         yield {"type": "phase", "phase": "VOTING"}
-        yield {"type": "progress", "pct": 90}
+        yield {"type": "progress", "pct": 80}
         
         for unit in units:
             yield {
@@ -98,7 +100,7 @@ class MockMagiAdapter(MagiAdapter):
             "type": "final",
             "decision": decision,
             "votes": voting_results,
-            "summary": "Mock execution completed successfully.",
+            "summary": f"Final Decision: {decision} (Votes: 3 YES, 0 NO, 0 ABSTAIN)",
             "result": {
                 "decision": decision,
                 "voting_results": voting_results,
@@ -145,7 +147,7 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
 
             # 初期状態の送信
             yield {"type": "phase", "phase": "THINKING"}
-            yield {"type": "progress", "pct": 5}
+            yield {"type": "progress", "pct": 10}
 
             async for event in engine.run_stream(
                 prompt,
@@ -236,19 +238,31 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
         }
         
         voting_results_payload = {}
+        approve_count = 0
+        deny_count = 0
+        abstain_count = 0
         for persona, vote_output in result.voting_results.items():
             unit = self._map_persona_to_unit(persona)
             if unit:
+                vote_val = vote_map.get(vote_output.vote, "NO")
                 voting_results_payload[unit.value] = {
-                    "vote": vote_map.get(vote_output.vote, "NO"),
+                    "vote": vote_val,
                     "reason": vote_output.reason
                 }
+                if vote_val == "YES":
+                    approve_count += 1
+                elif vote_val == "NO":
+                    deny_count += 1
+                else:
+                    abstain_count += 1
+
+        summary = f"Final Decision: {decision_str} (Votes: {approve_count} YES, {deny_count} NO, {abstain_count} ABSTAIN)"
 
         return {
             "type": "final",
             "decision": decision_str,
             "votes": voting_results_payload,
-            "summary": f"Decision: {decision_str}",
+            "summary": summary,
             "result": {
                 "decision": decision_str,
                 "voting_results": voting_results_payload,
