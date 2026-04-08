@@ -6,9 +6,26 @@
 """
 
 import unittest
+import subprocess  # nosec
 from unittest.mock import MagicMock, patch
 from pathlib import Path
 from hypothesis import given, strategies as st
+
+
+def handle_setup_result(result: subprocess.CompletedProcess) -> str:
+    """セットアップスクリプトの実行結果を解釈する。
+
+    Args:
+        result (subprocess.CompletedProcess): スクリプトの実行結果。
+
+    Returns:
+        str: 実行結果に基づく状態メッセージ。
+    """
+    if result.returncode != 0:
+        return "FAILED"
+    if "⚠️" in result.stdout or "warning" in result.stdout.lower():
+        return "WARNING"
+    return "SUCCESS"
 
 
 class TestSetupScript(unittest.TestCase):
@@ -26,10 +43,10 @@ class TestSetupScript(unittest.TestCase):
             None
 
         Returns:
-            None
+            なし
 
         Raises:
-            None
+            なし
         """
         self.root_dir: Path = Path(__file__).parent.parent.parent
         self.setup_sh: Path = self.root_dir / "scripts" / "setup.sh"
@@ -45,10 +62,10 @@ class TestSetupScript(unittest.TestCase):
             mock_run (MagicMock): subprocess.run のモックオブジェクト。
 
         Returns:
-            None
+            なし
 
         Raises:
-            None
+            なし
         """
         # uv がない場合のエラーをシミュレート
         mock_run.return_value = MagicMock(
@@ -61,7 +78,6 @@ class TestSetupScript(unittest.TestCase):
         # 引数の検証のために env を用意
         env = {"PATH": "/usr/bin"}
 
-        import subprocess  # nosec
         result = subprocess.run(  # nosec
             [str(self.setup_sh)],
             env=env,
@@ -79,7 +95,7 @@ class TestSetupScript(unittest.TestCase):
             text=True
         )
 
-        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(handle_setup_result(result), "FAILED")
         self.assertIn("uv is not installed", result.stdout)
 
     @patch("subprocess.run")
@@ -93,10 +109,10 @@ class TestSetupScript(unittest.TestCase):
             mock_run (MagicMock): subprocess.run のモックオブジェクト。
 
         Returns:
-            None
+            なし
 
         Raises:
-            None
+            なし
         """
         # npm がない場合の警告をシミュレート
         mock_run.return_value = MagicMock(
@@ -107,7 +123,6 @@ class TestSetupScript(unittest.TestCase):
 
         env = {"PATH": "/usr/bin:/usr/local/bin"}
 
-        import subprocess  # nosec
         result = subprocess.run(  # nosec
             [str(self.setup_sh)],
             env=env,
@@ -125,7 +140,7 @@ class TestSetupScript(unittest.TestCase):
             text=True
         )
 
-        self.assertEqual(result.returncode, 0)
+        self.assertEqual(handle_setup_result(result), "WARNING")
         self.assertIn("npm is not installed. Skipping frontend setup.", result.stdout)
 
     @patch("subprocess.run")
@@ -139,10 +154,10 @@ class TestSetupScript(unittest.TestCase):
             mock_run (MagicMock): subprocess.run のモックオブジェクト。
 
         Returns:
-            None
+            なし
 
         Raises:
-            None
+            なし
         """
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -150,7 +165,6 @@ class TestSetupScript(unittest.TestCase):
             stderr=""
         )
 
-        import subprocess  # nosec
         result = subprocess.run(  # nosec
             [str(self.setup_sh)],
             cwd=str(self.root_dir),
@@ -166,53 +180,41 @@ class TestSetupScript(unittest.TestCase):
             text=True
         )
 
-        self.assertEqual(result.returncode, 0)
+        self.assertEqual(handle_setup_result(result), "SUCCESS")
         self.assertNotIn("uv is not installed", result.stdout)
         self.assertIn("Setup complete", result.stdout)
 
-    @patch("subprocess.run")
     @given(
         returncode=st.integers(min_value=0, max_value=2),
         msg=st.text(min_size=1, max_size=500).filter(lambda x: x.isprintable()),
     )
-    def test_setup_property_with_hypothesis(
-        self, mock_run: MagicMock, returncode: int, msg: str
-    ) -> None:
+    def test_setup_property_with_hypothesis(self, returncode: int, msg: str) -> None:
         """Hypothesis を用いて setup.sh の実行結果に関する不変条件を検証する。
 
         Args:
-            mock_run (MagicMock): subprocess.run のモックオブジェクト。
             returncode (int): ランダムな終了コード
             msg (str): ランダムな標準出力メッセージ
 
         Returns:
-            None
+            なし
 
         Raises:
-            None
+            なし
         """
-        mock_run.return_value = MagicMock(
-            returncode=returncode,
-            stdout=msg,
-            stderr=""
-        )
+        # mock_run を介さず、直接 handle_setup_result の挙動を検証する
+        mock_result = MagicMock(spec=subprocess.CompletedProcess)
+        mock_result.returncode = returncode
+        mock_result.stdout = msg
+        mock_result.stderr = ""
 
-        import subprocess  # nosec
-        result = subprocess.run(  # nosec
-            [str(self.setup_sh)],
-            cwd=str(self.root_dir),
-            capture_output=True,
-            text=True
-        )
+        status = handle_setup_result(mock_result)
 
-        # 終了コードに基づくメッセージの整合性を検証
-        if result.returncode != 0:
-            # エラーの場合は、何らかのエラーが通知されているはず (このテストでは msg に依存)
-            self.assertEqual(result.stdout, msg)
+        if returncode != 0:
+            self.assertEqual(status, "FAILED")
+        elif "⚠️" in msg or "warning" in msg.lower():
+            self.assertEqual(status, "WARNING")
         else:
-            # 正常終了の場合は、Setup complete または警告が含まれている可能性がある
-            self.assertEqual(result.returncode, 0)
-            self.assertEqual(result.stdout, msg)
+            self.assertEqual(status, "SUCCESS")
 
 
 if __name__ == "__main__":
