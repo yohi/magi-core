@@ -131,3 +131,15 @@ class TestConsensusEngineMagiAdapter(unittest.IsolatedAsyncioTestCase):
         
         self.assertEqual(run_config.model, "test-model-999")
         self.assertEqual(run_config.debate_rounds, 5)
+
+    async def test_api_key_merging(self):
+        options = SessionOptions(api_keys={"default": "sk-test-key-123"})
+        
+        async for _ in self.adapter.run("test prompt", options):
+            pass
+            
+        self.engine_factory.assert_called_once()
+        _, kwargs = self.engine_factory.call_args
+        run_config = kwargs.get("config")
+        
+        self.assertEqual(run_config.api_key, "sk-test-key-123")

@@ -128,6 +128,10 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
         if options.max_rounds is not None:
             run_config.debate_rounds = int(options.max_rounds)
 
+        # APIキーのマージ
+        if options.api_keys and "default" in options.api_keys:
+            run_config.api_key = options.api_keys["default"]
+
         engine = None
         try:
             logger.info("Initializing ConsensusEngine")
