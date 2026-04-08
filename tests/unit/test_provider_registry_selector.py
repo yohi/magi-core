@@ -122,6 +122,57 @@ class TestProviderSelector(unittest.TestCase):
 
         self.assertIn("provider", ctx.exception.error.message.lower())
 
+    def test_model_prefix_stripping(self):
+        """モデル名のプレフィックス削除を検証"""
+        configs = ProviderConfigs(
+            providers={
+                "anthropic": ProviderConfig(
+                    provider_id="anthropic",
+                    api_key="key",
+                    model="anthropic/claude-3",
+                ),
+                "openai": ProviderConfig(
+                    provider_id="openai",
+                    api_key="key",
+                    model="openai/gpt-4o",
+                ),
+                "gemini": ProviderConfig(
+                    provider_id="gemini",
+                    api_key="key",
+                    model="google/gemini-pro",
+                ),
+                "gemini_alt": ProviderConfig(
+                    provider_id="gemini",
+                    api_key="key",
+                    model="gemini/gemini-1.5-pro",
+                ),
+                "openrouter": ProviderConfig(
+                    provider_id="openrouter",
+                    api_key="key",
+                    model="openrouter/anthropic/claude-3",
+                ),
+            },
+            default_provider="openai",
+        )
+        registry = ProviderRegistry(configs)
+        selector = ProviderSelector(registry)
+
+        # 1. Anthropic: anthropic/ プレフィックスが削除される
+        ctx = selector.select("anthropic")
+        self.assertEqual(ctx.model, "claude-3")
+
+        # 2. OpenAI: openai/ プレフィックスが削除される
+        ctx = selector.select("openai")
+        self.assertEqual(ctx.model, "gpt-4o")
+
+        # 3. Gemini: google/ プレフィックスが削除される
+        ctx = selector.select("gemini")
+        self.assertEqual(ctx.model, "gemini-pro")
+
+        # 4. OpenRouter: openrouter/ プレフィックスが削除され、残りは維持される
+        ctx = selector.select("openrouter")
+        self.assertEqual(ctx.model, "anthropic/claude-3")
+
 
 if __name__ == "__main__":
     unittest.main()

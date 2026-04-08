@@ -19,6 +19,10 @@ class TestProviderConfigLoader(unittest.TestCase):
 
     def setUp(self):
         self.original_env = os.environ.copy()
+        # テストの隔離性を確保するため、MAGI_ で始まる環境変数を一旦クリアする
+        for key in list(os.environ.keys()):
+            if key.startswith("MAGI_"):
+                del os.environ[key]
         self.loader = ProviderConfigLoader()
 
     def tearDown(self):

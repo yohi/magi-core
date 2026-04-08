@@ -16,6 +16,7 @@ from magi.config.provider import (
     mask_secret,
 )
 from magi.errors import ErrorCode, MagiError, MagiException
+from magi.core.utils import normalize_model_name
 from magi.llm.auth import AuthContext, get_auth_provider
 from magi.llm.providers import (
     AnthropicAdapter,
@@ -154,10 +155,12 @@ class ProviderSelector:
         used_default = provider_id is None
 
         config = self.registry.resolve(target)
+        _, model_name = normalize_model_name(config.model, target)
+
         return ProviderContext(
             provider_id=config.provider_id,
             api_key=config.api_key,
-            model=config.model,
+            model=model_name,
             endpoint=config.endpoint,
             options=config.options,
             used_default=used_default,

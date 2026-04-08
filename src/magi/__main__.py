@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from typing import List
 
+from dotenv import load_dotenv
+
 from magi import __version__
 from magi.cli.parser import ArgumentParser
 from magi.cli.main import MagiCLI
@@ -49,6 +51,9 @@ def main(args: List[str] | None = None) -> int:
     Returns:
         終了コード（0: 成功、非0: エラー）
     """
+    # .envをロード
+    load_dotenv()
+
     # ロギング設定を読み込み
     _setup_logging()
 

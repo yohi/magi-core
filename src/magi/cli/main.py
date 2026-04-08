@@ -28,6 +28,7 @@ from magi.config.provider import (
     ProviderConfig,
     ProviderConfigLoader,
 )
+from magi.core.utils import normalize_model_name
 from magi.core.concurrency import ConcurrencyController
 from magi.core.consensus import ConsensusEngine
 from magi.core.providers import (
@@ -777,6 +778,8 @@ class MagiCLI:
             llm_client_factory=lambda: llm_client,
             event_context={"provider": provider.provider_id},
             concurrency_controller=concurrency_controller,
+            provider_selector=self.provider_selector,
+            provider_factory=self.provider_factory,
         )
         formatter = OutputFormatter(plain=options.get("plain", False))
 
@@ -1285,10 +1288,12 @@ class MagiCLI:
             )
 
         target = (provider_flag or DEFAULT_PROVIDER_ID).lower()
+        _, model_name = normalize_model_name(self.config.model, target)
+
         return ProviderContext(
             provider_id=target,
             api_key=self.config.api_key,
-            model=self.config.model,
+            model=model_name,
             endpoint=None,
             options={},
             used_default=provider_flag is None,

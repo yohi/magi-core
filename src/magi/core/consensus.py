@@ -21,6 +21,7 @@ import logging
 import sys
 import time
 import uuid
+from dataclasses import replace as dataclass_replace
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol
 
@@ -29,6 +30,11 @@ from magi.agents.persona import PersonaManager
 from magi.config.manager import Config
 from magi.core.concurrency import ConcurrencyController, ConcurrencyLimitError
 from magi.core.context import ContextManager
+from magi.core.providers import (
+    ProviderAdapterFactory,
+    ProviderSelector,
+)
+from magi.core.utils import normalize_model_name
 from magi.core.quorum import QuorumManager
 from magi.core.schema_validator import SchemaValidationError, SchemaValidator
 from magi.core.template_loader import TemplateLoader
@@ -144,6 +150,8 @@ class ConsensusEngine:
         event_context: Optional[Dict[str, Any]] = None,
         concurrency_controller: Optional[ConcurrencyController] = None,
         token_budget_manager: Optional[TokenBudgetManagerProtocol] = None,
+        provider_selector: Optional[ProviderSelector] = None,
+        provider_factory: Optional[ProviderAdapterFactory] = None,
     ):
         """ConsensusEngineを初期化
 
@@ -151,6 +159,8 @@ class ConsensusEngine:
             config: MAGI設定
         """
         self.config = config
+        self.provider_selector = provider_selector
+        self.provider_factory = provider_factory or ProviderAdapterFactory()
         self.persona_manager = persona_manager or PersonaManager()
         self.context_manager = context_manager or ContextManager()
         self.current_phase = ConsensusPhase.THINKING
@@ -413,14 +423,14 @@ class ConsensusEngine:
 
         return agents
 
-    def _resolve_llm_client(self, persona_type: PersonaType) -> LLMClient:
+    def _resolve_llm_client(self, persona_type: PersonaType) -> Any:
         """ペルソナ固有の設定に基づいてLLMクライアントを解決する
 
         Args:
             persona_type: ペルソナタイプ
 
         Returns:
-            解決されたLLMClientインスタンス
+            解決されたLLMClientまたはアダプタのインスタンス
         """
         persona_key = persona_type.value
         persona_config = self.config.personas.get(persona_key)
@@ -429,7 +439,38 @@ class ConsensusEngine:
             return self.llm_client_factory()
 
         llm_config = persona_config.llm
-        
+
+        # プロバイダセレクタが利用可能な場合は、それを使用して解決を試みる
+        if self.provider_selector:
+            target_provider, model_name = normalize_model_name(llm_config.model)
+
+            try:
+                provider_ctx = self.provider_selector.select(target_provider)
+                
+                # 更新された値を適用。元のコンテキストを変更せず、新しいインスタンスを作成する。
+                updated_options = dict(provider_ctx.options or {})
+                if llm_config.temperature is not None:
+                    updated_options["temperature"] = llm_config.temperature
+                if llm_config.timeout is not None:
+                    updated_options["timeout"] = llm_config.timeout
+
+                provider_ctx = dataclass_replace(
+                    provider_ctx,
+                    model=model_name or provider_ctx.model,
+                    api_key=llm_config.api_key or provider_ctx.api_key,
+                    options=updated_options
+                )
+
+                return self.provider_factory.build(
+                    provider_ctx,
+                    concurrency_controller=self.concurrency_controller,
+                )
+            except (ValueError, LookupError, RuntimeError, MagiException) as e:
+                logger.warning(
+                    f"Failed to resolve provider for {persona_type} using selector: {e}. "
+                    "Falling back to legacy LLMClient."
+                )
+
         return LLMClient(
             api_key=llm_config.api_key if llm_config.api_key is not None else self.config.api_key,
             model=llm_config.model if llm_config.model is not None else self.config.model,

@@ -11,12 +11,12 @@ template: |
   以下のJSON形式で回答してください：
 
   ```json
-  {
+  {{
     "vote": "APPROVE | DENY | CONDITIONAL",
     "reason": "投票理由を具体的に説明してください",
     "confidence": 0.85,
     "conditions": ["CONDITIONALの場合のみ: 条件を列挙"]
-  }
+  }}
   ```
 
   - **APPROVE**: 提案を承認する
