@@ -14,7 +14,8 @@ class TestSetupScript(unittest.TestCase):
     """セットアップスクリプトの実行フローを検証するクラス。
 
     このクラスは、setup.sh が uv や npm の有無を正しく検出し、
-    適切な終了コードや警告メッセージを返すことをシミュレーションで検証します。
+    適切な終了コードや警告メッセージを返すことを、実実行を伴わない
+    シミュレーションによって検証します。
     """
 
     def setUp(self) -> None:
@@ -40,7 +41,7 @@ class TestSetupScript(unittest.TestCase):
         終了コードを返し、エラーメッセージを出力することを検証します。
 
         Args:
-            mock_run (MagicMock): subprocess.run のモックオブジェクト
+            mock_run (MagicMock): subprocess.run のモックオブジェクト。
 
         Returns:
             None
@@ -54,20 +55,20 @@ class TestSetupScript(unittest.TestCase):
             stdout="❌ uv is not installed. Please install it first.",
             stderr=""
         )
-        
+
         # 実際には PATH を弄る必要はない（モック化しているため）が、
         # 引数の検証のために env を用意
         env = {"PATH": "/usr/bin"}
-        
-        import subprocess # nosec
-        result = subprocess.run(
+
+        import subprocess  # nosec
+        result = subprocess.run(  # nosec
             [str(self.setup_sh)],
             env=env,
             cwd=str(self.root_dir),
             capture_output=True,
             text=True
         )
-        
+
         # モックの呼び出しを検証
         mock_run.assert_called_once_with(
             [str(self.setup_sh)],
@@ -76,7 +77,7 @@ class TestSetupScript(unittest.TestCase):
             capture_output=True,
             text=True
         )
-        
+
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("uv is not installed", result.stdout)
 
@@ -88,7 +89,7 @@ class TestSetupScript(unittest.TestCase):
         スクリプトが警告を出しつつも正常終了することを検証します。
 
         Args:
-            mock_run (MagicMock): subprocess.run のモックオブジェクト
+            mock_run (MagicMock): subprocess.run のモックオブジェクト。
 
         Returns:
             None
@@ -102,18 +103,18 @@ class TestSetupScript(unittest.TestCase):
             stdout="⚠️ npm is not installed. Skipping frontend setup.",
             stderr=""
         )
-        
+
         env = {"PATH": "/usr/bin:/usr/local/bin"}
-        
-        import subprocess # nosec
-        result = subprocess.run(
+
+        import subprocess  # nosec
+        result = subprocess.run(  # nosec
             [str(self.setup_sh)],
             env=env,
             cwd=str(self.root_dir),
             capture_output=True,
             text=True
         )
-        
+
         self.assertEqual(result.returncode, 0)
         self.assertIn("npm is not installed. Skipping frontend setup.", result.stdout)
 
@@ -125,7 +126,7 @@ class TestSetupScript(unittest.TestCase):
         正常終了することを検証します。
 
         Args:
-            mock_run (MagicMock): subprocess.run のモックオブジェクト
+            mock_run (MagicMock): subprocess.run のモックオブジェクト。
 
         Returns:
             None
@@ -138,15 +139,15 @@ class TestSetupScript(unittest.TestCase):
             stdout="✨ Setup complete! AI is ready to work.",
             stderr=""
         )
-        
-        import subprocess # nosec
-        result = subprocess.run(
+
+        import subprocess  # nosec
+        result = subprocess.run(  # nosec
             [str(self.setup_sh)],
             cwd=str(self.root_dir),
             capture_output=True,
             text=True
         )
-        
+
         self.assertEqual(result.returncode, 0)
         self.assertNotIn("uv is not installed", result.stdout)
         self.assertIn("Setup complete", result.stdout)
