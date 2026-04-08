@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 # テスト対象のアプリケーション
 from magi.webui_backend.app import app, session_manager
+from magi.webui_backend.adapter import MockMagiAdapter
 
 class TestWebUIWebSocket(unittest.TestCase):
     """WebSocket接続とメッセージ受信のテスト"""
@@ -15,25 +16,17 @@ class TestWebUIWebSocket(unittest.TestCase):
     def setUp(self):
         """テスト前の準備: セッションマネージャーの状態をクリア"""
         self.client = TestClient(app)
-        # 既存のセッションを強制キャンセルしてクリア
-        # 非同期メソッドを同期コンテキストから呼ぶため、少し強引だが
-        # TestClientを使っている場合、内部でイベントループが動いている可能性があるが
-        # ここでは sessions 辞書を直接操作してクリーンアップを試みる
-        # ただし、TestClientはリクエスト毎にループを回すが、
-        # session_managerはグローバルなので、前のテストの影響が残る可能性がある。
-        
-        # 安全のため、プライベートメソッドだが cleanup を試みる
-        # ここでは単純にsessionsを空にするだけでなく、タスクのキャンセルも考慮したいが、
-        # 同期テストメソッド内から非同期cleanupを呼ぶのは難しい。
-        # 簡易的に sessions 辞書をクリアする。
-        # (厳密にはタスクがリークする可能性があるが、ユニットテストの範囲では許容)
+        # 既存のセッションをクリア
         session_manager.sessions.clear()
+        
+        # テスト全体でMockMagiAdapterを使用するようにデフォルトでパッチ
+        self.original_factory = session_manager.adapter_factory
+        session_manager.adapter_factory = lambda: MockMagiAdapter()
 
     def tearDown(self):
         """テスト後の後始末"""
-        # セッションマネージャーに残っているセッションがあればキャンセル
-        # 本当は各テストで作成したsession_idを覚えておいて掃除するのが行儀が良い
-        pass
+        # オリジナルのファクトリに戻す
+        session_manager.adapter_factory = self.original_factory
 
     def test_ws_connect_success_and_receive_events(self):
         """正常なセッションIDでWS接続し、イベントを受信できることの確認"""
