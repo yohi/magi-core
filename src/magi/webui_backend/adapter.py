@@ -248,7 +248,7 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
         for persona, vote_output in result.voting_results.items():
             unit = self._map_persona_to_unit(persona)
             if unit:
-                vote_val = vote_map.get(vote_output.vote, "NO")
+                vote_val = vote_map.get(vote_output.vote, "ABSTAIN")
                 voting_results_payload[unit.value] = {
                     "vote": vote_val,
                     "reason": vote_output.reason

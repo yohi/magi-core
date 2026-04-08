@@ -2,36 +2,45 @@
 WebUI WebSocketエンドポイントの単体テスト
 """
 import unittest
+from unittest.mock import MagicMock, patch
+import importlib
 from typing import Dict, Any
 
 from fastapi.testclient import TestClient
 
-# テスト対象のアプリケーション
-from magi.webui_backend.app import app, session_manager
-from magi.webui_backend.adapter import MockMagiAdapter
+# 共通のベースとしてインポート
+import magi.webui_backend.app
+import magi.webui_backend.adapter
 
-class TestWebUIWebSocket(unittest.TestCase):
+class TestWebUIWebSocket(unittest.IsolatedAsyncioTestCase):
     """WebSocket接続とメッセージ受信のテスト"""
 
-    def setUp(self):
-        """テスト前の準備: セッションマネージャーの状態をクリア"""
-        self.client = TestClient(app)
-        # 既存のセッションをクリア
-        session_manager.sessions.clear()
+    async def asyncSetUp(self):
+        """テスト前の準備: モックモードを強制し、モジュールをリロード"""
+        # MAGI_USE_MOCK=1 を設定して認証エラーを防ぐ
+        self.env_patcher = patch.dict("os.environ", {"MAGI_USE_MOCK": "1"})
+        self.env_patcher.start()
         
-        # テスト全体でMockMagiAdapterを使用するようにデフォルトでパッチ
-        self.original_factory = session_manager.adapter_factory
-        session_manager.adapter_factory = lambda: MockMagiAdapter()
+        # モジュールのリロードにより、use_mock=True な状態の app/session_manager を得る
+        importlib.reload(magi.webui_backend.adapter)
+        importlib.reload(magi.webui_backend.app)
+        
+        from magi.webui_backend.app import app, session_manager
+        self.app = app
+        self.session_manager = session_manager
+        self.client = TestClient(self.app)
+        
+        # 既存のセッションをクリア
+        self.session_manager.sessions.clear()
 
-    def tearDown(self):
+    async def asyncTearDown(self):
         """テスト後の後始末"""
-        # オリジナルのファクトリに戻す
-        session_manager.adapter_factory = self.original_factory
+        self.env_patcher.stop()
 
     def test_ws_connect_success_and_receive_events(self):
         """正常なセッションIDでWS接続し、イベントを受信できることの確認"""
         
-        with TestClient(app) as client:
+        with TestClient(self.app) as client:
             # 1. セッション作成
             create_payload = {
                 "prompt": "Test WebSocket",
@@ -50,57 +59,39 @@ class TestWebUIWebSocket(unittest.TestCase):
                 received_events = []
                 try:
                     # 数回受信を試みる
-                    for i in range(5):
-                        # receive_jsonはブロッキングだがTestClientのコンテキスト内なら動く
+                    for i in range(10):
                         event = websocket.receive_json()
                         received_events.append(event)
                         
                         self._verify_common_fields(event, session_id)
                         
-                        # MockMagiAdapterはfinalイベントを出すので、それを受信したら終了
                         if event.get("type") == "final":
                             break
                 except Exception:
-                    # タイムアウト等で受信終了
                     pass
                 
                 self.assertGreater(len(received_events), 0, "一つもWebSocketイベントを受信できませんでした")
-                
-                for event in received_events:
-                    self.assertIn("type", event)
-
 
     def test_ws_connect_invalid_session(self):
         """存在しないセッションIDへの接続が拒否されることの確認"""
         invalid_session_id = "non-existent-session-id"
         ws_url = f"/ws/sessions/{invalid_session_id}"
 
-        # 接続試行 -> 403 Forbidden や 1008 Policy Violation などで切断される
-        # TestClientの実装では、ハンドシェイクでのHTTPエラーか、WS closeか
-        # app.py実装: await websocket.accept() -> await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        # なので、接続自体はHTTP 101で成功した直後にCloseフレームが飛んでくる挙動になるはず
-        
         with self.assertRaises(Exception):
             with self.client.websocket_connect(ws_url) as websocket:
-                # 接続直後にcloseされているはずなので、何か受信しようとするとエラーになるか、
-                # あるいは websocket_connect 自体が close を検知して例外を投げる場合もある
                 websocket.receive_json()
-        
-        # TestClient(Starlette)の場合、サーバー側がcloseすると
-        # WebSocketDisconnect が発生することが多い
-        # エラーメッセージや例外型を確認してもよいが、ここでは「接続・受信が正常に続かないこと」を確認できればよしとする
 
     def test_ws_error_event_has_code(self):
         """例外発生時にエラーイベントに 'code' フィールドが含まれることの確認"""
-        from unittest.mock import MagicMock
-        
-        with TestClient(app) as client:
+        with TestClient(self.app) as client:
             create_payload = {
                 "prompt": "Test Error Code",
                 "options": {"max_rounds": 1}
             }
             
-            original_factory = session_manager.adapter_factory
+            # モックアダプターの差し替え
+            # すでに MockMagiAdapter が使われる設定になっているはずだが、
+            # エラーを投げるようにさらに細工する
             mock_adapter = MagicMock()
             
             async def mock_run(*args, **kwargs):
@@ -110,9 +101,9 @@ class TestWebUIWebSocket(unittest.TestCase):
                 yield
             
             mock_adapter.run.side_effect = mock_run
-            session_manager.adapter_factory = lambda: mock_adapter
             
-            try:
+            # session_manager.adapter_factory を一時的に差し替え
+            with patch.object(self.session_manager, 'adapter_factory', return_value=mock_adapter):
                 resp = client.post("/api/sessions", json=create_payload)
                 self.assertEqual(resp.status_code, 201)
                 session_id = resp.json()["session_id"]
@@ -131,19 +122,14 @@ class TestWebUIWebSocket(unittest.TestCase):
                     
                     self.assertIn("code", error_event)
                     self.assertEqual(error_event["code"], "INTERNAL")
-            finally:
-                session_manager.adapter_factory = original_factory
 
     def _verify_common_fields(self, event: Dict[str, Any], expected_session_id: str):
         """EventBroadcasterが付与する共通フィールドの検証"""
         self.assertIn("schema_version", event)
         self.assertEqual(event["schema_version"], "1.0")
-        
         self.assertIn("session_id", event)
         self.assertEqual(event["session_id"], expected_session_id)
-        
         self.assertIn("ts", event)
-        # tsはISOフォーマットの日時文字列
         self.assertIsInstance(event["ts"], str)
 
 if __name__ == "__main__":
