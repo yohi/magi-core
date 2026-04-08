@@ -17,7 +17,7 @@ class TestVoteTemplate(unittest.TestCase):
     """vote_prompt テンプレートのレンダリングを検証するクラス。
 
     このクラスは、テンプレート内の波括弧が正しくエスケープされること、
-    および変数が期待通りに埋め込まれ、出力される結果が正しい形式（JSON を含む）
+    および変数が期待通りに埋め込まれ、出力される結果が正しい形式 (JSON を含む)
     であることを検証します。
     """
 
@@ -72,7 +72,9 @@ class TestVoteTemplate(unittest.TestCase):
             self.assertEqual(extracted_context, context_val)
 
             # 3. JSON 部分が正しく解析できること
-            json_part = rendered[rendered.find("Format: ") + len("Format: "):].strip()
+            format_marker = "Format: "
+            json_start_index = rendered.rfind(format_marker) + len(format_marker)
+            json_part = rendered[json_start_index:].strip()
             try:
                 data = json.loads(json_part)
                 self.assertEqual(data.get("vote"), "APPROVE")

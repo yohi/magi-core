@@ -5,14 +5,15 @@
 """
 
 import unittest
+from hypothesis import given, strategies as st
 from magi.core.utils import normalize_model_name
 
 
 class TestModelNormalization(unittest.TestCase):
     """normalize_model_name の挙動を検証するクラス。
 
-    このクラスは、モデル名に含まれる様々なプレフィックス（ネイティブプロバイダや
-    OpenRouter など）が正しく処理されることをテストします。
+    このクラスは、モデル名に含まれる様々なプレフィックス (ネイティブプロバイダや
+    OpenRouter など) が正しく処理されることをテストします。
     """
 
     def test_strip_native_provider_prefixes(self) -> None:
@@ -45,7 +46,7 @@ class TestModelNormalization(unittest.TestCase):
     def test_strip_openrouter_prefix_only(self) -> None:
         """openrouter/ プレフィックスのみが剥離され、二次プロバイダは維持されることを確認する。
 
-        openrouter/プレフィックスが剥離された後、残りの部分（google/gemini など）が
+        openrouter/プレフィックスが剥離された後、残りの部分 (google/gemini など) が
         モデル名として維持されることを検証します。
 
         Args:
@@ -109,6 +110,33 @@ class TestModelNormalization(unittest.TestCase):
         )
         self.assertEqual(provider, "default")
         self.assertEqual(model, "unknown/model-x")
+
+    @given(
+        full_name=st.text(min_size=1, max_size=100).filter(lambda x: x.isprintable()),
+        tp=st.sampled_from([None, "openrouter", "default"]),
+    )
+    def test_property_normalization(self, full_name: str, tp: str | None) -> None:
+        """normalize_model_name の不変条件を検証する。
+
+        Args:
+            full_name (str): ランダムなモデル名
+            tp (str | None): ターゲットプロバイダ
+
+        Returns:
+            None
+
+        Raises:
+            None
+        """
+        provider, model = normalize_model_name(full_name, target_provider=tp)
+        self.assertTrue(provider is None or isinstance(provider, str))
+        self.assertIsInstance(model, str)
+
+        # 不変条件: target_provider が "openrouter" の場合、返されるプロバイダは "openrouter"
+        # かつモデル名は元の full_name と一致する。
+        if tp == "openrouter":
+            self.assertEqual(provider, "openrouter")
+            self.assertEqual(model, full_name)
 
 
 if __name__ == "__main__":

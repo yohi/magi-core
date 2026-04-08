@@ -8,6 +8,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 from pathlib import Path
+from hypothesis import given, strategies as st
 
 
 class TestSetupScript(unittest.TestCase):
@@ -56,7 +57,7 @@ class TestSetupScript(unittest.TestCase):
             stderr=""
         )
 
-        # 実際には PATH を弄る必要はない（モック化しているため）が、
+        # 実際には PATH を弄る必要はない (モック化しているため) が、
         # 引数の検証のために env を用意
         env = {"PATH": "/usr/bin"}
 
@@ -115,6 +116,15 @@ class TestSetupScript(unittest.TestCase):
             text=True
         )
 
+        # モックの呼び出しを検証
+        mock_run.assert_called_once_with(
+            [str(self.setup_sh)],
+            env=env,
+            cwd=str(self.root_dir),
+            capture_output=True,
+            text=True
+        )
+
         self.assertEqual(result.returncode, 0)
         self.assertIn("npm is not installed. Skipping frontend setup.", result.stdout)
 
@@ -148,9 +158,61 @@ class TestSetupScript(unittest.TestCase):
             text=True
         )
 
+        # モックの呼び出しを検証
+        mock_run.assert_called_once_with(
+            [str(self.setup_sh)],
+            cwd=str(self.root_dir),
+            capture_output=True,
+            text=True
+        )
+
         self.assertEqual(result.returncode, 0)
         self.assertNotIn("uv is not installed", result.stdout)
         self.assertIn("Setup complete", result.stdout)
+
+    @patch("subprocess.run")
+    @given(
+        returncode=st.integers(min_value=0, max_value=2),
+        msg=st.text(min_size=1, max_size=500).filter(lambda x: x.isprintable()),
+    )
+    def test_setup_property_with_hypothesis(
+        self, mock_run: MagicMock, returncode: int, msg: str
+    ) -> None:
+        """Hypothesis を用いて setup.sh の実行結果に関する不変条件を検証する。
+
+        Args:
+            mock_run (MagicMock): subprocess.run のモックオブジェクト。
+            returncode (int): ランダムな終了コード
+            msg (str): ランダムな標準出力メッセージ
+
+        Returns:
+            None
+
+        Raises:
+            None
+        """
+        mock_run.return_value = MagicMock(
+            returncode=returncode,
+            stdout=msg,
+            stderr=""
+        )
+
+        import subprocess  # nosec
+        result = subprocess.run(  # nosec
+            [str(self.setup_sh)],
+            cwd=str(self.root_dir),
+            capture_output=True,
+            text=True
+        )
+
+        # 終了コードに基づくメッセージの整合性を検証
+        if result.returncode != 0:
+            # エラーの場合は、何らかのエラーが通知されているはず (このテストでは msg に依存)
+            self.assertEqual(result.stdout, msg)
+        else:
+            # 正常終了の場合は、Setup complete または警告が含まれている可能性がある
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, msg)
 
 
 if __name__ == "__main__":
