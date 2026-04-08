@@ -28,6 +28,7 @@ from magi.config.provider import (
     ProviderConfig,
     ProviderConfigLoader,
 )
+from magi.core.utils import normalize_model_name
 from magi.core.concurrency import ConcurrencyController
 from magi.core.consensus import ConsensusEngine
 from magi.core.providers import (
@@ -1287,19 +1288,7 @@ class MagiCLI:
             )
 
         target = (provider_flag or DEFAULT_PROVIDER_ID).lower()
-        model_name = self.config.model
-        if model_name:
-            if model_name.startswith("openrouter/"):
-                model_name = model_name[len("openrouter/") :]
-            elif model_name.startswith("anthropic/") and target != "openrouter":
-                model_name = model_name[len("anthropic/") :]
-            elif model_name.startswith("openai/") and target != "openrouter":
-                model_name = model_name[len("openai/") :]
-            elif (
-                model_name.startswith("google/") or model_name.startswith("gemini/")
-            ) and target != "openrouter":
-                prefix = "google/" if model_name.startswith("google/") else "gemini/"
-                model_name = model_name[len(prefix) :]
+        _, model_name = normalize_model_name(self.config.model, target)
 
         return ProviderContext(
             provider_id=target,

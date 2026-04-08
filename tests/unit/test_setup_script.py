@@ -1,0 +1,79 @@
+import os
+import subprocess
+import unittest
+import shutil
+import tempfile
+from pathlib import Path
+
+class TestSetupScript(unittest.TestCase):
+    def setUp(self):
+        self.root_dir = Path(__file__).parent.parent.parent
+        self.setup_sh = self.root_dir / "scripts" / "setup.sh"
+
+    def test_setup_fails_without_uv(self):
+        """uv が存在しない場合に setup.sh がエラーで終了することを確認"""
+        # PATH から uv を除外するために、必要最小限のツールのみを symlink したディレクトリを使用
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            # Link basic tools but NOT uv
+            tools = ["bash", "sh", "ls", "grep", "cp", "touch", "mkdir", "chmod", "rm", "cat"]
+            for tool in tools:
+                path = shutil.which(tool)
+                if path:
+                    (tmpdir_path / tool).symlink_to(path)
+            
+            env = os.environ.copy()
+            env["PATH"] = str(tmpdir_path)
+            
+            # 実行権限があるか確認
+            if not os.access(self.setup_sh, os.X_OK):
+                subprocess.run(["chmod", "+x", str(self.setup_sh)])
+
+            result = subprocess.run(
+                [str(self.setup_sh)],
+                env=env,
+                cwd=str(self.root_dir),
+                capture_output=True,
+                text=True
+            )
+            
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("uv is not installed", result.stdout + result.stderr)
+
+    def test_setup_warns_without_npm(self):
+        """npm が存在しない場合に setup.sh が警告を出して続行することを確認"""
+        # PATH から npm を除外し、uv は残す
+        uv_path = shutil.which("uv")
+        if uv_path is None:
+            self.skipTest("uv is required for this test")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            # Link basic tools AND uv, but NOT npm
+            tools = ["bash", "sh", "ls", "grep", "cp", "touch", "mkdir", "chmod", "rm", "cat", "uv"]
+            for tool in tools:
+                path = shutil.which(tool)
+                if path:
+                    (tmpdir_path / tool).symlink_to(path)
+            
+            env = os.environ.copy()
+            env["PATH"] = str(tmpdir_path)
+            
+            # frontend ディレクトリがないと npm チェックに行かないので、既存の frontend ディレクトリを使用
+            # ただし、uv sync が Magis の uv.lock を読みに行くので、uv が動作する環境が必要
+            # ここでは Magis の root で実行される
+            
+            result = subprocess.run(
+                [str(self.setup_sh)],
+                env=env,
+                cwd=str(self.root_dir),
+                capture_output=True,
+                text=True
+            )
+            
+            # npm がないことによる警告は stdout または stderr に出るはず
+            output = result.stdout + result.stderr
+            self.assertIn("npm is not installed. Skipping frontend setup.", output)
+
+if __name__ == "__main__":
+    unittest.main()

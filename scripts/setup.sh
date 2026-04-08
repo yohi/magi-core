@@ -15,13 +15,14 @@ fi
 # 2. Frontend setup (Node.js)
 echo "📦 Setting up frontend dependencies..."
 if [ -d "frontend" ]; then
-    cd frontend
-    if command -v npm > /dev/null; then
-        npm install
-    else
-        echo "⚠️ npm is not installed. Skipping frontend setup."
-    fi
-    cd ..
+    (
+        cd frontend
+        if command -v npm > /dev/null; then
+            npm install
+        else
+            echo "⚠️ npm is not installed. Skipping frontend setup."
+        fi
+    )
 fi
 
 # 3. Environment variables

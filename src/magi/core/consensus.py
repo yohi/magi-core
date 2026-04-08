@@ -21,6 +21,7 @@ import logging
 import sys
 import time
 import uuid
+from dataclasses import replace as dataclass_replace
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol
 
@@ -34,6 +35,7 @@ from magi.core.providers import (
     ProviderContext,
     ProviderSelector,
 )
+from magi.core.utils import normalize_model_name
 from magi.core.quorum import QuorumManager
 from magi.core.schema_validator import SchemaValidationError, SchemaValidator
 from magi.core.template_loader import TemplateLoader
@@ -441,44 +443,30 @@ class ConsensusEngine:
 
         # プロバイダセレクタが利用可能な場合は、それを使用して解決を試みる
         if self.provider_selector:
-            model_name = llm_config.model
-            target_provider = None
-            if model_name:
-                # モデル名からプロバイダを推測し、必要に応じてプレフィックスを剥離
-                if model_name.startswith("openrouter/"):
-                    target_provider = "openrouter"
-                    model_name = model_name[len("openrouter/") :]
-                elif model_name.startswith("anthropic/"):
-                    target_provider = "anthropic"
-                    model_name = model_name[len("anthropic/") :]
-                elif model_name.startswith("openai/"):
-                    target_provider = "openai"
-                    model_name = model_name[len("openai/") :]
-                elif model_name.startswith("google/"):
-                    target_provider = "gemini"
-                    model_name = model_name[len("google/") :]
-                elif model_name.startswith("gemini/"):
-                    target_provider = "gemini"
-                    model_name = model_name[len("gemini/") :]
+            target_provider, model_name = normalize_model_name(llm_config.model)
 
             try:
                 provider_ctx = self.provider_selector.select(target_provider)
-                if model_name:
-                    provider_ctx.model = model_name
-                if llm_config.api_key:
-                    provider_ctx.api_key = llm_config.api_key
-
-                # オプションの上書き
+                
+                # 更新された値を適用。元のコンテキストを変更せず、新しいインスタンスを作成する。
+                updated_options = dict(provider_ctx.options or {})
                 if llm_config.temperature is not None:
-                    provider_ctx.options["temperature"] = llm_config.temperature
+                    updated_options["temperature"] = llm_config.temperature
                 if llm_config.timeout is not None:
-                    provider_ctx.options["timeout"] = llm_config.timeout
+                    updated_options["timeout"] = llm_config.timeout
+
+                provider_ctx = dataclass_replace(
+                    provider_ctx,
+                    model=model_name or provider_ctx.model,
+                    api_key=llm_config.api_key or provider_ctx.api_key,
+                    options=updated_options
+                )
 
                 return self.provider_factory.build(
                     provider_ctx,
                     concurrency_controller=self.concurrency_controller,
                 )
-            except Exception as e:
+            except (ValueError, LookupError, RuntimeError, MagiException) as e:
                 logger.warning(
                     f"Failed to resolve provider for {persona_type} using selector: {e}. "
                     "Falling back to legacy LLMClient."
