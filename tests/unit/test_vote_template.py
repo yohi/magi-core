@@ -1,9 +1,11 @@
-"""vote_prompt テンプレートのレンダリングに関するユニットテスト
+"""
+vote_prompt テンプレートのレンダリングに関するユニットテスト
 
 テンプレートの読み込みと、変数の埋め込み (レンダリング) が期待通りに行われることを検証します。
 特に、テンプレート内の波括弧のエスケープと、変数内の波括弧がリテラルとして扱われることを確認します。
 """
 
+import json
 import unittest
 from pathlib import Path
 import tempfile
@@ -12,23 +14,13 @@ from hypothesis import given, strategies as st
 from magi.core.template_loader import TemplateLoader
 
 class TestVoteTemplate(unittest.TestCase):
-    """vote_prompt テンプレートのレンダリングを検証するテストクラス
-
-    TemplateLoader を介してテンプレートを読み込み、文字列フォーマットによって
-    変数が正しく埋め込まれることを検証します。
-
-    Args: None
-
-    Returns: None
-
-    Raises: None
-    """
+    """vote_prompt テンプレートのレンダリングを検証するクラス"""
 
     @given(st.text(min_size=0, max_size=500))
     def test_vote_prompt_template_rendering(self, context_val: str) -> None:
         """vote_prompt テンプレートが正しくレンダリングされることを確認する
 
-        Hypothesis を用いて、様々な文字列（ASCII、Unicode、波括弧を含む文字列など）が
+        Hypothesis を用いて、様々な文字列 (ASCII、Unicode、波括弧を含む文字列など) が
         context 変数として与えられた場合に、テンプレート内のリテラルな波括弧が維持され、
         かつ context 内の波括弧がそのまま出力されることを検証します。
 
@@ -73,6 +65,14 @@ class TestVoteTemplate(unittest.TestCase):
             # 2. 生成された context_val がそのまま含まれていること
             extracted_context = rendered[len(expected_prefix) : -len(expected_suffix)]
             self.assertEqual(extracted_context, context_val)
+
+            # 3. JSON 部分が正しく解析できること
+            json_part = rendered[rendered.find("Format: ") + len("Format: "):].strip()
+            try:
+                data = json.loads(json_part)
+                self.assertEqual(data.get("vote"), "APPROVE")
+            except json.JSONDecodeError as e:
+                self.fail(f"Rendered output contains invalid JSON: {json_part}\nError: {e}")
 
 if __name__ == "__main__":
     unittest.main()
