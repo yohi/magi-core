@@ -23,7 +23,7 @@ import subprocess  # nosec
 import logging
 from unittest.mock import MagicMock, patch
 from pathlib import Path
-from hypothesis import given, strategies as st
+from hypothesis import given, example, strategies as st
 
 logger = logging.getLogger(__name__)
 
@@ -236,9 +236,16 @@ class TestSetupScript(unittest.TestCase):
         self.assertNotIn("uv is not installed", result.stdout)
         self.assertIn("Setup complete", result.stdout)
 
+    @example(returncode=0, msg="⚠️ some warning")
+    @example(returncode=0, msg="this is a warning message")
+    @example(returncode=0, msg="warn: something happened")
+    @example(returncode=0, msg="警告: プロセスが中断されました")
     @given(
         returncode=st.integers(min_value=0, max_value=2),
-        msg=st.text(min_size=1, max_size=500).filter(lambda x: x.isprintable()),
+        msg=st.one_of(
+            st.text(min_size=1, max_size=500).filter(lambda x: x.isprintable()),
+            st.sampled_from(["⚠️ warning", "warning: low disk space", "warn message", "警告メッセージ"])
+        ),
     )
     def test_setup_property_with_hypothesis(self, returncode: int, msg: str) -> None:
         """Hypothesis を用いて setup.sh の実行結果に関する不変条件を検証する。
