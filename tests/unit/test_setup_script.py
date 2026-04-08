@@ -1,39 +1,91 @@
 """セットアップスクリプトの動作検証用テスト。
 
-このモジュールでは、scripts/setup.sh がシステム環境 (uv, npm の有無など) に応じて
-適切に動作し、必要な依存関係のチェックや警告を行うことを検証します。
-実環境への副作用を避けるため、subprocess.run はモック化されます。
+Summary（要約）:
+    scripts/setup.sh の動作を検証するテストモジュール。
+
+Details（詳細）:
+    このモジュールでは、scripts/setup.sh がシステム環境 (uv, npm の有無など) に応じて
+    適切に動作し、必要な依存関係のチェックや警告を行うことを検証します。
+    実環境への副作用を避けるため、subprocess.run はモック化されます。
+
+Args:
+    なし
+
+Returns:
+    なし
+
+Raises:
+    なし
 """
 
 import unittest
 import subprocess  # nosec
+import logging
 from unittest.mock import MagicMock, patch
 from pathlib import Path
 from hypothesis import given, strategies as st
+
+logger = logging.getLogger(__name__)
 
 
 def handle_setup_result(result: subprocess.CompletedProcess) -> str:
     """セットアップスクリプトの実行結果を解釈する。
 
+    Summary（要約）:
+        subprocess.CompletedProcess オブジェクトからスクリプトの実行結果を判定する。
+
+    Details（詳細）:
+        リターンコードが 0 以外の場合は "FAILED" を返し、
+        標準出力に警告を示す絵文字や文字列（英語の warning/warn、日本語の警告）が含まれる場合は "WARNING" を、
+        それ以外で正常終了した場合は "SUCCESS" を返します。
+
     Args:
         result (subprocess.CompletedProcess): スクリプトの実行結果。
 
     Returns:
-        str: 実行結果に基づく状態メッセージ。
+        str: 実行結果に基づく状態メッセージ（"FAILED", "WARNING", "SUCCESS"）。
+
+    Raises:
+        AttributeError: result オブジェクトに必要な属性がない場合に発生する可能性があります。
     """
     if result.returncode != 0:
         return "FAILED"
-    if "⚠️" in result.stdout or "warning" in result.stdout.lower():
+
+    # 標準出力の正規化（bytes の場合はデコード）
+    stdout = result.stdout
+    if isinstance(stdout, bytes):
+        stdout = stdout.decode("utf-8", errors="replace")
+    elif stdout is None:
+        stdout = ""
+
+    stdout_lower = stdout.lower()
+    warning_tokens = ["⚠️", "warning", "warn", "警告"]
+
+    if any(token in stdout_lower for token in warning_tokens):
         return "WARNING"
+
     return "SUCCESS"
 
 
 class TestSetupScript(unittest.TestCase):
     """セットアップスクリプトの実行フローを検証するクラス。
 
-    このクラスは、setup.sh が uv や npm の有無を正しく検出し、
-    適切な終了コードや警告メッセージを返すことを、実実行を伴わない
-    シミュレーションによって検証します。
+    Summary（要約）:
+        scripts/setup.sh の各種実行シナリオを検証する。
+
+    Details（詳細）:
+        このクラスは、setup.sh が uv や npm の有無を正しく検出し、
+        適切な終了コードや警告メッセージを返すことを、実実行を伴わない
+        シミュレーションによって検証します。
+
+    Args:
+        なし
+
+    Returns:
+        なし
+
+    Raises:
+        なし
     """
 
     def setUp(self) -> None:
@@ -209,9 +261,12 @@ class TestSetupScript(unittest.TestCase):
 
         status = handle_setup_result(mock_result)
 
+        msg_lower = msg.lower()
+        warning_tokens = ["⚠️", "warning", "warn", "警告"]
+
         if returncode != 0:
             self.assertEqual(status, "FAILED")
-        elif "⚠️" in msg or "warning" in msg.lower():
+        elif any(token in msg_lower for token in warning_tokens):
             self.assertEqual(status, "WARNING")
         else:
             self.assertEqual(status, "SUCCESS")
