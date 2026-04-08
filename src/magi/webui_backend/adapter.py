@@ -132,7 +132,9 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
 
         # APIキーのマージ
         if options.api_keys and "default" in options.api_keys:
-            run_config.api_key = options.api_keys["default"]
+            api_key = options.api_keys["default"]
+            if api_key and api_key.strip():
+                run_config.api_key = api_key
 
         engine = None
         try:
@@ -192,6 +194,8 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
                         }
 
                 elif event["type"] == "result":
+                    # 結果が直接返された場合も進捗を100%にする
+                    yield {"type": "progress", "pct": 100}
                     result = event["data"]
                     yield self._build_final_payload(result)
 

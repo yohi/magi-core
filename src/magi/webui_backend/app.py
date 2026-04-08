@@ -297,5 +297,15 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import os
+    
+    host = os.getenv("HOST", "127.0.0.1")
+    port_str = os.getenv("PORT", "8000")
+    try:
+        port = int(port_str)
+    except ValueError:
+        logger.warning(f"Invalid PORT environment variable: '{port_str}'. Falling back to 8000.")
+        port = 8000
+        
+    uvicorn.run(app, host=host, port=port)
 
