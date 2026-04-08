@@ -46,6 +46,7 @@ class SessionOptions(BaseModel):
     max_rounds: Optional[int] = None
     timeout_sec: float = 120.0
     attachments: Optional[List[Dict[str, Any]]] = None
+    api_keys: Optional[Dict[str, str]] = Field(default_factory=dict)
     plugin: Optional[Any] = None
 
 class Session(BaseModel):
