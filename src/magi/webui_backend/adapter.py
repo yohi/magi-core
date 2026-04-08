@@ -51,9 +51,9 @@ class MockMagiAdapter(MagiAdapter):
             }
         
         await asyncio.sleep(1)
-        yield {"type": "progress", "pct": 40}
-        
+
         yield {"type": "phase", "phase": "DEBATE"}
+        yield {"type": "progress", "pct": 40}
         max_rounds = options.max_rounds or 1
         for round_num in range(1, max_rounds + 1):
             yield {
