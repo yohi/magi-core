@@ -130,8 +130,6 @@ class ModelsFetcher:
                     flixa_cfg = self.config.providers.get("flixa", {})
                 
                 flixa_endpoint = flixa_cfg.get("endpoint")
-                if not flixa_endpoint:
-                    flixa_endpoint = getattr(self.config, "flixa", {}).get("endpoint")
                 
                 if not flixa_endpoint:
                     flixa_endpoint = "https://api.flixa.engineer/v1/agent"
