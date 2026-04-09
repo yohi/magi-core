@@ -59,6 +59,14 @@ class ModelsFetcher:
                                 "provider": provider,
                                 "name": model_id
                             })
+                            
+                            # Flixa は OpenAI 互換のため、OpenAI のモデルを Flixa にも適用する
+                            if provider == "openai" and "flixa" in whitelist:
+                                models.append({
+                                    "id": model_id,
+                                    "provider": "flixa",
+                                    "name": f"Flixa {model_id}"
+                                })
         except Exception as e:
             logger.error(f"Failed to fetch models from {self.SCHEMA_URL}: {e}")
 
@@ -117,7 +125,16 @@ class ModelsFetcher:
             {"id": "claude-sonnet-4.5", "provider": "anthropic", "name": "Claude 3.5 Sonnet (Fallback)"},
             {"id": "claude-3-5-sonnet-20241022", "provider": "anthropic", "name": "Claude 3.5 Sonnet (20241022)"},
             {"id": "gpt-4o", "provider": "openai", "name": "GPT-4o (Fallback)"},
+            {"id": "gpt-4-turbo", "provider": "openai", "name": "GPT-4 Turbo (Fallback)"},
+            {"id": "gpt-4", "provider": "openai", "name": "GPT-4 (Fallback)"},
+            {"id": "gpt-3.5-turbo", "provider": "openai", "name": "GPT-3.5 Turbo (Fallback)"},
+            
+            # Flixa (OpenAI Compatible)
             {"id": "gpt-4o", "provider": "flixa", "name": "Flixa GPT-4o (Fallback)"},
+            {"id": "gpt-4-turbo", "provider": "flixa", "name": "Flixa GPT-4 Turbo (Fallback)"},
+            {"id": "gpt-4", "provider": "flixa", "name": "Flixa GPT-4 (Fallback)"},
+            {"id": "gpt-3.5-turbo", "provider": "flixa", "name": "Flixa GPT-3.5 Turbo (Fallback)"},
+            
             {"id": "gemini-1.5-pro", "provider": "google", "name": "Gemini 1.5 Pro (Fallback)"}
         ]
         return [f for f in fallbacks if f["provider"] in whitelist]

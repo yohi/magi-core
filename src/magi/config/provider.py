@@ -28,13 +28,13 @@ SUPPORTED_PROVIDERS = (
 AUTH_BASED_PROVIDERS = ("claude", "copilot", "antigravity")
 RECOMMENDED_MODELS = {
     "anthropic": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
-    "openai": ["gpt-4o", "gpt-4-turbo"],
+    "openai": ["gpt-4o", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo"],
     "gemini": ["gemini-2.0-flash", "gemini-2.0-flash-exp"],
     "antigravity": ["gemini-2.0-flash-exp"],
     "claude": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
     "copilot": ["gpt-4o", "gpt-4"],
     "openrouter": ["anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001"],
-    "flixa": ["gpt-4o", "gpt-4-turbo"],
+    "flixa": ["gpt-4o", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo"],
 }
 
 logger = logging.getLogger(__name__)
