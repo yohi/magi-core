@@ -20,6 +20,7 @@ from magi.core.utils import normalize_model_name
 from magi.llm.auth import AuthContext, get_auth_provider
 from magi.llm.providers import (
     AnthropicAdapter,
+    FlixaAdapter,
     GeminiAdapter,
     OpenAIAdapter,
     OpenRouterAdapter,
@@ -184,6 +185,7 @@ class ProviderAdapterFactory:
             "openai": OpenAIAdapter,
             "gemini": GeminiAdapter,
             "openrouter": OpenRouterAdapter,
+            "flixa": FlixaAdapter,
         }
 
     def build(

@@ -653,6 +653,7 @@
             { id: "google", name: "Google (Gemini)" },
             { id: "groq", name: "Groq (Llama-3)" },
             { id: "openrouter", name: "OpenRouter" },
+            { id: "flixa", name: "Flixa" },
             { id: "mistral", name: "Mistral AI" },
             { id: "deepseek", name: "DeepSeek" },
             { id: "local", name: "Local LLM (Ollama/vLLM)" }
@@ -660,7 +661,7 @@
 
         const magiSettings = {
             providers: { anthropic: "sk-ant-dummy-key" },
-            whitelist_providers: ["anthropic", "openai", "google", "groq", "openrouter"],
+            whitelist_providers: ["anthropic", "openai", "google", "groq", "openrouter", "flixa"],
             debate_rounds: 1,
             voting_threshold: "majority",
             personas: {

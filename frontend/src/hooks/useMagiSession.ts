@@ -48,7 +48,7 @@ export function useMagiSession() {
       debateRounds: 1,
       votingThreshold: "majority",
       providers: {},
-      whitelistProviders: ["anthropic", "openai", "google", "groq", "openrouter"],
+      whitelistProviders: ["anthropic", "openai", "google", "groq", "openrouter", "flixa"],
     };
   });
 

@@ -25,7 +25,7 @@ class ModelsFetcher:
         whitelist = getattr(self.config, "whitelist_providers", None)
         if whitelist is None:
             # デフォルトのホワイトリスト
-            whitelist = ["anthropic", "openai", "google", "groq", "openrouter"]
+            whitelist = ["anthropic", "openai", "google", "groq", "openrouter", "flixa"]
         
         whitelist = [p.lower() for p in whitelist]
         models = []
@@ -82,6 +82,28 @@ class ModelsFetcher:
             except Exception as e:
                 logger.error(f"Failed to fetch models from OpenRouter API: {e}")
 
+        # 3. Flixa API から取得 (ホワイトリストにある場合のみ)
+        if "flixa" in whitelist:
+            try:
+                # 設定からエンドポイントを取得、なければデフォルト
+                flixa_endpoint = getattr(self.config, "flixa", {}).get("endpoint") or "https://api.flixa.engineer/v1/agent"
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    flixa_response = await client.get(f"{flixa_endpoint}/models")
+                    if flixa_response.status_code == 200:
+                        flixa_data = flixa_response.json()
+                        flixa_models = flixa_data.get("data", [])
+                        logger.info(f"Fetched {len(flixa_models)} models from Flixa API")
+                        for m in flixa_models:
+                            m_id = m.get("id")
+                            if m_id:
+                                models.append({
+                                    "id": m_id,
+                                    "provider": "flixa",
+                                    "name": m.get("name", m_id)
+                                })
+            except Exception as e:
+                logger.debug(f"Could not fetch models from Flixa API (expected if no API key): {e}")
+
         # 取得できたモデルがあればキャッシュを更新
         if models:
             self._cached_models = models
@@ -95,6 +117,7 @@ class ModelsFetcher:
             {"id": "claude-sonnet-4.5", "provider": "anthropic", "name": "Claude 3.5 Sonnet (Fallback)"},
             {"id": "claude-3-5-sonnet-20241022", "provider": "anthropic", "name": "Claude 3.5 Sonnet (20241022)"},
             {"id": "gpt-4o", "provider": "openai", "name": "GPT-4o (Fallback)"},
+            {"id": "gpt-4o", "provider": "flixa", "name": "Flixa GPT-4o (Fallback)"},
             {"id": "gemini-1.5-pro", "provider": "google", "name": "Gemini 1.5 Pro (Fallback)"}
         ]
         return [f for f in fallbacks if f["provider"] in whitelist]

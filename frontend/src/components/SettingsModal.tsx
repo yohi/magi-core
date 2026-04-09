@@ -19,6 +19,7 @@ const SUPPORTED_PROVIDERS = [
   { id: "google", name: "Google (Gemini)" },
   { id: "groq", name: "Groq (Llama-3)" },
   { id: "openrouter", name: "OpenRouter" },
+  { id: "flixa", name: "Flixa" },
   { id: "mistral", name: "Mistral AI" },
   { id: "deepseek", name: "DeepSeek" },
   { id: "local", name: "Local LLM (Ollama/vLLM)" }

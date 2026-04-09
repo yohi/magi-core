@@ -23,6 +23,7 @@ SUPPORTED_PROVIDERS = (
     "copilot",
     "antigravity",
     "openrouter",
+    "flixa",
 )
 AUTH_BASED_PROVIDERS = ("claude", "copilot", "antigravity")
 RECOMMENDED_MODELS = {
@@ -33,6 +34,7 @@ RECOMMENDED_MODELS = {
     "claude": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
     "copilot": ["gpt-4o", "gpt-4"],
     "openrouter": ["anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001"],
+    "flixa": ["gpt-4o", "gpt-4-turbo"],
 }
 
 logger = logging.getLogger(__name__)

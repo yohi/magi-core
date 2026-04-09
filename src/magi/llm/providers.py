@@ -586,3 +586,26 @@ class OpenRouterAdapter(OpenAIAdapter):
         )
         headers["X-Title"] = self.context.options.get("title", "MAGI System")
         return headers
+
+
+class FlixaAdapter(OpenAIAdapter):
+    """Flixa 向けアダプタ (OpenAI 互換 API)"""
+
+    def __init__(
+        self,
+        context: ProviderContext,
+        *,
+        http_client: Optional[Any] = None,
+        timeout: float = 30.0,
+        chat_endpoint: str = "/chat/completions",
+    ) -> None:
+        # コンテキストにエンドポイントがない場合は Flixa の既定値を使用
+        endpoint = context.endpoint or "https://api.flixa.engineer/v1/agent"
+
+        super().__init__(
+            context,
+            http_client=http_client,
+            timeout=timeout,
+            chat_endpoint=chat_endpoint,
+        )
+        self.endpoint = endpoint
