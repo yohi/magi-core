@@ -196,17 +196,24 @@ class OpenAIAdapter:
             "model": self.model,
             "messages": [
                 {"role": "system", "content": request.system_prompt},
-                {"role": "user", "content": user_content},
             ],
             "max_tokens": request.max_tokens,
             "temperature": request.temperature,
         }
 
+        # content 形式の決定 (既定はマルチパートだが、options.use_plain_text があれば文字列にする)
+        use_plain_text = self.context.options.get("use_plain_text", False)
+        
+        if use_plain_text:
+            payload["messages"].append({"role": "user", "content": request.user_prompt})
+        else:
+            payload["messages"].append({"role": "user", "content": user_content})
+
         url = f"{self.endpoint}{self._chat_endpoint}"
         try:
             response = await self._client.post(
                 url,
-                headers=self._auth_headers(),
+                headers=self._all_headers(),
                 json=payload,
                 timeout=self._timeout,
             )
@@ -290,7 +297,22 @@ class OpenAIAdapter:
         )
 
     def _auth_headers(self) -> Dict[str, str]:
+        # options に "use_api_key_header" があれば api-key ヘッダーを使用、なければ Bearer
+        if self.context.options.get("use_api_key_header", False):
+            return {"api-key": self.context.api_key}
         return {"Authorization": f"Bearer {self.context.api_key}"}
+
+    def _all_headers(self) -> Dict[str, str]:
+        """認証ヘッダーとカスタムヘッダーを統合"""
+        headers = self._auth_headers()
+        
+        # options 内の "headers" 辞書があればマージ
+        custom_headers = self.context.options.get("headers")
+        if isinstance(custom_headers, dict):
+            for k, v in custom_headers.items():
+                headers[str(k)] = str(v)
+                
+        return headers
 
     def _validate_required_fields(self, fields: Iterable[str]) -> None:
         missing = [field for field in fields if not getattr(self.context, field)]

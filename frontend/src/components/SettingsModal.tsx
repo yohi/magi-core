@@ -181,6 +181,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </label>
                       </div>
                     )}
+                    {["openai", "flixa", "openrouter", "local"].includes(id) && (
+                      <div style={{ display: 'flex', alignItems: 'center', marginTop: '2px', color: '#888' }}>
+                        <input 
+                          type="checkbox" 
+                          id={`plain-text-${id}`}
+                          checked={systemSettings.providerOptions?.[id]?.use_plain_text === true}
+                          onChange={() => toggleProviderOption(id, "use_plain_text")}
+                          style={{ width: 'auto', marginRight: '6px' }}
+                        />
+                        <label htmlFor={`plain-text-${id}`} style={{ cursor: 'pointer', fontSize: '10px' }}>
+                          USE PLAIN TEXT CONTENT (LEGACY)
+                        </label>
+                      </div>
+                    )}
+                    {["flixa"].includes(id) && (
+                      <div style={{ display: 'flex', alignItems: 'center', marginTop: '2px', color: '#888' }}>
+                        <input 
+                          type="checkbox" 
+                          id={`api-key-header-${id}`}
+                          checked={systemSettings.providerOptions?.[id]?.use_api_key_header === true}
+                          onChange={() => toggleProviderOption(id, "use_api_key_header")}
+                          style={{ width: 'auto', marginRight: '6px' }}
+                        />
+                        <label htmlFor={`api-key-header-${id}`} style={{ cursor: 'pointer', fontSize: '10px' }}>
+                          USE 'api-key' HEADER (FOR SOME GATEWAYS)
+                        </label>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {activeProviderIds.length === 0 && <div>No providers configured.</div>}
