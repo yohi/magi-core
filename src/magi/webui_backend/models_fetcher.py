@@ -53,20 +53,22 @@ class ModelsFetcher:
                         provider = raw[:slash_idx].lower()
                         model_id = raw[slash_idx + 1:]
                         
+                        # 通常のプロバイダ追加
                         if provider in whitelist:
                             models.append({
                                 "id": model_id,
                                 "provider": provider,
                                 "name": model_id
                             })
-                            
-                            # Flixa は OpenAI 互換のため、OpenAI のモデルを Flixa にも適用する
-                            if provider == "openai" and "flixa" in whitelist:
-                                models.append({
-                                    "id": model_id,
-                                    "provider": "flixa",
-                                    "name": f"Flixa {model_id}"
-                                })
+                        
+                        # Flixa は OpenAI 互換のため、OpenAI のモデルを Flixa にも適用する
+                        # (OpenAI がホワイトリストになくても Flixa があれば追加する)
+                        if provider == "openai" and "flixa" in whitelist:
+                            models.append({
+                                "id": model_id,
+                                "provider": "flixa",
+                                "name": f"Flixa {model_id}"
+                            })
         except Exception as e:
             logger.error(f"Failed to fetch models from {self.SCHEMA_URL}: {e}")
 
