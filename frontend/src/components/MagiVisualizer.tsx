@@ -19,7 +19,7 @@ export const MagiVisualizer: React.FC<MagiVisualizerProps> = ({
   isRunning,
 }) => {
   const scalerRef = useRef<HTMLDivElement | null>(null);
-  const blinkTimeoutRef = useRef<Record<string, number>>({});
+  const timeoutsRef = useRef<Set<number>>(new Set());
   const [blinking, setBlinking] = useState<Record<string, boolean>>({
     "MELCHIOR-1": false,
     "BALTHASAR-2": false,
@@ -42,8 +42,8 @@ export const MagiVisualizer: React.FC<MagiVisualizerProps> = ({
   // Random blinking effect
   useEffect(() => {
     if (!isRunning) {
-      Object.values(blinkTimeoutRef.current).forEach(window.clearTimeout);
-      blinkTimeoutRef.current = {};
+      timeoutsRef.current.forEach(window.clearTimeout);
+      timeoutsRef.current.clear();
       setBlinking({ "MELCHIOR-1": false, "BALTHASAR-2": false, "CASPER-3": false });
       return;
     }
@@ -53,19 +53,22 @@ export const MagiVisualizer: React.FC<MagiVisualizerProps> = ({
     units.forEach(unit => {
       const runBlink = () => {
         setBlinking(prev => ({ ...prev, [unit]: true }));
-        setTimeout(() => {
+        const t1 = window.setTimeout(() => {
           setBlinking(prev => ({ ...prev, [unit]: false }));
+          timeoutsRef.current.delete(t1);
         }, 30 + Math.random() * 70);
+        timeoutsRef.current.add(t1);
         
         const nextDelay = 50 + Math.random() * 200;
-        blinkTimeoutRef.current[unit] = window.setTimeout(runBlink, nextDelay);
+        const t2 = window.setTimeout(runBlink, nextDelay);
+        timeoutsRef.current.add(t2);
       };
       runBlink();
     });
 
     return () => {
-      Object.values(blinkTimeoutRef.current).forEach(window.clearTimeout);
-      blinkTimeoutRef.current = {};
+      timeoutsRef.current.forEach(window.clearTimeout);
+      timeoutsRef.current.clear();
     };
   }, [isRunning]);
 

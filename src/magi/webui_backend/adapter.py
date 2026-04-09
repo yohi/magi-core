@@ -6,13 +6,13 @@ WebUIとMagi Core（ConsensusEngine）を接続するためのアダプターイ
 import asyncio
 import copy
 import logging
-import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Dict, Optional
 
 from magi.config.manager import Config
 from magi.config.provider import ProviderConfigLoader
+from magi.config.settings import MagiSettings
 from magi.core.consensus import ConsensusEngine
 from magi.core.providers import (
     ProviderAdapterFactory,
@@ -68,7 +68,12 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
 
     async def run(self, prompt: str, options: SessionOptions) -> AsyncIterator[Dict[str, Any]]:
         run_config = copy.deepcopy(self.config)
-        run_config.template_base_path = str(Path("/app/templates").absolute())
+        # テンプレートベースパスの設定
+        template_base_path = getattr(run_config, "template_base_path", None)
+        if not template_base_path:
+            # デフォルト値の設定（ハードコーディングからの移行）
+            template_base_path = str(Path("/app/templates").absolute())
+        run_config.template_base_path = template_base_path
 
         api_keys = getattr(options, "api_keys", {}) or {}
         provider_options = getattr(options, "provider_options", {}) or {}
@@ -141,7 +146,8 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
             from magi.config.settings import PersonaConfig, LLMConfig
             for unit_key, cfg in unit_configs.items():
                 p_type = self._map_unit_to_persona(unit_key)
-                if not p_type: continue
+                if not p_type:
+                    continue
 
                 original_pid = (cfg.get("provider") or "").lower()
                 pid = original_pid
@@ -218,9 +224,11 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
             if unit_configs:
                 for unit_key, cfg in unit_configs.items():
                     p_type = self._map_unit_to_persona(unit_key)
-                    if not p_type: continue
+                    if not p_type:
+                        continue
                     persona = engine.persona_manager.get_persona(p_type)
-                    if persona: persona.override_prompt = cfg.get("persona")
+                    if persona:
+                        persona.override_prompt = cfg.get("persona")
 
             yield {"type": "phase", "phase": "THINKING"}
             yield {"type": "progress", "pct": 10}
@@ -244,9 +252,12 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
                             p_val = "RESOLVED"
                         
                         yield {"type": "phase", "phase": p_val}
-                        if "THINKING" in p_val: yield {"type": "progress", "pct": 10}
-                        elif "DEBATE" in p_val: yield {"type": "progress", "pct": 40}
-                        elif "VOTING" in p_val: yield {"type": "progress", "pct": 80}
+                        if "THINKING" in p_val:
+                            yield {"type": "progress", "pct": 10}
+                        elif "DEBATE" in p_val:
+                            yield {"type": "progress", "pct": 40}
+                        elif "VOTING" in p_val:
+                            yield {"type": "progress", "pct": 80}
                         elif "RESOLVED" in p_val and not sent_final_progress:
                             yield {"type": "progress", "pct": 100}
                             sent_final_progress = True

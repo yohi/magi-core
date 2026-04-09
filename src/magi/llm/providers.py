@@ -353,18 +353,21 @@ class OpenAIAdapter:
             message_map = {
                 401: "API 認証に失敗しました。APIキーを確認してください。",
                 402: "クレジット不足または支払いが必要です。APIの支払い設定を確認してください。",
-                403: "API へのアクセスが拒否されました。権限を確認してください。"
+                403: "API へのアクセスが拒否されました。権限を確認するか、しばらく待ってから再試行してください。"
             }
+            # 403 はレートリミットや一時的な拒否の場合があるため、recoverable を True に設定してみる
+            status = response.status_code
+            is_auth_error = (status == 401)
             raise MagiException(
                 create_api_error(
-                    code=ErrorCode.API_AUTH_ERROR if response.status_code != 402 else ErrorCode.API_ERROR,
-                    message=f"{self.provider_id} {message_map.get(response.status_code)}",
+                    code=ErrorCode.API_AUTH_ERROR if is_auth_error else ErrorCode.API_ERROR,
+                    message=f"{self.provider_id} {message_map.get(status)}",
                     details={
                         "provider": self.provider_id,
-                        "status": response.status_code,
+                        "status": status,
                         "response": getattr(response, "text", "")[:200],
                     },
-                    recoverable=False,
+                    recoverable=(status == 403), # 403 はリトライを許可
                 )
             )
         if 200 <= response.status_code < 300:
@@ -647,10 +650,11 @@ class FlixaAdapter(OpenAIAdapter):
         *,
         http_client: Optional[Any] = None,
         timeout: float = 30.0,
-        chat_endpoint: str = "/responses",
+        chat_endpoint: str = "/agent/responses",
     ) -> None:
-        # コンテキストにエンドポイントがない場合は Flixa の既定値を使用
-        endpoint = context.endpoint or "https://api.flixa.engineer/v1/agent"
+        # Flixa API のベースエンドポイント。
+        # OpenAIAdapter との整合性（models エンドポイント等）のため /v1 までをベースとする。
+        endpoint = (context.endpoint or "https://api.flixa.engineer/v1").rstrip("/")
 
         super().__init__(
             context,
@@ -661,33 +665,26 @@ class FlixaAdapter(OpenAIAdapter):
         self.endpoint = endpoint
 
     async def send(self, request: LLMRequest) -> LLMResponse:
-        """Chat Completions または Open Responses エンドポイントへ送信し、結果をパースする"""
-        # 親クラスの send を呼び出す
-        response = await super().send(request)
-        
-        # もし結果が空の場合、Flixa 独自のレスポンス形式（Open Responses）をパースしてみる
-        # (親クラスの send は httpx レスポンスを json() して choices を探すが、
-        # 見つからない場合は content="" で LLMResponse を返す)
-        if not response.content:
-            # 再パースのために生のレスポンスデータを取得したいが、LLMResponse には含まれていない
-            # そのため、このメソッドでロジックを再実装するか、親クラスを拡張する必要がある。
-            # ここではシンプルに、Flixa 向けに send をオーバーライドする。
-            return await self._send_flixa(request)
-            
-        return response
+        """Flixa (Open Responses) 形式での送信とパース"""
+        # OpenAIAdapter.send は OpenAI 形式のペイロードを構築するが、
+        # Flixa の Open Responses API エンドポイント (/responses) は
+        # 独自のペイロード形式を要求するため、直接 _send_flixa を呼び出す。
+        return await self._send_flixa(request)
 
     async def _send_flixa(self, request: LLMRequest) -> LLMResponse:
         """Flixa (Open Responses) 形式での送信とパース"""
         import base64
         self._validate_prompts(request)
 
-        user_content = [{"type": "text", "text": request.user_prompt}]
+        # Flixa (Open Responses) 形式では input_text, input_image を使用
+        user_content = [{"type": "input_text", "text": request.user_prompt}]
         if request.attachments:
             for attachment in request.attachments:
                 encoded_data = base64.b64encode(attachment.data).decode("utf-8")
                 data_url = f"data:{attachment.mime_type};base64,{encoded_data}"
-                user_content.append({"type": "image_url", "image_url": {"url": data_url}})
+                user_content.append({"type": "input_image", "url": data_url})
 
+        # 以前動作していた形式 (messages 内に system ロールを含む) に戻す
         payload = {
             "model": self.model,
             "messages": [
@@ -696,19 +693,27 @@ class FlixaAdapter(OpenAIAdapter):
             ],
             "max_tokens": request.max_tokens,
             "temperature": request.temperature,
+            "wait": True,  # 同期レスポンスを待機
         }
 
-        # エンドポイントの決定 (既定は /responses)
+        # エンドポイントの決定
+        # 404エラー (Cannot POST /v1/agent) を防ぐため、確実に /responses へのパスを構築する
         endpoint_suffix = self.context.options.get("endpoint_suffix", self._chat_endpoint)
-        if self.context.options.get("raw_endpoint", False):
-            url = self.endpoint
-        else:
-            url = f"{self.endpoint}{endpoint_suffix}"
+        url = f"{self.endpoint.rstrip('/')}/{endpoint_suffix.lstrip('/')}"
+        
+        # 最終的な URL が /responses で終わっていない場合、かつ raw_endpoint でない場合は補完を試みる
+        if not url.endswith("/responses") and not self.context.options.get("raw_endpoint"):
+            url = f"{url.rstrip('/')}/responses"
+
+        # ヘッダーの調整: Flixa では Authorization: Bearer と x-api-key の両方が必要な場合がある
+        headers = self._all_headers()
+        if self.context.api_key and "x-api-key" not in headers:
+            headers["x-api-key"] = self.context.api_key
 
         try:
             resp = await self._client.post(
                 url,
-                headers=self._all_headers(),
+                headers=headers,
                 json=payload,
                 timeout=self._timeout,
             )

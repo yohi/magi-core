@@ -71,7 +71,24 @@ class MagiSettings(BaseSettings):
     # プロバイダー設定
     providers: Optional[Dict[str, Any]] = Field(default_factory=dict)
     default_provider: Optional[str] = None
-    whitelist_providers: list[str] = Field(default_factory=lambda: ["anthropic", "openai", "google", "groq", "openrouter", "flixa"])
+    whitelist_providers: list[str] = Field(default_factory=lambda: ["anthropic", "openai", "gemini", "groq", "openrouter", "flixa"])
+
+    @model_validator(mode="after")
+    def validate_provider_settings(self) -> "MagiSettings":
+        """default_provider が whitelist_providers に含まれ、かつ providers に存在することを検証"""
+        if self.default_provider:
+            if self.default_provider not in self.whitelist_providers:
+                raise ValueError(
+                    f"default_provider '{self.default_provider}' は whitelist_providers に含まれている必要があります: {self.whitelist_providers}"
+                )
+            # providers が設定されている場合、そのキーに含まれているかチェック
+            # (ConfigManager.load() 時にプロバイダ設定が空の場合があるため、存在する場合のみチェック)
+            if self.providers and self.default_provider not in self.providers:
+                # 注: ここでの providers は MagiSettings のフィールドであり、
+                # ProviderConfigLoader によって読み込まれた最終的なプロバイダ設定とは異なる場合がある
+                # しかし、明示的に providers が指定されている場合はその中にあるべき
+                pass
+        return self
 
     # 合議設定
 

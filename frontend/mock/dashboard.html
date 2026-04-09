@@ -685,7 +685,7 @@
         async function fetchModelDefinitions() {
             addLog("FETCHING MODEL DEFINITIONS...", "info");
             try {
-                const response = await fetch("https://models.dev/model-schema.json");
+                const response = await fetch("/api/models");
                 const data = await response.json();
                 modelDefinitions = data.models || [];
                 addLog(`LOADED ${modelDefinitions.length} MODELS`, "info");
@@ -697,6 +697,20 @@
                     { id: "gemini-1.5-pro", provider: "google", name: "Gemini 1.5 Pro" }
                 ];
             }
+        }
+
+        function startSequence() {
+            addLog("STARTING MAGI SEQUENCE...");
+            btnStart.disabled = true;
+            btnReset.disabled = false;
+            // Additional sequence logic can be added here
+        }
+
+        function resetSequence() {
+            addLog("RESETTING SYSTEM...");
+            btnStart.disabled = false;
+            btnReset.disabled = true;
+            // Additional reset logic can be added here
         }
 
         function populateSupportedProvidersUI() {

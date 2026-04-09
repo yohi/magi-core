@@ -219,7 +219,11 @@ if dist_path.exists():
     
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
-        # API へのリクエストは api_router で処理されるため、ここには来ない
+        # API へのリクエストは本来 api_router で処理されるが、
+        # 存在しないエンドポイントの場合に SPA の index.html にフォールバックしないようにする
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="API endpoint not found")
+
         # それ以外のリクエストは index.html を返す (SPA)
         file_path = dist_path / full_path
         if full_path and file_path.exists() and file_path.is_file():

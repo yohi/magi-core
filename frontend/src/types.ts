@@ -21,14 +21,28 @@ export type EventPayload = {
 };
 
 // ... backend compatibility
+export interface PluginConfig {
+  id: string;
+  enabled: boolean;
+  options?: Record<string, unknown>;
+}
+
+export interface Attachment {
+  id: string;
+  type: string;
+  content?: string;
+  url?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export type SessionOptionsPayload = {
   model?: string;
   max_rounds?: number;
   api_keys?: Record<string, string>;
   unit_configs?: AllUnitSettings;
   system_config?: SystemSettings;
-  plugin?: any;
-  attachments?: any[];
+  plugin?: PluginConfig;
+  attachments?: Attachment[];
 };
 
 export type HealthResponse = {

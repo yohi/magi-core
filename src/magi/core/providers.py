@@ -14,6 +14,7 @@ from magi.config.provider import (
     ProviderConfigs,
     SUPPORTED_PROVIDERS,
     mask_secret,
+    resolve_provider_alias,
 )
 from magi.errors import ErrorCode, MagiError, MagiException
 from magi.core.utils import normalize_model_name
@@ -75,11 +76,16 @@ class ProviderRegistry:
     ) -> None:
         self._providers = configs.providers
         self.default_provider = configs.default_provider
-        # configs.whitelist_providers があればそれを優先し、なければ SUPPORTED_PROVIDERS を使う
-        whitelist = configs.whitelist_providers if configs.whitelist_providers is not None else (supported_providers or SUPPORTED_PROVIDERS)
+        # configs.whitelist_providers があればそれを優先し(空でない場合)、なければ SUPPORTED_PROVIDERS を使う
+        whitelist = configs.whitelist_providers if configs.whitelist_providers else (supported_providers or SUPPORTED_PROVIDERS)
         self._supported: Set[str] = set(
             p.lower() for p in whitelist
         )
+
+    @staticmethod
+    def resolve_alias(provider_id: str) -> str:
+        """エイリアスを正規化する"""
+        return resolve_provider_alias(provider_id)
 
     def list(self) -> Iterable[str]:
         """利用可能なプロバイダ一覧"""

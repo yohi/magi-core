@@ -21,6 +21,60 @@ const WS_BASE = import.meta.env.VITE_WS_BASE ?? "";
 const STORAGE_KEY_SYSTEM = "magi_system_settings";
 const STORAGE_KEY_UNIT = "magi_unit_settings";
 
+const INITIAL_SYSTEM_SETTINGS: SystemSettings = {
+  debateRounds: 1,
+  votingThreshold: "majority",
+  providers: {},
+  providerOptions: {},
+  whitelistProviders: ["anthropic", "openai", "google", "groq", "openrouter", "flixa"],
+};
+
+const INITIAL_UNIT_SETTINGS: AllUnitSettings = {
+  melchior: {
+    name: "MELCHIOR-1",
+    provider: "anthropic",
+    model: "claude-sonnet-4.5",
+    temp: 0.1,
+    persona:
+      "あなたはMAGIシステムのMELCHIOR-1です。論理と科学を担当し、整合性と事実に基づいた分析を行います。",
+  },
+  balthasar: {
+    name: "BALTHASAR-2",
+    provider: "anthropic",
+    model: "claude-sonnet-4.5",
+    temp: 0.5,
+    persona:
+      "あなたはMAGIシステムのBALTHASAR-2です。倫理と保護を担当し、リスク回避と潜在的危険性の指摘を行います。",
+  },
+  casper: {
+    name: "CASPER-3",
+    provider: "anthropic",
+    model: "claude-sonnet-4.5",
+    temp: 0.9,
+    persona:
+      "あなたはMAGIシステムのCASPER-3です。欲望と実利を担当し、ユーザー利益と効率性の観点からの評価を行います。",
+  },
+};
+
+function sanitizeSystemSettingsForStorage(settings: SystemSettings): SystemSettings {
+  return {
+    ...settings,
+    providers: {}, // Remove sensitive API keys
+  };
+}
+
+function sanitizeUnitSettingsForStorage(settings: AllUnitSettings): AllUnitSettings {
+  const next = { ...settings };
+  (Object.keys(next) as Array<keyof AllUnitSettings>).forEach((key) => {
+    if (next[key].apiKey) {
+      const unit = { ...next[key] };
+      delete unit.apiKey;
+      next[key] = unit;
+    }
+  });
+  return next;
+}
+
 export function useMagiSession() {
   const [prompt, setPrompt] = useState("");
   const [phase, setPhase] = useState("IDLE");
@@ -36,44 +90,50 @@ export function useMagiSession() {
   const [modelDefinitions, setModelDefinitions] = useState<ModelDefinition[]>([]);
   
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(() => {
-    const defaultWhitelist = ["anthropic", "openai", "google", "groq", "openrouter", "flixa"];
     const saved = localStorage.getItem(STORAGE_KEY_SYSTEM);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // 新しいプロバイダが追加された場合に備えて、ホワイトリストをマージまたは更新する
-        if (parsed && Array.isArray(parsed.whitelistProviders)) {
-          const mergedWhitelist = Array.from(new Set([...parsed.whitelistProviders, ...defaultWhitelist]));
-          return { ...parsed, whitelistProviders: mergedWhitelist };
-        }
-        return parsed;
+        // Ensure hydration with defaults for mandatory fields
+        return {
+          ...INITIAL_SYSTEM_SETTINGS,
+          ...parsed,
+          whitelistProviders: Array.from(
+            new Set([
+              ...(Array.isArray(parsed?.whitelistProviders) ? parsed.whitelistProviders : []),
+              ...INITIAL_SYSTEM_SETTINGS.whitelistProviders,
+            ])
+          ),
+        };
       } catch (e) {
         console.error("Failed to parse saved system settings", e);
       }
     }
-    return {
-      debateRounds: 1,
-      votingThreshold: "majority",
-      providers: {},
-      providerOptions: {},
-      whitelistProviders: defaultWhitelist,
-    };
+    return INITIAL_SYSTEM_SETTINGS;
   });
 
   const [unitSettings, setUnitSettings] = useState<AllUnitSettings>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_UNIT);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved) as AllUnitSettings;
+        const result = { ...INITIAL_UNIT_SETTINGS };
+        (Object.keys(INITIAL_UNIT_SETTINGS) as Array<keyof AllUnitSettings>).forEach((key) => {
+          if (parsed[key]) {
+            result[key] = {
+              ...INITIAL_UNIT_SETTINGS[key],
+              ...parsed[key],
+              // Ensure provider field exists for each unit (hydration)
+              provider: parsed[key].provider || INITIAL_UNIT_SETTINGS[key].provider,
+            };
+          }
+        });
+        return result;
       } catch (e) {
         console.error("Failed to parse saved unit settings", e);
       }
     }
-    return {
-      melchior: { name: "MELCHIOR-1", provider: "anthropic", model: "claude-sonnet-4.5", temp: 0.1, persona: "あなたはMAGIシステムのMELCHIOR-1です。論理と科学を担当し、整合性と事実に基づいた分析を行います。" },
-      balthasar: { name: "BALTHASAR-2", provider: "anthropic", model: "claude-sonnet-4.5", temp: 0.5, persona: "あなたはMAGIシステムのBALTHASAR-2です。倫理と保護を担当し、リスク回避と潜在的危険性の指摘を行います。" },
-      casper: { name: "CASPER-3", provider: "anthropic", model: "claude-sonnet-4.5", temp: 0.9, persona: "あなたはMAGIシステムのCASPER-3です。欲望と実利を担当し、ユーザー利益と効率性の観点からの評価を行います。" },
-    };
+    return INITIAL_UNIT_SETTINGS;
   });
 
   const logIdRef = useRef(0);
@@ -338,7 +398,7 @@ export function useMagiSession() {
         requestAbortRef.current = null;
       }
     }
-  }, [addLog, connectWebSocket, prompt, resetUi, unitSettings]);
+  }, [addLog, connectWebSocket, prompt, resetUi, unitSettings, systemSettings]);
 
   const cancelSession = useCallback(async () => {
     if (!sessionId) return;
@@ -469,7 +529,7 @@ export function useMagiSession() {
         return changed ? next : prev;
       });
     };
-    fetchModels();
+    void fetchModels();
   }, []);
 
   useEffect(() => {
@@ -510,11 +570,13 @@ export function useMagiSession() {
   }, [activeUnit]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_SYSTEM, JSON.stringify(systemSettings));
+    const sanitized = sanitizeSystemSettingsForStorage(systemSettings);
+    localStorage.setItem(STORAGE_KEY_SYSTEM, JSON.stringify(sanitized));
   }, [systemSettings]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_UNIT, JSON.stringify(unitSettings));
+    const sanitized = sanitizeUnitSettingsForStorage(unitSettings);
+    localStorage.setItem(STORAGE_KEY_UNIT, JSON.stringify(sanitized));
   }, [unitSettings]);
 
   return {

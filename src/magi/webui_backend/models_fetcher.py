@@ -1,5 +1,6 @@
 import httpx
 import logging
+import time
 from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -10,6 +11,7 @@ class ModelsFetcher:
     """
     
     SCHEMA_URL = "https://models.dev/model-schema.json"
+    CACHE_TTL = 3600  # 1 hour
     
     def __init__(self, config: Any):
         self.config = config
@@ -21,6 +23,11 @@ class ModelsFetcher:
         models.dev および OpenRouter API からモデル定義を取得し、
         設定されたホワイトリストに基づいてフィルタリングして返す
         """
+        # キャッシュのチェック
+        now = time.time()
+        if self._cached_models and (now - self._last_fetch_time) < self.CACHE_TTL:
+            return self._cached_models
+
         # SSL検証設定の取得
         verify_ssl = True
         if hasattr(self.config, "providers") and isinstance(self.config.providers, dict):
@@ -42,6 +49,17 @@ class ModelsFetcher:
         
         whitelist = [p.lower() for p in whitelist]
         models = []
+        seen = set()  # 重複排除用: (provider, id)
+
+        def add_model(provider: str, model_id: str, name: Optional[str] = None):
+            key = (provider.lower(), model_id)
+            if key not in seen:
+                seen.add(key)
+                models.append({
+                    "id": model_id,
+                    "provider": provider.lower(),
+                    "name": name or model_id
+                })
 
         # 1. models.dev から取得
         try:
@@ -68,22 +86,16 @@ class ModelsFetcher:
                         
                         # 通常のプロバイダ追加
                         if provider in whitelist:
-                            models.append({
-                                "id": model_id,
-                                "provider": provider,
-                                "name": model_id
-                            })
+                            add_model(provider, model_id)
                         
                         # Flixa は OpenAI 互換のため、OpenAI のモデルを Flixa にも適用する
                         # (OpenAI がホワイトリストになくても Flixa があれば追加する)
                         if provider == "openai" and "flixa" in whitelist:
-                            models.append({
-                                "id": model_id,
-                                "provider": "flixa",
-                                "name": f"Flixa {model_id}"
-                            })
+                            add_model("flixa", model_id, f"Flixa {model_id}")
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error fetching models from {self.SCHEMA_URL}: {e}")
         except Exception as e:
-            logger.error(f"Failed to fetch models from {self.SCHEMA_URL}: {e}")
+            logger.error(f"Unexpected error fetching models from {self.SCHEMA_URL}: {e}")
 
         # 2. OpenRouter API から取得 (ホワイトリストにある場合のみ)
         if "openrouter" in whitelist:
@@ -97,19 +109,27 @@ class ModelsFetcher:
                         for m in or_models:
                             m_id = m.get("id")
                             if m_id:
-                                models.append({
-                                    "id": m_id,
-                                    "provider": "openrouter",
-                                    "name": m.get("name", m_id)
-                                })
+                                add_model("openrouter", m_id, m.get("name", m_id))
+            except httpx.HTTPError as e:
+                logger.error(f"HTTP error fetching models from OpenRouter API: {e}")
             except Exception as e:
-                logger.error(f"Failed to fetch models from OpenRouter API: {e}")
+                logger.error(f"Unexpected error fetching models from OpenRouter API: {e}")
 
         # 3. Flixa API から取得 (ホワイトリストにある場合のみ)
         if "flixa" in whitelist:
             try:
                 # 設定からエンドポイントを取得、なければデフォルト
-                flixa_endpoint = getattr(self.config, "flixa", {}).get("endpoint") or "https://api.flixa.engineer/v1/agent"
+                flixa_cfg = {}
+                if hasattr(self.config, "providers") and isinstance(self.config.providers, dict):
+                    flixa_cfg = self.config.providers.get("flixa", {})
+                
+                flixa_endpoint = flixa_cfg.get("endpoint")
+                if not flixa_endpoint:
+                    flixa_endpoint = getattr(self.config, "flixa", {}).get("endpoint")
+                
+                if not flixa_endpoint:
+                    flixa_endpoint = "https://api.flixa.engineer/v1/agent"
+
                 async with httpx.AsyncClient(timeout=10.0, verify=verify_ssl) as client:
                     flixa_response = await client.get(f"{flixa_endpoint}/models")
                     if flixa_response.status_code == 200:
@@ -119,27 +139,31 @@ class ModelsFetcher:
                         for m in flixa_models:
                             m_id = m.get("id")
                             if m_id:
-                                models.append({
-                                    "id": m_id,
-                                    "provider": "flixa",
-                                    "name": m.get("name", m_id)
-                                })
+                                add_model("flixa", m_id, m.get("name", m_id))
+            except httpx.HTTPError as e:
+                logger.debug(f"HTTP error fetching models from Flixa API (expected if no API key): {e}")
             except Exception as e:
-                logger.debug(f"Could not fetch models from Flixa API (expected if no API key): {e}")
+                logger.debug(f"Unexpected error fetching models from Flixa API: {e}")
 
         # 取得できたモデルがあればキャッシュを更新
         if models:
             self._cached_models = models
+            self._last_fetch_time = time.time()
             return models
         else:
+            if self._cached_models:
+                logger.info("Using expired cached models as fetch failed")
+                return self._cached_models
             return self._get_fallback_models(whitelist)
 
     def _get_fallback_models(self, whitelist: List[str]) -> List[Dict[str, str]]:
         """フォールバックモデルリストを返す"""
         fallbacks = [
-            {"id": "claude-sonnet-4.5", "provider": "anthropic", "name": "Claude 3.5 Sonnet (Fallback)"},
             {"id": "claude-3-5-sonnet-20241022", "provider": "anthropic", "name": "Claude 3.5 Sonnet (20241022)"},
+            {"id": "claude-3-5-sonnet-latest", "provider": "anthropic", "name": "Claude 3.5 Sonnet (Latest)"},
+            {"id": "claude-3-5-haiku-20241022", "provider": "anthropic", "name": "Claude 3.5 Haiku (20241022)"},
             {"id": "gpt-4o", "provider": "openai", "name": "GPT-4o (Fallback)"},
+            {"id": "gpt-4o-2024-08-06", "provider": "openai", "name": "GPT-4o (2024-08-06)"},
             {"id": "gpt-4-turbo", "provider": "openai", "name": "GPT-4 Turbo (Fallback)"},
             {"id": "gpt-4", "provider": "openai", "name": "GPT-4 (Fallback)"},
             {"id": "gpt-3.5-turbo", "provider": "openai", "name": "GPT-3.5 Turbo (Fallback)"},
@@ -150,6 +174,7 @@ class ModelsFetcher:
             {"id": "gpt-4", "provider": "flixa", "name": "Flixa GPT-4 (Fallback)"},
             {"id": "gpt-3.5-turbo", "provider": "flixa", "name": "Flixa GPT-3.5 Turbo (Fallback)"},
             
-            {"id": "gemini-1.5-pro", "provider": "google", "name": "Gemini 1.5 Pro (Fallback)"}
+            {"id": "gemini-1.5-pro", "provider": "google", "name": "Gemini 1.5 Pro (Fallback)"},
+            {"id": "gemini-1.5-flash", "provider": "google", "name": "Gemini 1.5 Flash (Fallback)"}
         ]
         return [f for f in fallbacks if f["provider"] in whitelist]

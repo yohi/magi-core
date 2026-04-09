@@ -1,5 +1,5 @@
 import React, { Dispatch, SetStateAction, useState, useEffect } from 'react';
-import { AllUnitSettings, SystemSettings, ModelDefinition } from '../types';
+import { AllUnitSettings, SystemSettings, ModelDefinition, UnitSettings } from '../types';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -16,13 +16,10 @@ interface SettingsModalProps {
 const SUPPORTED_PROVIDERS = [
   { id: "anthropic", name: "Anthropic (Claude)" },
   { id: "openai", name: "OpenAI (GPT-4o/o1)" },
-  { id: "google", name: "Google (Gemini)" },
+  { id: "gemini", name: "Google (Gemini)" },
   { id: "groq", name: "Groq (Llama-3)" },
   { id: "openrouter", name: "OpenRouter" },
-  { id: "flixa", name: "Flixa" },
-  { id: "mistral", name: "Mistral AI" },
-  { id: "deepseek", name: "DeepSeek" },
-  { id: "local", name: "Local LLM (Ollama/vLLM)" }
+  { id: "flixa", name: "Flixa" }
 ];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -36,33 +33,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   saveSettings,
   closeModal,
 }) => {
+  const [localUnitSettings, setLocalUnitSettings] = useState<AllUnitSettings>(unitSettings);
+  const [localSystemSettings, setLocalSystemSettings] = useState<SystemSettings>(systemSettings);
   const [newProviderId, setNewProviderId] = useState("openai");
   const [newProviderKey, setNewProviderKey] = useState("");
   const [modelSearch, setModelSearch] = useState("");
+
+  // Sync with props when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setLocalUnitSettings(unitSettings);
+      setLocalSystemSettings(systemSettings);
+    }
+  }, [isOpen, unitSettings, systemSettings]);
 
   if (!isOpen || !currentEditingUnit) return null;
 
   const isSystem = currentEditingUnit === "system";
   const unitKey = isSystem ? null : currentEditingUnit;
-  const currentUnit = unitKey ? unitSettings[unitKey] : null;
+  const currentUnit = unitKey ? localUnitSettings[unitKey] : null;
 
-  // Handlers for Unit Settings
-  const handleUnitChange = (field: string, value: any) => {
+  // Handlers for Unit Settings (Draft)
+  const handleUnitChange = <K extends keyof UnitSettings>(field: K, value: UnitSettings[K]) => {
     if (!unitKey) return;
-    setUnitSettings(prev => ({
+    setLocalUnitSettings(prev => ({
       ...prev,
       [unitKey]: { ...prev[unitKey], [field]: value }
     }));
   };
 
-  // Handlers for System Settings
-  const handleSystemChange = (field: string, value: any) => {
-    setSystemSettings(prev => ({ ...prev, [field]: value }));
+  // Handlers for System Settings (Draft)
+  const handleSystemChange = <K extends keyof SystemSettings>(field: K, value: SystemSettings[K]) => {
+    setLocalSystemSettings(prev => ({ ...prev, [field]: value }));
   };
 
   const addProvider = () => {
     if (!newProviderKey) return;
-    setSystemSettings(prev => ({
+    setLocalSystemSettings(prev => ({
       ...prev,
       providers: { ...prev.providers, [newProviderId]: newProviderKey }
     }));
@@ -70,7 +77,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const removeProvider = (id: string) => {
-    setSystemSettings(prev => {
+    setLocalSystemSettings(prev => {
       const next = { ...prev.providers };
       delete next[id];
       const nextOptions = { ...prev.providerOptions };
@@ -80,7 +87,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const toggleProviderOption = (providerId: string, optionKey: string) => {
-    setSystemSettings(prev => {
+    setLocalSystemSettings(prev => {
       const providerOptions = prev.providerOptions || {};
       const currentOptions = providerOptions[providerId] || {};
       const newValue = !currentOptions[optionKey];
@@ -98,8 +105,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     });
   };
 
-  const filteredProviders = SUPPORTED_PROVIDERS.filter(p => systemSettings.whitelistProviders.includes(p.id));
-  const activeProviderIds = Object.keys(systemSettings.providers);
+  const filteredProviders = SUPPORTED_PROVIDERS.filter(p => localSystemSettings.whitelistProviders.includes(p.id));
+  const activeProviderIds = Object.keys(localSystemSettings.providers);
   const providerModels = currentUnit ? modelDefinitions.filter(m => m.provider === currentUnit.provider) : [];
   const availableModels = providerModels.filter(m => 
     m.name.toLowerCase().includes(modelSearch.toLowerCase()) || 
@@ -109,16 +116,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleProviderChange = (newProvider: string) => {
     if (!unitKey) return;
     setModelSearch("");
-    // プロバイダが変更されたら、そのプロバイダの最初のモデルをデフォルトとしてセットする
+    
+    // Reset model if new provider doesn't have a matching model in definitions
+    const hasCurrentModel = modelDefinitions.some(m => m.provider === newProvider && m.id === localUnitSettings[unitKey].model);
     const firstModel = modelDefinitions.find(m => m.provider === newProvider);
-    setUnitSettings(prev => ({
+    
+    setLocalUnitSettings(prev => ({
       ...prev,
       [unitKey]: { 
         ...prev[unitKey], 
         provider: newProvider,
-        model: firstModel ? firstModel.id : prev[unitKey].model
+        model: hasCurrentModel ? prev[unitKey].model : (firstModel ? firstModel.id : "")
       }
     }));
+  };
+
+  const onSave = () => {
+    setUnitSettings(localUnitSettings);
+    setSystemSettings(localSystemSettings);
+    // Use timeout to ensure state updates are processed before saveSettings (which might trigger API call)
+    setTimeout(() => {
+      saveSettings();
+    }, 0);
   };
 
   return (
@@ -167,13 +186,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <a href="#" onClick={(e) => { e.preventDefault(); removeProvider(id); }} style={{ color: 'var(--magi-red)', textDecoration: 'none' }}>[DEL]</a>
                     </div>
                     {/* OpenAI互換または特定プロバイダ向けの追加オプション */}
-                    {["flixa", "openai", "openrouter", "google", "groq", "local"].includes(id) && (
+                    {["flixa", "openai", "openrouter", "gemini", "groq"].includes(id) && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px', borderLeft: '2px solid #333', paddingLeft: '10px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', color: '#888' }}>
                           <input 
                             type="checkbox" 
                             id={`verify-ssl-${id}`}
-                            checked={!(systemSettings.providerOptions?.[id]?.verify_ssl === false)}
+                            checked={!(localSystemSettings.providerOptions?.[id]?.verify_ssl === false)}
                             onChange={() => toggleProviderOption(id, "verify_ssl")}
                             style={{ width: 'auto', marginRight: '6px' }}
                           />
@@ -182,13 +201,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           </label>
                         </div>
                         
-                        {["flixa", "openai", "openrouter", "local"].includes(id) && (
+                        {["flixa", "openai", "openrouter"].includes(id) && (
                           <>
                             <div style={{ display: 'flex', alignItems: 'center', color: '#888' }}>
                               <input 
                                 type="checkbox" 
                                 id={`plain-text-${id}`}
-                                checked={systemSettings.providerOptions?.[id]?.use_plain_text === true}
+                                checked={localSystemSettings.providerOptions?.[id]?.use_plain_text === true}
                                 onChange={() => toggleProviderOption(id, "use_plain_text")}
                                 style={{ width: 'auto', marginRight: '6px' }}
                               />
@@ -201,7 +220,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               <input 
                                 type="checkbox" 
                                 id={`raw-endpoint-${id}`}
-                                checked={systemSettings.providerOptions?.[id]?.raw_endpoint === true}
+                                checked={localSystemSettings.providerOptions?.[id]?.raw_endpoint === true}
                                 onChange={() => toggleProviderOption(id, "raw_endpoint")}
                                 style={{ width: 'auto', marginRight: '6px' }}
                               />
@@ -213,8 +232,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px' }}>
                               <span style={{ fontSize: '9px', color: '#666' }}>AUTH:</span>
                               <select 
-                                value={systemSettings.providerOptions?.[id]?.auth_type || "bearer"}
-                                onChange={(e) => setSystemSettings(prev => ({
+                                value={localSystemSettings.providerOptions?.[id]?.auth_type || "bearer"}
+                                onChange={(e) => setLocalSystemSettings(prev => ({
                                   ...prev,
                                   providerOptions: {
                                     ...prev.providerOptions,
@@ -246,15 +265,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   type="number" 
                   min={1} 
                   max={5} 
-                  value={systemSettings.debateRounds}
+                  value={localSystemSettings.debateRounds}
                   onChange={(e) => handleSystemChange('debateRounds', parseInt(e.target.value))}
                 />
               </div>
               <div className="form-group">
                 <label>VOTING THRESHOLD:</label>
                 <select 
-                  value={systemSettings.votingThreshold}
-                  onChange={(e) => handleSystemChange('votingThreshold', e.target.value)}
+                  value={localSystemSettings.votingThreshold}
+                  onChange={(e) => handleSystemChange('votingThreshold', e.target.value as "majority" | "unanimous")}
                   style={{ width: '100%', background: '#111', color: 'var(--magi-orange)', border: '1px solid var(--magi-orange)', padding: '8px' }}
                 >
                   <option value="majority">MAJORITY (多数決)</option>
@@ -345,7 +364,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         )}
 
         <div className="modal-buttons">
-          <button id="btn-save" onClick={saveSettings} type="button">
+          <button id="btn-save" onClick={onSave} type="button">
             SAVE
           </button>
           <button id="btn-cancel-modal" onClick={closeModal} type="button">

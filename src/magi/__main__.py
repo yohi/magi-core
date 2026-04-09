@@ -104,7 +104,8 @@ def main(args: List[str] | None = None) -> int:
         if parsed.command in ("help", "version", "init", "auth"):
             config = Config(api_key="")
         else:
-            print(f"Configuration error: {e}", file=sys.stderr)
+            logger.error("Unexpected error during configuration loading", exc_info=True)
+            print(f"Internal error: {e}", file=sys.stderr)
             return 1
 
     # 2. 設定されたホワイトリストを使ってプロバイダ設定をロード・初期化
@@ -121,6 +122,11 @@ def main(args: List[str] | None = None) -> int:
     except MagiException as exc:
         if parsed.command not in ("help", "version", "init", "auth"):
             print(f"Provider configuration error: {exc.error.message}", file=sys.stderr)
+            return 1
+    except Exception as e:
+        if parsed.command not in ("help", "version", "init", "auth"):
+            logger.error("Unexpected error during provider configuration", exc_info=True)
+            print(f"Internal error: {e}", file=sys.stderr)
             return 1
 
     # CLI実行
