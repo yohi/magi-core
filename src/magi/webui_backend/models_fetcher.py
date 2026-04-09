@@ -67,6 +67,7 @@ class ModelsFetcher:
         try:
             async with httpx.AsyncClient(timeout=10.0, verify=verify_ssl) as client:
                 response = await client.get(self.SCHEMA_URL)
+                response.raise_for_status()
                 if response.status_code == 200:
                     schema = response.json()
                     enum_values = []
@@ -100,14 +101,15 @@ class ModelsFetcher:
             logger.error(f"HTTP request error fetching models from {self.SCHEMA_URL}: {e}")
         except (ValueError, TypeError) as e:
             logger.error(f"Data parsing error fetching models from {self.SCHEMA_URL}: {e}")
-        except Exception as e:
-            logger.error(f"Unexpected error fetching models from {self.SCHEMA_URL}: {e}")
+        except Exception:
+            logger.exception(f"Unexpected error fetching models from {self.SCHEMA_URL}")
 
         # 2. OpenRouter API から取得 (ホワイトリストにある場合のみ)
         if "openrouter" in whitelist:
             try:
                 async with httpx.AsyncClient(timeout=10.0, verify=verify_ssl) as client:
                     or_response = await client.get("https://openrouter.ai/api/v1/models")
+                    or_response.raise_for_status()
                     if or_response.status_code == 200:
                         or_data = or_response.json()
                         or_models = or_data.get("data", [])
@@ -118,8 +120,8 @@ class ModelsFetcher:
                                 add_model("openrouter", m_id, m.get("name", m_id))
             except httpx.HTTPError as e:
                 logger.error(f"HTTP error fetching models from OpenRouter API: {e}")
-            except Exception as e:
-                logger.error(f"Unexpected error fetching models from OpenRouter API: {e}")
+            except Exception:
+                logger.exception("Unexpected error fetching models from OpenRouter API")
 
         # 3. Flixa API から取得 (ホワイトリストにある場合のみ)
         if "flixa" in whitelist:
@@ -136,6 +138,7 @@ class ModelsFetcher:
 
                 async with httpx.AsyncClient(timeout=10.0, verify=verify_ssl) as client:
                     flixa_response = await client.get(f"{flixa_endpoint}/models")
+                    flixa_response.raise_for_status()
                     if flixa_response.status_code == 200:
                         flixa_data = flixa_response.json()
                         flixa_models = flixa_data.get("data", [])
@@ -150,8 +153,8 @@ class ModelsFetcher:
                 logger.debug(f"HTTP request error fetching models from Flixa API: {e}")
             except (ValueError, TypeError) as e:
                 logger.debug(f"Data parsing error fetching models from Flixa API: {e}")
-            except Exception as e:
-                logger.debug(f"Unexpected error fetching models from Flixa API: {e}")
+            except Exception:
+                logger.exception("Unexpected error fetching models from Flixa API")
 
         # 取得できたモデルがあればキャッシュを更新
         if models:
