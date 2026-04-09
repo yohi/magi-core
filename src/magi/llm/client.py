@@ -197,8 +197,8 @@ class LLMClient:
                 # MagiErrorを作成
                 magi_error = self._create_error_for_type(error_type, e)
 
-                # 認証エラーの場合は即座にraise（リトライしない）
-                if error_type == APIErrorType.AUTH_ERROR:
+                # 回復不能なエラー（認証エラー、支払いエラー等）の場合は即座にraise（リトライしない）
+                if not magi_error.recoverable:
                     raise MagiException(magi_error) from e
 
                 # last_errorにMagiErrorを保存

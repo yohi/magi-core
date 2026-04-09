@@ -20,6 +20,17 @@ export type EventPayload = {
   [key: string]: unknown;
 };
 
+// ... backend compatibility
+export type SessionOptionsPayload = {
+  model?: string;
+  max_rounds?: number;
+  api_keys?: Record<string, string>;
+  unit_configs?: AllUnitSettings;
+  system_config?: SystemSettings;
+  plugin?: any;
+  attachments?: any[];
+};
+
 export type HealthResponse = {
   status: string;
   mode?: string;
@@ -27,15 +38,30 @@ export type HealthResponse = {
 
 export type UnitSettings = {
   name: string;
+  provider: string;
   model: string;
   temp: number;
   persona: string;
+  apiKey?: string;
 };
 
 export type AllUnitSettings = {
   melchior: UnitSettings;
   balthasar: UnitSettings;
   casper: UnitSettings;
+};
+
+export type SystemSettings = {
+  debateRounds: number;
+  votingThreshold: "majority" | "unanimous";
+  providers: Record<string, string>; // provider_id -> api_key
+  whitelistProviders: string[];
+};
+
+export type ModelDefinition = {
+  id: string;
+  provider: string;
+  name: string;
 };
 
 export const UNIT_KEYS: UnitKey[] = ["MELCHIOR-1", "BALTHASAR-2", "CASPER-3"];

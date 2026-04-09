@@ -446,7 +446,7 @@ class ConsensusEngine:
 
             try:
                 provider_ctx = self.provider_selector.select(target_provider)
-                
+
                 # 更新された値を適用。元のコンテキストを変更せず、新しいインスタンスを作成する。
                 updated_options = dict(provider_ctx.options or {})
                 if llm_config.temperature is not None:
@@ -460,6 +460,22 @@ class ConsensusEngine:
                     api_key=llm_config.api_key or provider_ctx.api_key,
                     options=updated_options
                 )
+
+                # APIキーがプレースホルダの場合は早期に警告して例外を投げる
+                # (AnthropicAdapterが無効なキーでリクエストを送信するのを防ぐ)
+                _placeholder_keys = {"none", "", "sk-ant-dummy-key"}
+                if provider_ctx.api_key and provider_ctx.api_key.strip().lower() in _placeholder_keys:
+                    raise MagiException(
+                        MagiError(
+                            code=ErrorCode.CONFIG_MISSING_API_KEY.value,
+                            message=(
+                                f"Provider '{provider_ctx.provider_id}' has no valid API key configured. "
+                                f"Please set an API key for '{provider_ctx.provider_id}' in the settings."
+                            ),
+                            details={"provider": provider_ctx.provider_id, "persona": persona_key},
+                            recoverable=False,
+                        )
+                    )
 
                 return self.provider_factory.build(
                     provider_ctx,
@@ -693,6 +709,13 @@ class ConsensusEngine:
             except Exception as e:
                 if isinstance(e, (KeyboardInterrupt, SystemExit)):
                     raise
+                
+                # 致命的なエラー（回復不能なエラー）の場合は即座に中断
+                from magi.errors import MagiException
+                if isinstance(e, MagiException) and not e.error.recoverable:
+                    logger.error("エージェント %s で回復不能なエラーが発生しました: %s", persona_type.value, e)
+                    raise
+                
                 # エラーを記録
                 error_info = {
                     "phase": ConsensusPhase.THINKING.value,
@@ -703,7 +726,8 @@ class ConsensusEngine:
                 logger.exception(
                     "エージェント %s の思考生成に失敗", persona_type.value
                 )
-                return None
+                # エラーを上位に伝播させるために raise する
+                raise e
 
         # 全エージェントの思考を並列実行
         tasks = [
@@ -803,6 +827,13 @@ class ConsensusEngine:
                     except Exception as e:
                         if isinstance(e, (KeyboardInterrupt, SystemExit)):
                             raise
+                        
+                        # 致命的なエラー（回復不能なエラー）の場合は即座に中断
+                        from magi.errors import MagiException
+                        if isinstance(e, MagiException) and not e.error.recoverable:
+                            logger.error("エージェント %s で回復不能なエラーが発生しました: %s", persona_type.value, e)
+                            raise
+                        
                         # エラーを記録
                         error_info = {
                             "phase": ConsensusPhase.DEBATE.value,
@@ -816,7 +847,8 @@ class ConsensusEngine:
                             persona_type.value,
                             round_number,
                         )
-                        return None
+                        # エラーを上位に伝播させるために raise する
+                        raise e
 
                 # 各エージェントに他のエージェントの思考を提供してDebateを実行
                 tasks = []
@@ -1111,6 +1143,13 @@ class ConsensusEngine:
                 except Exception as e:  # pragma: no cover - リトライロジックで検証
                     if isinstance(e, (KeyboardInterrupt, SystemExit)):
                         raise
+                    
+                    # 致命的なエラー（回復不能なエラー）の場合は即座に中断
+                    from magi.errors import MagiException
+                    if isinstance(e, MagiException) and not e.error.recoverable:
+                        logger.error("エージェント %s で回復不能なエラーが発生しました: %s", persona_type.value, e)
+                        raise
+                    
                     error_info = {
                         "phase": ConsensusPhase.VOTING.value,
                         "persona_type": persona_type.value,
@@ -1129,8 +1168,9 @@ class ConsensusEngine:
                         persona_type.value,
                         attempt + 1,
                     )
+                    # リトライ上限に達した場合、または致命的エラーの場合は raise する
                     if attempt >= self.config.retry_count:
-                        break
+                        raise e
                     continue
             failed_personas.append(persona_type.value)
             self.quorum_manager.exclude(persona_type.value)

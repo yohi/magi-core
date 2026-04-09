@@ -68,11 +68,13 @@ class MagiSettings(BaseSettings):
     # ペルソナ設定
     personas: Dict[str, PersonaConfig] = Field(default_factory=dict)
 
-    # プロバイダ設定
+    # プロバイダー設定
     providers: Optional[Dict[str, Any]] = Field(default_factory=dict)
     default_provider: Optional[str] = None
+    whitelist_providers: list[str] = Field(default_factory=lambda: ["anthropic", "openai", "google", "groq", "openrouter"])
 
     # 合議設定
+
     debate_rounds: int = Field(default=1, ge=1)
     voting_threshold: Literal["majority", "unanimous"] = "majority"
     quorum_threshold: int = Field(default=2, ge=1, le=3)

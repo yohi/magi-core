@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { UnitKey, UnitState, Decision } from "../types";
 
 interface MagiVisualizerProps {
@@ -19,6 +19,11 @@ export const MagiVisualizer: React.FC<MagiVisualizerProps> = ({
   isRunning,
 }) => {
   const scalerRef = useRef<HTMLDivElement | null>(null);
+  const [blinking, setBlinking] = useState<Record<string, boolean>>({
+    "MELCHIOR-1": false,
+    "BALTHASAR-2": false,
+    "CASPER-3": false,
+  });
 
   useEffect(() => {
     const handleResize = () => {
@@ -33,13 +38,40 @@ export const MagiVisualizer: React.FC<MagiVisualizerProps> = ({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // Random blinking effect
+  useEffect(() => {
+    if (!isRunning) {
+      setBlinking({ "MELCHIOR-1": false, "BALTHASAR-2": false, "CASPER-3": false });
+      return;
+    }
+
+    const units: UnitKey[] = ["MELCHIOR-1", "BALTHASAR-2", "CASPER-3"];
+    const intervals = units.map(unit => {
+      const runBlink = () => {
+        setBlinking(prev => ({ ...prev, [unit]: true }));
+        setTimeout(() => {
+          setBlinking(prev => ({ ...prev, [unit]: false }));
+        }, 50 + Math.random() * 150);
+        
+        const nextDelay = 100 + Math.random() * 800;
+        return setTimeout(runBlink, nextDelay);
+      };
+      return runBlink();
+    });
+
+    return () => {
+      intervals.forEach(clearTimeout);
+    };
+  }, [isRunning]);
+
   const getUnitClass = (unit: UnitKey) => {
     const state = unitStates[unit];
-    if (state === "THINKING") return "unit-thinking";
-    if (state === "DEBATING") return "unit-debating";
-    if (state === "VOTING") return "unit-voting";
-    if (state === "VOTED") return "unit-voted";
-    return "";
+    const blinkClass = blinking[unit] ? "blinking" : "";
+    if (state === "THINKING") return `unit-thinking ${blinkClass}`;
+    if (state === "DEBATING") return `unit-debating ${blinkClass}`;
+    if (state === "VOTING") return `unit-voting ${blinkClass}`;
+    if (state === "VOTED") return `unit-voted ${blinkClass}`;
+    return blinkClass;
   };
 
   const showThinkingStamp = decision === null && isRunning;

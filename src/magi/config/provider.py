@@ -96,6 +96,7 @@ class ProviderConfigs:
 
     providers: Dict[str, ProviderConfig]
     default_provider: str = DEFAULT_PROVIDER_ID
+    whitelist_providers: Optional[list[str]] = None
 
 
 class ProviderConfigLoader:
@@ -110,6 +111,7 @@ class ProviderConfigLoader:
         config_path: Optional[Path] = None,
         force_reload: bool = False,
         skip_validation: bool = False,
+        whitelist_providers: Optional[list[str]] = None,
     ) -> ProviderConfigs:
         """プロバイダ設定を読み込む"""
         if self._cache is not None and not force_reload:
@@ -126,6 +128,7 @@ class ProviderConfigLoader:
         self._cache = ProviderConfigs(
             providers=merged,
             default_provider=default_provider,
+            whitelist_providers=whitelist_providers,
         )
         self._cache_validated = not skip_validation
         return self._cache

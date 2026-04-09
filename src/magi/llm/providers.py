@@ -299,11 +299,16 @@ class OpenAIAdapter:
             )
 
     def _raise_for_status(self, response: Any) -> None:
-        if response.status_code in (401, 403):
+        if response.status_code in (401, 402, 403):
+            message_map = {
+                401: "API 認証に失敗しました。APIキーを確認してください。",
+                402: "クレジット不足または支払いが必要です。APIの支払い設定を確認してください。",
+                403: "API へのアクセスが拒否されました。権限を確認してください。"
+            }
             raise MagiException(
                 create_api_error(
-                    code=ErrorCode.API_AUTH_ERROR,
-                    message="OpenAI API 認証に失敗しました。APIキーを確認してください。",
+                    code=ErrorCode.API_AUTH_ERROR if response.status_code != 402 else ErrorCode.API_ERROR,
+                    message=f"{self.provider_id} {message_map.get(response.status_code)}",
                     details={
                         "provider": self.provider_id,
                         "status": response.status_code,
@@ -315,14 +320,16 @@ class OpenAIAdapter:
         if 200 <= response.status_code < 300:
             return
 
+        resp_text = getattr(response, "text", "")[:500]
         raise MagiException(
             create_api_error(
                 code=ErrorCode.API_ERROR,
-                message="OpenAI API 呼び出しでエラーが発生しました。",
+                message=f"{self.provider_id} API 呼び出しでエラーが発生しました (HTTP {response.status_code}): {resp_text[:200]}",
                 details={
                     "provider": self.provider_id,
+                    "model": self.model,
                     "status": response.status_code,
-                    "response": getattr(response, "text", "")[:200],
+                    "response": resp_text,
                 },
                 recoverable=True,
             )

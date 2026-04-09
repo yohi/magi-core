@@ -74,8 +74,10 @@ class ProviderRegistry:
     ) -> None:
         self._providers = configs.providers
         self.default_provider = configs.default_provider
+        # configs.whitelist_providers があればそれを優先し、なければ SUPPORTED_PROVIDERS を使う
+        whitelist = configs.whitelist_providers if configs.whitelist_providers is not None else (supported_providers or SUPPORTED_PROVIDERS)
         self._supported: Set[str] = set(
-            p.lower() for p in (supported_providers or SUPPORTED_PROVIDERS)
+            p.lower() for p in whitelist
         )
 
     def list(self) -> Iterable[str]:
@@ -89,8 +91,11 @@ class ProviderRegistry:
             raise MagiException(
                 MagiError(
                     code=ErrorCode.CONFIG_INVALID_VALUE.value,
-                    message=f"Unknown provider '{provider_id}'.",
-                    details={"provider": provider_id},
+                    message=f"Provider '{provider_id}' is not in the whitelist and cannot be used.",
+                    details={
+                        "provider": provider_id,
+                        "whitelist": sorted(list(self._supported))
+                    },
                     recoverable=False,
                 )
             )

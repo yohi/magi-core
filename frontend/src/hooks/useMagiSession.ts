@@ -8,6 +8,8 @@ import {
   EventPayload,
   HealthResponse,
   AllUnitSettings,
+  SystemSettings,
+  ModelDefinition,
   LogLevel,
   UNIT_KEYS,
 } from "../types";
@@ -15,6 +17,9 @@ import { joinPath, buildWsUrl, toDecision, initialUnitStates } from "../utils";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 const WS_BASE = import.meta.env.VITE_WS_BASE ?? "";
+
+const STORAGE_KEY_SYSTEM = "magi_system_settings";
+const STORAGE_KEY_UNIT = "magi_unit_settings";
 
 export function useMagiSession() {
   const [prompt, setPrompt] = useState("");
@@ -28,10 +33,39 @@ export function useMagiSession() {
   const [isRunning, setIsRunning] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [serverMode, setServerMode] = useState<string>("production");
-  const [unitSettings, setUnitSettings] = useState<AllUnitSettings>({
-    melchior: { name: "MELCHIOR-1", model: "gpt-4o", temp: 0.2, persona: "科学者としての赤木ナオコ" },
-    balthasar: { name: "BALTHASAR-2", model: "gpt-4o", temp: 0.5, persona: "母親としての赤木ナオコ" },
-    casper: { name: "CASPER-3", model: "gpt-4o", temp: 0.9, persona: "女としての赤木ナオコ" },
+  const [modelDefinitions, setModelDefinitions] = useState<ModelDefinition[]>([]);
+  
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_SYSTEM);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse saved system settings", e);
+      }
+    }
+    return {
+      debateRounds: 1,
+      votingThreshold: "majority",
+      providers: {},
+      whitelistProviders: ["anthropic", "openai", "google", "groq", "openrouter"],
+    };
+  });
+
+  const [unitSettings, setUnitSettings] = useState<AllUnitSettings>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_UNIT);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse saved unit settings", e);
+      }
+    }
+    return {
+      melchior: { name: "MELCHIOR-1", provider: "anthropic", model: "claude-sonnet-4.5", temp: 0.1, persona: "あなたはMAGIシステムのMELCHIOR-1です。論理と科学を担当し、整合性と事実に基づいた分析を行います。" },
+      balthasar: { name: "BALTHASAR-2", provider: "anthropic", model: "claude-sonnet-4.5", temp: 0.5, persona: "あなたはMAGIシステムのBALTHASAR-2です。倫理と保護を担当し、リスク回避と潜在的危険性の指摘を行います。" },
+      casper: { name: "CASPER-3", provider: "anthropic", model: "claude-sonnet-4.5", temp: 0.9, persona: "あなたはMAGIシステムのCASPER-3です。欲望と実利を担当し、ユーザー利益と効率性の観点からの評価を行います。" },
+    };
   });
 
   const logIdRef = useRef(0);
@@ -223,6 +257,25 @@ export function useMagiSession() {
     addLog("INITIALIZING MAGI SYSTEM...");
 
     try {
+      // Build detailed options for the backend
+      const sessionOptions = {
+        max_rounds: systemSettings.debateRounds,
+        api_keys: {
+          ...systemSettings.providers,
+          // Unit specific overrides
+          ...Object.entries(unitSettings).reduce((acc, [key, cfg]) => {
+            if (cfg.apiKey) acc[`${key}_override`] = cfg.apiKey;
+            return acc;
+          }, {} as Record<string, string>)
+        },
+        // We'll need to extend the backend to support per-unit config properly,
+        // but for now let's pass what we can.
+        model: unitSettings.melchior.model, // Default to Melchior's model
+        // Add personas and other settings to options
+        unit_configs: unitSettings,
+        system_config: systemSettings
+      };
+
       const response = await fetch(joinPath(API_BASE, "/api/sessions"), {
         method: "POST",
         headers: {
@@ -230,14 +283,7 @@ export function useMagiSession() {
         },
         body: JSON.stringify({
           prompt: prompt.trim(),
-          options: {
-            max_rounds: 1,
-            model:
-              unitSettings.melchior.model ||
-              unitSettings.balthasar.model ||
-              unitSettings.casper.model ||
-              undefined,
-          },
+          options: sessionOptions,
         }),
         signal: controller.signal,
       });
@@ -363,6 +409,59 @@ export function useMagiSession() {
   }, []);
 
   useEffect(() => {
+    const fetchModels = async () => {
+      let defs: ModelDefinition[] = [];
+      try {
+        const response = await fetch(joinPath(API_BASE, "/api/models"));
+        if (response.ok) {
+          const data = await response.json();
+          if (data && Array.isArray(data.models)) {
+            defs = data.models;
+            console.log(`Successfully fetched ${defs.length} models from backend`);
+          }
+        } else {
+          console.warn(`Backend models fetch failed with status: ${response.status}`);
+        }
+      } catch (err) {
+        console.error("Backend models fetch error:", err);
+      }
+
+      if (defs.length === 0) {
+        defs = [
+          { id: "claude-3-5-sonnet-20241022", provider: "anthropic", name: "Claude 3.5 Sonnet" },
+          { id: "gpt-4o", provider: "openai", name: "GPT-4o" },
+          { id: "gemini-1.5-pro", provider: "google", name: "Gemini 1.5 Pro" },
+          { id: "anthropic/claude-3-5-sonnet", provider: "openrouter", name: "Claude 3.5 Sonnet (OpenRouter)" },
+        ];
+      }
+      
+      setModelDefinitions(defs);
+
+      // 各ユニットのモデルが取得したリストに含まれているか確認し、なければ更新
+      setUnitSettings(prev => {
+        const next = { ...prev };
+        let changed = false;
+        
+        const settingsKeys: (keyof AllUnitSettings)[] = ["melchior", "balthasar", "casper"];
+        for (const key of settingsKeys) {
+          const unit = next[key];
+          const isValid = defs.some(m => m.provider === unit.provider && m.id === unit.model);
+          if (!isValid) {
+            const firstForProvider = defs.find(m => m.provider === unit.provider);
+            if (firstForProvider) {
+              next[key] = { ...unit, model: firstForProvider.id };
+              changed = true;
+            }
+          }
+        }
+        
+        return changed ? next : prev;
+      });
+    };
+    fetchModels();
+  }, []);
+
+  useEffect(() => {
     const checkHealth = async () => {
       try {
         const res = await fetch(joinPath(API_BASE, "/api/health"));
@@ -399,6 +498,14 @@ export function useMagiSession() {
     };
   }, [activeUnit]);
 
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_SYSTEM, JSON.stringify(systemSettings));
+  }, [systemSettings]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_UNIT, JSON.stringify(unitSettings));
+  }, [unitSettings]);
+
   return {
     state: {
       prompt,
@@ -413,10 +520,13 @@ export function useMagiSession() {
       sessionId,
       serverMode,
       unitSettings,
+      systemSettings,
+      modelDefinitions,
     },
     actions: {
       setPrompt,
       setUnitSettings,
+      setSystemSettings,
       startSequence,
       handleCancel,
       resetSequence,

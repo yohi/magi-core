@@ -7,6 +7,7 @@ interface ControlPanelProps {
   onStart: () => void;
   onCancel: () => void;
   onReset: () => void;
+  onOpenSystemSettings: () => void; // 追加
   sessionId: string | null;
   phase: string;
 }
@@ -18,6 +19,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onStart,
   onCancel,
   onReset,
+  onOpenSystemSettings, // 追加
   sessionId,
   phase,
 }) => {
@@ -30,15 +32,34 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         onChange={(event) => setPrompt(event.target.value)}
         disabled={isRunning}
       ></textarea>
-      <div className="btn-group">
-        <button id="btn-start" onClick={onStart} disabled={isRunning} type="button">
-          START
-        </button>
-        <button id="btn-cancel" onClick={onCancel} disabled={!isRunning} type="button">
-          CANCEL
-        </button>
-        <button id="btn-reset" onClick={onReset} disabled={!sessionId && !isRunning && phase !== "CANCELLED"} type="button">
-          RESET
+      <div className="control-actions" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div className="btn-group" style={{ display: 'flex', gap: '10px' }}>
+          <button id="btn-start" onClick={onStart} disabled={isRunning} type="button" style={{ flex: 2 }}>
+            START
+          </button>
+          <button id="btn-cancel" onClick={onCancel} disabled={!isRunning} type="button" style={{ flex: 1 }}>
+            CANCEL
+          </button>
+          <button id="btn-reset" onClick={onReset} disabled={!sessionId && !isRunning && phase !== "CANCELLED"} type="button" style={{ flex: 1 }}>
+            RESET
+          </button>
+        </div>
+        <button 
+          className="secondary" 
+          id="btn-system-settings" 
+          onClick={onOpenSystemSettings} 
+          disabled={isRunning} 
+          type="button"
+          style={{ 
+            width: '100%', 
+            fontSize: '12px', 
+            padding: '6px', 
+            border: '1px solid var(--magi-blue)',
+            color: 'var(--magi-blue)',
+            background: 'transparent'
+          }}
+        >
+          SYSTEM SETTINGS
         </button>
       </div>
     </div>

@@ -90,11 +90,29 @@ def main(args: List[str] | None = None) -> int:
         print(json.dumps(config.dump_masked(), ensure_ascii=False, indent=2))
         return 0
 
-    # プロバイダ設定の読み込み
+    # 1. まず全体設定を読み込む（ホワイトリスト情報を取得するため）
+    try:
+        config_manager = ConfigManager()
+        config = config_manager.load()
+    except MagiException as exc:
+        if parsed.command in ("help", "version", "init", "auth"):
+            config = Config(api_key="")
+        else:
+            print(f"Configuration error: {exc.error.message}", file=sys.stderr)
+            return 1
+    except Exception as e:
+        if parsed.command in ("help", "version", "init", "auth"):
+            config = Config(api_key="")
+        else:
+            print(f"Configuration error: {e}", file=sys.stderr)
+            return 1
+
+    # 2. 設定されたホワイトリストを使ってプロバイダ設定をロード・初期化
     provider_selector = None
     provider_factory = ProviderAdapterFactory()
     try:
-        provider_configs = ProviderConfigLoader().load()
+        whitelist = getattr(config, "whitelist_providers", None)
+        provider_configs = ProviderConfigLoader().load(whitelist_providers=whitelist)
         registry = ProviderRegistry(provider_configs)
         provider_selector = ProviderSelector(
             registry,
@@ -103,32 +121,6 @@ def main(args: List[str] | None = None) -> int:
     except MagiException as exc:
         if parsed.command not in ("help", "version", "init", "auth"):
             print(f"Provider configuration error: {exc.error.message}", file=sys.stderr)
-            return 1
-
-    # 設定読み込み
-    try:
-        config_manager = ConfigManager()
-        config = config_manager.load()
-    except MagiException as exc:
-        # API keyがなくてもヘルプ系コマンドは動作させる
-        if parsed.command in ("help", "version", "init", "auth"):
-            config = Config(api_key="")
-        elif provider_selector is not None:
-            try:
-                provider_ctx = provider_selector.select(parsed.options.get("provider"))
-            except MagiException as exc:
-                print(f"Provider selection error: {exc.error.message}", file=sys.stderr)
-                return 1
-            config = Config(api_key=provider_ctx.api_key, model=provider_ctx.model)
-        else:
-            print(f"Configuration error: {exc.error.message}", file=sys.stderr)
-            return 1
-    except Exception as e:
-        # 予期しないエラーの場合
-        if parsed.command in ("help", "version", "init", "auth"):
-            config = Config(api_key="")
-        else:
-            print(f"Configuration error: {e}", file=sys.stderr)
             return 1
 
     # CLI実行
