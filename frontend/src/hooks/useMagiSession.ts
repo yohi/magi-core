@@ -55,6 +55,7 @@ export function useMagiSession() {
       debateRounds: 1,
       votingThreshold: "majority",
       providers: {},
+      providerOptions: {},
       whitelistProviders: defaultWhitelist,
     };
   });
@@ -275,6 +276,8 @@ export function useMagiSession() {
             return acc;
           }, {} as Record<string, string>)
         },
+        // 合併したオプションを渡す (backend で ProviderConfig.options にマッピングされることを期待)
+        provider_options: systemSettings.providerOptions,
         // We'll need to extend the backend to support per-unit config properly,
         // but for now let's pass what we can.
         model: unitSettings.melchior.model, // Default to Melchior's model

@@ -73,7 +73,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setSystemSettings(prev => {
       const next = { ...prev.providers };
       delete next[id];
-      return { ...prev, providers: next };
+      const nextOptions = { ...prev.providerOptions };
+      delete nextOptions[id];
+      return { ...prev, providers: next, providerOptions: nextOptions };
+    });
+  };
+
+  const toggleProviderOption = (providerId: string, optionKey: string) => {
+    setSystemSettings(prev => {
+      const providerOptions = prev.providerOptions || {};
+      const currentOptions = providerOptions[providerId] || {};
+      const newValue = !currentOptions[optionKey];
+      
+      return {
+        ...prev,
+        providerOptions: {
+          ...providerOptions,
+          [providerId]: {
+            ...currentOptions,
+            [optionKey]: newValue
+          }
+        }
+      };
     });
   };
 
@@ -140,9 +161,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div style={{ fontSize: '11px', marginTop: '15px', borderTop: '1px solid #333', paddingTop: '10px', color: '#aaa' }}>
                 <div style={{ color: '#666', marginBottom: '5px' }}>ACTIVE PROVIDERS:</div>
                 {activeProviderIds.map(id => (
-                  <div key={id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-                    <span>{id.toUpperCase()}: ********</span>
-                    <a href="#" onClick={(e) => { e.preventDefault(); removeProvider(id); }} style={{ color: 'var(--magi-red)', textDecoration: 'none' }}>[DEL]</a>
+                  <div key={id} style={{ marginBottom: '8px', borderBottom: '1px solid #222', paddingBottom: '4px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{id.toUpperCase()}: ********</span>
+                      <a href="#" onClick={(e) => { e.preventDefault(); removeProvider(id); }} style={{ color: 'var(--magi-red)', textDecoration: 'none' }}>[DEL]</a>
+                    </div>
+                    {/* OpenAI互換または特定プロバイダ向けの追加オプション */}
+                    {["openai", "flixa", "openrouter", "google", "groq", "local"].includes(id) && (
+                      <div style={{ display: 'flex', alignItems: 'center', marginTop: '4px', color: '#888' }}>
+                        <input 
+                          type="checkbox" 
+                          id={`verify-ssl-${id}`}
+                          checked={!(systemSettings.providerOptions?.[id]?.verify_ssl === false)}
+                          onChange={() => toggleProviderOption(id, "verify_ssl")}
+                          style={{ width: 'auto', marginRight: '6px' }}
+                        />
+                        <label htmlFor={`verify-ssl-${id}`} style={{ cursor: 'pointer', fontSize: '10px' }}>
+                          ENABLE SSL VERIFICATION
+                        </label>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {activeProviderIds.length === 0 && <div>No providers configured.</div>}

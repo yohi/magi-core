@@ -71,12 +71,13 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
         run_config.template_base_path = str(Path("/app/templates").absolute())
 
         api_keys = getattr(options, "api_keys", {}) or {}
+        provider_options = getattr(options, "provider_options", {}) or {}
         unit_configs = getattr(options, "unit_configs", None)
 
         # 1. プロバイダ Registry の再構築
         # UIからの入力を反映し、既存の(不完全な)設定を上書きする
         provider_loader = ProviderConfigLoader()
-        whitelist = getattr(run_config, "whitelist_providers", None) or ["anthropic", "openai", "google", "groq", "openrouter"]
+        whitelist = getattr(run_config, "whitelist_providers", None) or ["anthropic", "openai", "google", "groq", "openrouter", "flixa"]
         p_configs = provider_loader.load(whitelist_providers=whitelist, skip_validation=True)
 
         from magi.config.provider import ProviderConfig
@@ -87,13 +88,16 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
         for pid in whitelist:
             pl = pid.lower()
             ui_key = api_keys.get(pl) or api_keys.get(pid)
+            ui_options = provider_options.get(pl) or provider_options.get(pid) or {}
 
-            # UIで明示的に鍵が入力されている場合は、その設定を最優先で作成
-            if ui_key and ui_key.strip() and ui_key.strip() not in _PLACEHOLDER_KEYS:
+            # UIで明示的に鍵またはオプションが入力されている場合は、その設定を最優先で作成
+            if (ui_key and ui_key.strip() and ui_key.strip() not in _PLACEHOLDER_KEYS) or ui_options:
+                current = p_configs.providers.get(pl)
                 p_configs.providers[pl] = ProviderConfig(
                     provider_id=pl,
-                    api_key=ui_key.strip(),
-                    model="default-model"
+                    api_key=ui_key.strip() if ui_key else (current.api_key if current else "none"),
+                    model=current.model if current else "default-model",
+                    options={**(current.options if current else {}), **ui_options}
                 )
             elif pl not in p_configs.providers:
                 # 鍵がない場合でも Registry で蹴られないようにプレースホルダを置く

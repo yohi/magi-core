@@ -124,7 +124,13 @@ class OpenAIAdapter:
         self._chat_endpoint = chat_endpoint
         self._httpx = _require_httpx()
         self._owns_client = http_client is None
-        self._client = http_client or self._httpx.AsyncClient(timeout=timeout)
+        
+        # SSL検証の制御
+        verify_ssl = context.options.get("verify_ssl", True)
+        if isinstance(verify_ssl, str):
+            verify_ssl = verify_ssl.lower() not in ("false", "0", "no")
+            
+        self._client = http_client or self._httpx.AsyncClient(timeout=timeout, verify=verify_ssl)
         self._validate_required_fields(["api_key", "model"])
 
     @property

@@ -21,6 +21,19 @@ class ModelsFetcher:
         models.dev および OpenRouter API からモデル定義を取得し、
         設定されたホワイトリストに基づいてフィルタリングして返す
         """
+        # SSL検証設定の取得
+        verify_ssl = True
+        if hasattr(self.config, "providers") and isinstance(self.config.providers, dict):
+            # 汎用的な設定、または特定のプロバイダの設定から取得を試みる
+            # ここでは簡単のため、OpenAIまたはFlixaの設定があればそれを参照する
+            for p in ["openai", "flixa"]:
+                p_cfg = self.config.providers.get(p)
+                if isinstance(p_cfg, dict) and "options" in p_cfg:
+                    v = p_cfg["options"].get("verify_ssl")
+                    if v is not None:
+                        verify_ssl = v if isinstance(v, bool) else str(v).lower() not in ("false", "0", "no")
+                        break
+
         # ホワイトリストの取得
         whitelist = getattr(self.config, "whitelist_providers", None)
         if whitelist is None:
@@ -32,7 +45,7 @@ class ModelsFetcher:
 
         # 1. models.dev から取得
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=10.0, verify=verify_ssl) as client:
                 response = await client.get(self.SCHEMA_URL)
                 if response.status_code == 200:
                     schema = response.json()
@@ -75,7 +88,7 @@ class ModelsFetcher:
         # 2. OpenRouter API から取得 (ホワイトリストにある場合のみ)
         if "openrouter" in whitelist:
             try:
-                async with httpx.AsyncClient(timeout=10.0) as client:
+                async with httpx.AsyncClient(timeout=10.0, verify=verify_ssl) as client:
                     or_response = await client.get("https://openrouter.ai/api/v1/models")
                     if or_response.status_code == 200:
                         or_data = or_response.json()
@@ -97,7 +110,7 @@ class ModelsFetcher:
             try:
                 # 設定からエンドポイントを取得、なければデフォルト
                 flixa_endpoint = getattr(self.config, "flixa", {}).get("endpoint") or "https://api.flixa.engineer/v1/agent"
-                async with httpx.AsyncClient(timeout=10.0) as client:
+                async with httpx.AsyncClient(timeout=10.0, verify=verify_ssl) as client:
                     flixa_response = await client.get(f"{flixa_endpoint}/models")
                     if flixa_response.status_code == 200:
                         flixa_data = flixa_response.json()
