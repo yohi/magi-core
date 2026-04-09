@@ -51,9 +51,9 @@ export const MagiVisualizer: React.FC<MagiVisualizerProps> = ({
         setBlinking(prev => ({ ...prev, [unit]: true }));
         setTimeout(() => {
           setBlinking(prev => ({ ...prev, [unit]: false }));
-        }, 50 + Math.random() * 150);
+        }, 30 + Math.random() * 70);
         
-        const nextDelay = 100 + Math.random() * 800;
+        const nextDelay = 50 + Math.random() * 200;
         return setTimeout(runBlink, nextDelay);
       };
       return runBlink();
@@ -77,7 +77,7 @@ export const MagiVisualizer: React.FC<MagiVisualizerProps> = ({
   const showThinkingStamp = decision === null && isRunning;
   const showApproveStamp = decision === "APPROVE";
   const showDenyStamp = decision === "DENY";
-  const showCancelledStamp = phase === "CANCELLED";
+  const showCancelledStamp = phase === "CANCELLED" || phase === "ERROR";
 
   return (
     <div className="scale-wrapper" id="scaler" ref={scalerRef}>

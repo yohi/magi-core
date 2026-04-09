@@ -40,9 +40,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           <button id="btn-cancel" onClick={onCancel} disabled={!isRunning} type="button" style={{ flex: 1 }}>
             CANCEL
           </button>
-          <button id="btn-reset" onClick={onReset} disabled={!sessionId && !isRunning && phase !== "CANCELLED"} type="button" style={{ flex: 1 }}>
+          <button id="btn-reset" onClick={onReset} disabled={!sessionId && !isRunning && phase !== "CANCELLED" && phase !== "ERROR"} type="button" style={{ flex: 1 }}>
             RESET
           </button>
+
         </div>
         <button 
           className="secondary" 

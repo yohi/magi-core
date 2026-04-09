@@ -554,7 +554,7 @@ button:disabled {
 
 .monolith polygon.fill-poly {
   fill: var(--magi-green);
-  transition: opacity 0.1s, fill 0.5s;
+  transition: opacity 0.05s, fill 0.5s;
 }
 
 .monolith.blinking .fill-poly {
