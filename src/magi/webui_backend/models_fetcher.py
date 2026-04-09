@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import httpx
 import logging
 import time
@@ -28,13 +29,13 @@ class ModelsFetcher:
         # キャッシュのチェック (ロックなしで素早く返す)
         now = time.time()
         if self._cached_models and (now - self._last_fetch_time) < self.CACHE_TTL:
-            return self._cached_models.copy()
+            return copy.deepcopy(self._cached_models)
 
         async with self._fetch_lock:
             # ロック取得後に再度キャッシュをチェック
             now = time.time()
             if self._cached_models and (now - self._last_fetch_time) < self.CACHE_TTL:
-                return self._cached_models.copy()
+                return copy.deepcopy(self._cached_models)
 
             # ヘルパー: dictまたはオブジェクトの両方から値を取得
             def get_cfg_val(obj, key, default=None):
@@ -167,15 +168,17 @@ class ModelsFetcher:
                 except Exception:
                     logger.exception("Unexpected error fetching models from Flixa API")
 
-            # 取得できたモデルがあればキャッシュを更新
+            # 取得できたモデルがあればキャッシュを更新 (ディープコピーを保存)
             if models:
-                self._cached_models = models
+                self._cached_models = copy.deepcopy(models)
                 self._last_fetch_time = time.time()
-                return self._cached_models.copy()
+                return copy.deepcopy(self._cached_models)
             else:
+                # フェッチ失敗時もタイムスタンプを更新して一定期間のバックオフを設ける
+                self._last_fetch_time = time.time()
                 if self._cached_models:
-                    logger.info("Using expired cached models as fetch failed")
-                    return self._cached_models.copy()
+                    logger.info("Using expired cached models as fetch failed (backoff applied)")
+                    return copy.deepcopy(self._cached_models)
                 return self._get_fallback_models(whitelist)
 
     def _get_fallback_models(self, whitelist: List[str]) -> List[Dict[str, str]]:
