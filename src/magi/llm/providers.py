@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Protocol
 
@@ -13,6 +14,8 @@ from magi.llm.client import LLMClient, LLMRequest, LLMResponse
 if TYPE_CHECKING:
     from magi.core.concurrency import ConcurrencyController
     from magi.core.providers import ProviderContext
+
+logger = logging.getLogger(__name__)
 
 
 def _require_httpx():
