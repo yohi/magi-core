@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Protocol
 
@@ -13,6 +14,8 @@ from magi.llm.client import LLMClient, LLMRequest, LLMResponse
 if TYPE_CHECKING:
     from magi.core.concurrency import ConcurrencyController
     from magi.core.providers import ProviderContext
+
+logger = logging.getLogger(__name__)
 
 
 def _require_httpx():
@@ -124,7 +127,13 @@ class OpenAIAdapter:
         self._chat_endpoint = chat_endpoint
         self._httpx = _require_httpx()
         self._owns_client = http_client is None
-        self._client = http_client or self._httpx.AsyncClient(timeout=timeout)
+        
+        # SSL検証の制御
+        verify_ssl = context.options.get("verify_ssl", True)
+        if isinstance(verify_ssl, str):
+            verify_ssl = verify_ssl.lower() not in ("false", "0", "no")
+            
+        self._client = http_client or self._httpx.AsyncClient(timeout=timeout, verify=verify_ssl)
         self._validate_required_fields(["api_key", "model"])
 
     @property
@@ -190,17 +199,34 @@ class OpenAIAdapter:
             "model": self.model,
             "messages": [
                 {"role": "system", "content": request.system_prompt},
-                {"role": "user", "content": user_content},
             ],
             "max_tokens": request.max_tokens,
             "temperature": request.temperature,
         }
 
+        # content 形式の決定 (既定はマルチパートだが、options.use_plain_text があれば文字列にする)
+        use_plain_text = self.context.options.get("use_plain_text", False)
+        
+        if use_plain_text:
+            payload["messages"].append({"role": "user", "content": request.user_prompt})
+        else:
+            payload["messages"].append({"role": "user", "content": user_content})
+
         url = f"{self.endpoint}{self._chat_endpoint}"
+        
+        # エンドポイントの決定
+        endpoint_suffix = self.context.options.get("endpoint_suffix")
+        if self.context.options.get("raw_endpoint", False):
+            url = self.endpoint
+        elif endpoint_suffix:
+            url = f"{self.endpoint}{endpoint_suffix}"
+            
+        logger.info(f"Calling LLM: provider={self.provider_id}, url={url.split('?')[0]}")
+
         try:
             response = await self._client.post(
                 url,
-                headers=self._auth_headers(),
+                headers=self._all_headers(),
                 json=payload,
                 timeout=self._timeout,
             )
@@ -284,7 +310,31 @@ class OpenAIAdapter:
         )
 
     def _auth_headers(self) -> Dict[str, str]:
+        # options に基づいて認証ヘッダーを選択
+        auth_type = self.context.options.get("auth_type", "bearer")
+        
+        if auth_type == "api-key" or self.context.options.get("use_api_key_header", False):
+            return {"api-key": self.context.api_key}
+        if auth_type == "x-api-key":
+            return {"x-api-key": self.context.api_key}
+            
         return {"Authorization": f"Bearer {self.context.api_key}"}
+
+    def _all_headers(self) -> Dict[str, str]:
+        """認証ヘッダーとカスタムヘッダーを統合"""
+        headers = self._auth_headers()
+        
+        # User-Agent を設定 (一部のゲートウェイで必須)
+        if "User-Agent" not in headers:
+            headers["User-Agent"] = "MAGI-System/1.0"
+        
+        # options 内の "headers" 辞書があればマージ
+        custom_headers = self.context.options.get("headers")
+        if isinstance(custom_headers, dict):
+            for k, v in custom_headers.items():
+                headers[str(k)] = str(v)
+                
+        return headers
 
     def _validate_required_fields(self, fields: Iterable[str]) -> None:
         missing = [field for field in fields if not getattr(self.context, field)]
@@ -299,30 +349,40 @@ class OpenAIAdapter:
             )
 
     def _raise_for_status(self, response: Any) -> None:
-        if response.status_code in (401, 403):
+        if response.status_code in (401, 402, 403):
+            message_map = {
+                401: "API 認証に失敗しました。APIキーを確認してください。",
+                402: "クレジット不足または支払いが必要です。APIの支払い設定を確認してください。",
+                403: "API へのアクセスが拒否されました。権限を確認するか、しばらく待ってから再試行してください。"
+            }
+            # 403 はレートリミットや一時的な拒否の場合があるため、recoverable を True に設定してみる
+            status = response.status_code
+            is_auth_error = (status == 401)
             raise MagiException(
                 create_api_error(
-                    code=ErrorCode.API_AUTH_ERROR,
-                    message="OpenAI API 認証に失敗しました。APIキーを確認してください。",
+                    code=ErrorCode.API_AUTH_ERROR if is_auth_error else ErrorCode.API_ERROR,
+                    message=f"{self.provider_id} {message_map.get(status)}",
                     details={
                         "provider": self.provider_id,
-                        "status": response.status_code,
+                        "status": status,
                         "response": getattr(response, "text", "")[:200],
                     },
-                    recoverable=False,
+                    recoverable=(status == 403), # 403 はリトライを許可
                 )
             )
         if 200 <= response.status_code < 300:
             return
 
+        resp_text = getattr(response, "text", "")[:500]
         raise MagiException(
             create_api_error(
                 code=ErrorCode.API_ERROR,
-                message="OpenAI API 呼び出しでエラーが発生しました。",
+                message=f"{self.provider_id} API 呼び出しでエラーが発生しました (HTTP {response.status_code}): {resp_text[:200]}",
                 details={
                     "provider": self.provider_id,
+                    "model": self.model,
                     "status": response.status_code,
-                    "response": getattr(response, "text", "")[:200],
+                    "response": resp_text,
                 },
                 recoverable=True,
             )
@@ -579,3 +639,133 @@ class OpenRouterAdapter(OpenAIAdapter):
         )
         headers["X-Title"] = self.context.options.get("title", "MAGI System")
         return headers
+
+
+class FlixaAdapter(OpenAIAdapter):
+    """Flixa 向けアダプタ (OpenAI 互換 + Open Responses API)"""
+
+    def __init__(
+        self,
+        context: ProviderContext,
+        *,
+        http_client: Optional[Any] = None,
+        timeout: float = 30.0,
+        chat_endpoint: str = "/agent/responses",
+    ) -> None:
+        # Flixa API のベースエンドポイント。
+        # OpenAIAdapter との整合性（models エンドポイント等）のため /v1 までをベースとする。
+        endpoint = (context.endpoint or "https://api.flixa.engineer/v1").rstrip("/")
+
+        super().__init__(
+            context,
+            http_client=http_client,
+            timeout=timeout,
+            chat_endpoint=chat_endpoint,
+        )
+        self.endpoint = endpoint
+
+    async def send(self, request: LLMRequest) -> LLMResponse:
+        """Flixa (Open Responses) 形式での送信とパース"""
+        # OpenAIAdapter.send は OpenAI 形式のペイロードを構築するが、
+        # Flixa の Open Responses API エンドポイント (/responses) は
+        # 独自のペイロード形式を要求するため、直接 _send_flixa を呼び出す。
+        return await self._send_flixa(request)
+
+    async def _send_flixa(self, request: LLMRequest) -> LLMResponse:
+        """Flixa (Open Responses) 形式での送信とパース"""
+        import base64
+        self._validate_prompts(request)
+
+        # Flixa (Open Responses) 形式では input_text, input_image を使用
+        user_content = [{"type": "input_text", "text": request.user_prompt}]
+        if request.attachments:
+            for attachment in request.attachments:
+                encoded_data = base64.b64encode(attachment.data).decode("utf-8")
+                data_url = f"data:{attachment.mime_type};base64,{encoded_data}"
+                user_content.append({"type": "input_image", "url": data_url})
+
+        if getattr(request, "use_plain_text", False):
+            payload = {
+                "model": self.model,
+                "input": f"{request.system_prompt}\n\n{request.user_prompt}",
+                "max_tokens": request.max_tokens,
+                "temperature": request.temperature,
+                "wait": True,  # 同期レスポンスを待機
+            }
+        else:
+            # 以前動作していた形式 (messages 内に system ロールを含む) に戻す
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": request.system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+                "max_tokens": request.max_tokens,
+                "temperature": request.temperature,
+                "wait": True,  # 同期レスポンスを待機
+            }
+
+        # エンドポイントの決定
+        # 404エラー (Cannot POST /v1/agent) を防ぐため、確実に /responses へのパスを構築する
+        if self.context.options.get("raw_endpoint"):
+            url = self.endpoint.rstrip('/')
+        else:
+            endpoint_suffix = self.context.options.get("endpoint_suffix", self._chat_endpoint)
+            url = f"{self.endpoint.rstrip('/')}/{endpoint_suffix.lstrip('/')}"
+            
+            # 最終的な URL が /responses で終わっていない場合は補完を試みる
+            if not url.endswith("/responses"):
+                url = f"{url.rstrip('/')}/responses"
+
+        # ヘッダーの調整: Flixa では Authorization: Bearer と x-api-key の両方が必要な場合がある
+        headers = self._all_headers()
+        if self.context.api_key and "x-api-key" not in headers:
+            headers["x-api-key"] = self.context.api_key
+
+        try:
+            resp = await self._client.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=self._timeout,
+            )
+            self._raise_for_status(resp)
+            data = resp.json()
+            
+            # OpenAI 形式 (choices) のチェック
+            content = ""
+            choices = data.get("choices")
+            if isinstance(choices, list) and choices:
+                msg = choices[0].get("message", {})
+                content = str(msg.get("content") or "")
+            
+            # Flixa (Open Responses) 形式 (output_text) のチェック
+            if not content:
+                content = str(data.get("output_text") or "")
+                
+            # それでも空なら output 配列をチェック (flixa-cli のロジック)
+            if not content and isinstance(data.get("output"), list):
+                segments = []
+                for item in data["output"]:
+                    if item.get("type") in ["message", "output"]:
+                        for c in item.get("content", []):
+                            if c.get("text"): segments.append(c["text"])
+                content = "\n\n".join(segments)
+
+            usage = data.get("usage") or {}
+            return LLMResponse(
+                content=content,
+                usage={
+                    "input_tokens": usage.get("prompt_tokens", 0),
+                    "output_tokens": usage.get("completion_tokens", 0),
+                },
+                model=data.get("model") or self.model,
+            )
+        except Exception as e:
+            if isinstance(e, MagiException): raise
+            raise MagiException(create_api_error(
+                code=ErrorCode.API_ERROR,
+                message=f"Flixa API error: {str(e)}",
+                details={"provider": self.provider_id},
+                recoverable=True
+            )) from e

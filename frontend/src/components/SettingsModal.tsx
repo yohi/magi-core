@@ -1,114 +1,394 @@
-import React, { Dispatch, SetStateAction } from 'react';
-
-export type UnitConfig = {
-  name: string;
-  model: string;
-  temp: number;
-  persona: string;
-};
-
-export type UnitSettingsMap = {
-  melchior: UnitConfig;
-  balthasar: UnitConfig;
-  casper: UnitConfig;
-};
+import React, { Dispatch, SetStateAction, useState, useEffect } from 'react';
+import { AllUnitSettings, SystemSettings, ModelDefinition, UnitSettings } from '../types';
 
 interface SettingsModalProps {
   isOpen: boolean;
-  currentEditingUnit: "melchior" | "balthasar" | "casper" | null;
-  unitSettings: UnitSettingsMap;
-  setUnitSettings: Dispatch<SetStateAction<UnitSettingsMap>>;
+  currentEditingUnit: "melchior" | "balthasar" | "casper" | "system" | null;
+  unitSettings: AllUnitSettings;
+  setUnitSettings: Dispatch<SetStateAction<AllUnitSettings>>;
+  systemSettings: SystemSettings;
+  setSystemSettings: Dispatch<SetStateAction<SystemSettings>>;
+  modelDefinitions: ModelDefinition[];
   saveSettings: () => void;
   closeModal: () => void;
 }
+
+const SUPPORTED_PROVIDERS = [
+  { id: "anthropic", name: "Anthropic (Claude)" },
+  { id: "openai", name: "OpenAI (GPT-4o/o1)" },
+  { id: "gemini", name: "Google (Gemini)" },
+  { id: "groq", name: "Groq (Llama-3)" },
+  { id: "openrouter", name: "OpenRouter" },
+  { id: "flixa", name: "Flixa" }
+];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   currentEditingUnit,
   unitSettings,
   setUnitSettings,
+  systemSettings,
+  setSystemSettings,
+  modelDefinitions,
   saveSettings,
   closeModal,
 }) => {
+  const [localUnitSettings, setLocalUnitSettings] = useState<AllUnitSettings>(unitSettings);
+  const [localSystemSettings, setLocalSystemSettings] = useState<SystemSettings>(systemSettings);
+  const [newProviderId, setNewProviderId] = useState("");
+  const [newProviderKey, setNewProviderKey] = useState("");
+  const [modelSearch, setModelSearch] = useState("");
+
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Sync with props when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setLocalUnitSettings(unitSettings);
+      setLocalSystemSettings(systemSettings);
+      // Default to first available provider from whitelist if not set
+      const first = SUPPORTED_PROVIDERS.find(p => systemSettings.whitelistProviders.includes(p.id));
+      if (first) setNewProviderId(first.id);
+    }
+  }, [isOpen, unitSettings, systemSettings]);
+
+  // Deterministically call saveSettings once parent state updates
+  useEffect(() => {
+    if (isSaving && unitSettings === localUnitSettings && systemSettings === localSystemSettings) {
+      saveSettings();
+      setIsSaving(false);
+    }
+  }, [unitSettings, systemSettings, localUnitSettings, localSystemSettings, isSaving, saveSettings]);
+
   if (!isOpen || !currentEditingUnit) return null;
 
-  const currentSettings = unitSettings[currentEditingUnit];
+  const isSystem = currentEditingUnit === "system";
+  const unitKey = isSystem ? null : currentEditingUnit;
+  const currentUnit = unitKey ? localUnitSettings[unitKey] : null;
 
-  const handleModelChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setUnitSettings((prev) => ({
+  // Handlers for Unit Settings (Draft)
+  const handleUnitChange = <K extends keyof UnitSettings>(field: K, value: UnitSettings[K]) => {
+    if (!unitKey) return;
+    setLocalUnitSettings(prev => ({
       ...prev,
-      [currentEditingUnit]: {
-        ...prev[currentEditingUnit],
-        model: event.target.value,
-      },
+      [unitKey]: { ...prev[unitKey], [field]: value }
     }));
   };
 
-  const handleTempChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value;
-    if (value === "") return;
-    
-    const parsed = parseFloat(value);
-    if (isNaN(parsed)) return;
-    
-    const MIN_TEMP = 0;
-    const MAX_TEMP = 1;
-    const clamped = Math.min(MAX_TEMP, Math.max(MIN_TEMP, parsed));
-    
-    setUnitSettings((prev) => ({
+  // Handlers for System Settings (Draft)
+  const handleSystemChange = <K extends keyof SystemSettings>(field: K, value: SystemSettings[K]) => {
+    setLocalSystemSettings(prev => ({ ...prev, [field]: value }));
+  };
+
+  const addProvider = () => {
+    if (!newProviderKey || !newProviderId) return;
+    // Validate against whitelist
+    if (!localSystemSettings.whitelistProviders.includes(newProviderId)) {
+      console.warn(`Provider ${newProviderId} is not in the whitelist.`);
+      return;
+    }
+    setLocalSystemSettings(prev => ({
       ...prev,
-      [currentEditingUnit]: {
-        ...prev[currentEditingUnit],
-        temp: clamped,
-      },
+      providers: { ...prev.providers, [newProviderId]: newProviderKey }
+    }));
+    setNewProviderKey("");
+  };
+
+  const removeProvider = (id: string) => {
+    setLocalSystemSettings(prev => {
+      const next = { ...prev.providers };
+      delete next[id];
+      const nextOptions = { ...prev.providerOptions };
+      delete nextOptions[id];
+      return { ...prev, providers: next, providerOptions: nextOptions };
+    });
+  };
+
+  const toggleProviderOption = (providerId: string, optionKey: string) => {
+    setLocalSystemSettings(prev => {
+      const providerOptions = prev.providerOptions || {};
+      const currentOptions = providerOptions[providerId] || {};
+      const current = optionKey === 'verify_ssl' ? (currentOptions[optionKey] ?? true) : !!currentOptions[optionKey];
+      const newValue = !current;
+      
+      return {
+        ...prev,
+        providerOptions: {
+          ...providerOptions,
+          [providerId]: {
+            ...currentOptions,
+            [optionKey]: newValue
+          }
+        }
+      };
+    });
+  };
+
+  const filteredProviders = SUPPORTED_PROVIDERS.filter(p => localSystemSettings.whitelistProviders.includes(p.id));
+  const activeProviderIds = Object.keys(localSystemSettings.providers);
+  const providerModels = currentUnit ? modelDefinitions.filter(m => m.provider === currentUnit.provider) : [];
+  const availableModels = providerModels.filter(m => 
+    m.name.toLowerCase().includes(modelSearch.toLowerCase()) || 
+    m.id.toLowerCase().includes(modelSearch.toLowerCase())
+  );
+
+  const handleProviderChange = (newProvider: string) => {
+    if (!unitKey) return;
+    setModelSearch("");
+    
+    // Reset model if new provider doesn't have a matching model in definitions
+    const hasCurrentModel = modelDefinitions.some(m => m.provider === newProvider && m.id === localUnitSettings[unitKey].model);
+    const firstModel = modelDefinitions.find(m => m.provider === newProvider);
+    
+    setLocalUnitSettings(prev => ({
+      ...prev,
+      [unitKey]: { 
+        ...prev[unitKey], 
+        provider: newProvider,
+        model: hasCurrentModel ? prev[unitKey].model : (firstModel ? firstModel.id : "")
+      }
     }));
   };
 
-  const handlePersonaChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setUnitSettings((prev) => ({
-      ...prev,
-      [currentEditingUnit]: {
-        ...prev[currentEditingUnit],
-        persona: event.target.value,
-      },
-    }));
+  const onSave = () => {
+    setUnitSettings(localUnitSettings);
+    setSystemSettings(localSystemSettings);
+    setIsSaving(true);
   };
 
   return (
     <div id="settings-modal" className="settings-modal" style={{ display: "flex" }}>
-      <div className="modal-content">
-        <h2 id="modal-title">UNIT: {currentSettings.name}</h2>
-        <div className="form-group">
-          <label>MODEL:</label>
-          <input
-            type="text"
-            value={currentSettings.model}
-            onChange={handleModelChange}
-          />
-        </div>
-        <div className="form-group">
-          <label>TEMPERATURE:</label>
-          <input
-            type="number"
-            step="0.1"
-            min={0}
-            max={1}
-            value={currentSettings.temp}
-            onChange={handleTempChange}
-          />
-        </div>
-        <div className="form-group">
-          <label>PERSONA:</label>
-          <textarea
-            value={currentSettings.persona}
-            onChange={handlePersonaChange}
-          ></textarea>
-        </div>
+      <div className="modal-content" style={{ width: '550px', maxHeight: '90vh', overflowY: 'auto' }}>
+        <h2 id="modal-title">{isSystem ? "SYSTEM SETTINGS" : `UNIT: ${currentUnit?.name}`}</h2>
+        
+        {isSystem ? (
+          /* System Settings UI */
+          <div id="system-fields">
+            <div style={{ border: '1px dashed #444', padding: '15px', marginBottom: '15px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--magi-blue)', marginBottom: '12px' }}>Provider Management</div>
+              <div className="form-group">
+                <label>PROVIDER TYPE:</label>
+                <select 
+                  value={newProviderId} 
+                  onChange={(e) => setNewProviderId(e.target.value)}
+                  style={{ width: '100%', background: '#111', color: 'var(--magi-orange)', border: '1px solid var(--magi-orange)', padding: '8px' }}
+                >
+                  {filteredProviders.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>API KEY:</label>
+                <input 
+                  type="password" 
+                  value={newProviderKey}
+                  onChange={(e) => setNewProviderKey(e.target.value)}
+                  placeholder="ENTER API KEY FOR THIS PROVIDER" 
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                <button onClick={addProvider} style={{ width: '150px', fontSize: '14px', padding: '6px' }} type="button">
+                  REGISTER / UPDATE
+                </button>
+              </div>
+              <div style={{ fontSize: '11px', marginTop: '15px', borderTop: '1px solid #333', paddingTop: '10px', color: '#aaa' }}>
+                <div style={{ color: '#666', marginBottom: '5px' }}>ACTIVE PROVIDERS:</div>
+                {activeProviderIds.map(id => (
+                  <div key={id} style={{ marginBottom: '8px', borderBottom: '1px solid #222', paddingBottom: '4px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{id.toUpperCase()}: ********</span>
+                      <a href="#" onClick={(e) => { e.preventDefault(); removeProvider(id); }} style={{ color: 'var(--magi-red)', textDecoration: 'none' }}>[DEL]</a>
+                    </div>
+                    {/* OpenAI互換または特定プロバイダ向けの追加オプション */}
+                    {["flixa", "openai", "openrouter", "gemini"].includes(id) && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px', borderLeft: '2px solid #333', paddingLeft: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', color: '#888' }}>
+                          <input 
+                            type="checkbox" 
+                            id={`verify-ssl-${id}`}
+                            checked={!(localSystemSettings.providerOptions?.[id]?.verify_ssl === false)}
+                            onChange={() => toggleProviderOption(id, "verify_ssl")}
+                            style={{ width: 'auto', marginRight: '6px' }}
+                          />
+                          <label htmlFor={`verify-ssl-${id}`} style={{ cursor: 'pointer', fontSize: '10px' }}>
+                            ENABLE SSL VERIFICATION
+                          </label>
+                        </div>
+                        
+                        {["flixa", "openai", "openrouter"].includes(id) && (
+                          <>
+                            <div style={{ display: 'flex', alignItems: 'center', color: '#888' }}>
+                              <input 
+                                type="checkbox" 
+                                id={`plain-text-${id}`}
+                                checked={localSystemSettings.providerOptions?.[id]?.use_plain_text === true}
+                                onChange={() => toggleProviderOption(id, "use_plain_text")}
+                                style={{ width: 'auto', marginRight: '6px' }}
+                              />
+                              <label htmlFor={`plain-text-${id}`} style={{ cursor: 'pointer', fontSize: '10px' }}>
+                                USE PLAIN TEXT CONTENT (LEGACY)
+                              </label>
+                            </div>
+                            
+                            <div style={{ display: 'flex', alignItems: 'center', color: '#888' }}>
+                              <input 
+                                type="checkbox" 
+                                id={`raw-endpoint-${id}`}
+                                checked={localSystemSettings.providerOptions?.[id]?.raw_endpoint === true}
+                                onChange={() => toggleProviderOption(id, "raw_endpoint")}
+                                style={{ width: 'auto', marginRight: '6px' }}
+                              />
+                              <label htmlFor={`raw-endpoint-${id}`} style={{ cursor: 'pointer', fontSize: '10px' }}>
+                                USE RAW ENDPOINT (NO SUFFIX)
+                              </label>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px' }}>
+                              <span style={{ fontSize: '9px', color: '#666' }}>AUTH:</span>
+                              <select
+                                value={(localSystemSettings.providerOptions?.[id]?.auth_type as string) || "bearer"}
+                                onChange={(e) => setLocalSystemSettings(prev => ({                                  ...prev,
+                                  providerOptions: {
+                                    ...prev.providerOptions,
+                                    [id]: { ...(prev.providerOptions?.[id] || {}), auth_type: e.target.value }
+                                  }
+                                }))}
+                                style={{ background: '#000', color: '#888', border: '1px solid #333', fontSize: '9px', padding: '1px 4px' }}
+                              >
+                                <option value="bearer">Bearer Token</option>
+                                <option value="api-key">api-key Header</option>
+                                <option value="x-api-key">x-api-key Header</option>
+                              </select>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {activeProviderIds.length === 0 && <div>No providers configured.</div>}
+              </div>
+            </div>
+
+            <div style={{ border: '1px dashed #444', padding: '15px', marginBottom: '15px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--magi-blue)', marginBottom: '12px' }}>Consensus Protocol</div>
+              <div className="form-group">
+                <label>DEBATE ROUNDS:</label>
+                <input 
+                  type="number" 
+                  min={1} 
+                  max={5} 
+                  value={localSystemSettings.debateRounds}
+                  onChange={(e) => {
+                    const parsed = parseInt(e.target.value, 10);
+                    if (!isNaN(parsed)) handleSystemChange('debateRounds', parsed);
+                  }}
+                />
+              </div>
+              <div className="form-group">
+                <label>VOTING THRESHOLD:</label>
+                <select 
+                  value={localSystemSettings.votingThreshold}
+                  onChange={(e) => handleSystemChange('votingThreshold', e.target.value as "majority" | "unanimous")}
+                  style={{ width: '100%', background: '#111', color: 'var(--magi-orange)', border: '1px solid var(--magi-orange)', padding: '8px' }}
+                >
+                  <option value="majority">MAJORITY (多数決)</option>
+                  <option value="unanimous">UNANIMOUS (満場一致)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Unit Settings UI */
+          <div id="unit-fields">
+            <div className="form-group">
+              <label>PROVIDER:</label>
+              <select 
+                value={currentUnit?.provider} 
+                onChange={(e) => handleProviderChange(e.target.value)}
+                style={{ width: '100%', background: '#111', color: 'var(--magi-orange)', border: '1px solid var(--magi-orange)', padding: '8px' }}
+              >
+                {filteredProviders.map(p => (
+                  <option key={p.id} value={p.id}>{p.name.toUpperCase()}</option>
+                ))}
+                {filteredProviders.length === 0 && <option value="">NO PROVIDERS IN WHITELIST</option>}
+              </select>
+              {currentUnit && !activeProviderIds.includes(currentUnit.provider) && !currentUnit.apiKey && (
+                <div style={{ color: 'var(--magi-red)', fontSize: '11px', marginTop: '4px' }}>
+                  ⚠ API KEY NOT CONFIGURED IN SYSTEM. PLEASE PROVIDE AN OVERRIDE KEY BELOW.
+                </div>
+              )}
+            </div>
+            <div className="form-group">
+              <label>MODEL:</label>
+              <input
+                type="text"
+                placeholder="SEARCH MODELS..."
+                value={modelSearch}
+                onChange={(e) => setModelSearch(e.target.value)}
+                style={{ 
+                  width: '100%', 
+                  background: '#111', 
+                  color: 'var(--magi-orange)', 
+                  border: '1px solid var(--magi-orange)', 
+                  padding: '5px',
+                  marginBottom: '5px',
+                  fontSize: '12px'
+                }}
+              />
+              <select 
+                value={currentUnit?.model} 
+                onChange={(e) => handleUnitChange('model', e.target.value)}
+                style={{ width: '100%', background: '#111', color: 'var(--magi-orange)', border: '1px solid var(--magi-orange)', padding: '8px' }}
+                size={availableModels.length > 1 ? Math.min(availableModels.length, 5) : 1}
+              >
+                {availableModels.map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+                {availableModels.length === 0 && <option value="">NO MODELS MATCH SEARCH</option>}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>TEMPERATURE:</label>
+              <input
+                type="number"
+                step="0.1"
+                min={0}
+                max={1}
+                value={currentUnit?.temp}
+                onChange={(e) => {
+                  const parsed = parseFloat(e.target.value);
+                  if (!isNaN(parsed)) handleUnitChange('temp', parsed);
+                }}
+              />
+            </div>
+            <div className="form-group">
+              <label>API KEY OVERRIDE (Optional):</label>
+              <input
+                type="password"
+                value={currentUnit?.apiKey || ""}
+                onChange={(e) => handleUnitChange('apiKey', e.target.value)}
+                placeholder="LEAVE BLANK TO USE PROVIDER KEY"
+              />
+            </div>
+            <div className="form-group">
+              <label>PERSONA:</label>
+              <textarea
+                value={currentUnit?.persona}
+                onChange={(e) => handleUnitChange('persona', e.target.value)}
+                style={{ height: '120px' }}
+              ></textarea>
+            </div>
+          </div>
+        )}
+
         <div className="modal-buttons">
-          <button id="btn-save" onClick={saveSettings}>
+          <button id="btn-save" onClick={onSave} type="button">
             SAVE
           </button>
-          <button id="btn-cancel-modal" onClick={closeModal}>
+          <button id="btn-cancel-modal" onClick={closeModal} type="button">
             CANCEL
           </button>
         </div>

@@ -8,6 +8,7 @@
   --magi-red: #cc3333;
   --ui-bg: rgba(0, 0, 0, 0.85);
   --line-width: 2px;
+  --visualizer-base-width: 1100px;
 }
 
 * {
@@ -58,7 +59,8 @@ body {
   top: 80px;
   right: 20px;
   bottom: 190px;
-  width: 300px;
+  width: calc((100vw - var(--visualizer-base-width)) / 2);
+  min-width: 300px;
   overflow-y: auto;
   font-size: 12px;
   color: var(--magi-green);
@@ -83,7 +85,8 @@ body {
   position: absolute;
   bottom: 20px;
   right: 20px;
-  width: 300px;
+  width: calc((100vw - var(--visualizer-base-width)) / 2);
+  min-width: 300px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -118,6 +121,49 @@ textarea:disabled {
   gap: 10px;
 }
 
+.control-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-start {
+  border-color: var(--magi-green);
+  color: var(--magi-green);
+}
+
+.btn-start:hover:not(:disabled) {
+  background: var(--magi-green);
+  color: #000;
+}
+
+.btn-cancel {
+  border-color: var(--magi-red);
+  color: var(--magi-red);
+}
+
+.btn-cancel:hover:not(:disabled) {
+  background: var(--magi-red);
+  color: #000;
+}
+
+.btn-reset {
+  border-color: #777;
+  color: #777;
+}
+
+.btn-reset:hover:not(:disabled) {
+  background: #777;
+  color: #000;
+}
+
+.btn-system-settings {
+  font-size: 10px;
+  padding: 4px;
+  border-color: #444;
+  color: #444;
+  width: 100%;
+}
+
 button {
   flex: 1;
   background: #000;
@@ -148,7 +194,8 @@ button:disabled {
   top: 80px;
   left: 20px;
   bottom: 20px;
-  width: 300px;
+  width: calc((100vw - var(--visualizer-base-width)) / 2);
+  min-width: 300px;
   overflow-y: auto;
   display: none;
   flex-direction: column;
@@ -549,8 +596,13 @@ button:disabled {
   opacity: 1;
 }
 
-.monolith .fill-poly {
+.monolith polygon.fill-poly {
   fill: var(--magi-green);
+  transition: opacity 0.05s, fill 0.5s;
+}
+
+.monolith.blinking .fill-poly {
+  opacity: 0.3;
 }
 
 .unit-thinking .fill-poly {

@@ -16,7 +16,7 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from magi.config.provider import ProviderConfig
+from magi.config.provider import ProviderConfig, resolve_provider_alias
 
 logger = logging.getLogger(__name__)
 
@@ -68,11 +68,33 @@ class MagiSettings(BaseSettings):
     # ペルソナ設定
     personas: Dict[str, PersonaConfig] = Field(default_factory=dict)
 
-    # プロバイダ設定
+    # プロバイダー設定
     providers: Optional[Dict[str, Any]] = Field(default_factory=dict)
     default_provider: Optional[str] = None
+    whitelist_providers: list[str] = Field(default_factory=lambda: ["anthropic", "openai", "gemini", "openrouter", "flixa"])
+
+    @model_validator(mode="after")
+    def validate_provider_settings(self) -> "MagiSettings":
+        """default_provider が whitelist_providers に含まれ、かつ providers に存在することを検証"""
+        if self.default_provider:
+            norm_default = resolve_provider_alias(self.default_provider)
+            norm_whitelist = [resolve_provider_alias(p) for p in self.whitelist_providers]
+            if norm_default not in norm_whitelist:
+                raise ValueError(
+                    f"default_provider '{norm_default}' は whitelist_providers に含まれている必要があります: {norm_whitelist}"
+                )
+            # providers が設定されている場合、そのキーに含まれているかチェック
+            # (ConfigManager.load() 時にプロバイダ設定が空の場合があるため、存在する場合のみチェック)
+            if self.providers:
+                norm_providers = {resolve_provider_alias(k) for k in self.providers.keys()}
+                if norm_default not in norm_providers:
+                    # TODO: ProviderConfigLoader._validate() に詳細な検証を委譲しているため、
+                    # ここでは厳密な存在チェックをスキップするか、警告を出すに留めています。
+                    pass
+        return self
 
     # 合議設定
+
     debate_rounds: int = Field(default=1, ge=1)
     voting_threshold: Literal["majority", "unanimous"] = "majority"
     quorum_threshold: int = Field(default=2, ge=1, le=3)

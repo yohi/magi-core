@@ -446,7 +446,7 @@ class ConsensusEngine:
 
             try:
                 provider_ctx = self.provider_selector.select(target_provider)
-                
+
                 # 更新された値を適用。元のコンテキストを変更せず、新しいインスタンスを作成する。
                 updated_options = dict(provider_ctx.options or {})
                 if llm_config.temperature is not None:
@@ -460,16 +460,40 @@ class ConsensusEngine:
                     api_key=llm_config.api_key or provider_ctx.api_key,
                     options=updated_options
                 )
-
-                return self.provider_factory.build(
-                    provider_ctx,
-                    concurrency_controller=self.concurrency_controller,
-                )
             except (ValueError, LookupError, RuntimeError, MagiException) as e:
                 logger.warning(
                     f"Failed to resolve provider for {persona_type} using selector: {e}. "
                     "Falling back to legacy LLMClient."
                 )
+                provider_ctx = None
+
+            if provider_ctx:
+                # APIキーがプレースホルダの場合は早期に警告して例外を投げる
+                # (AnthropicAdapterが無効なキーでリクエストを送信するのを防ぐ)
+                _placeholder_keys = {"none", "", "sk-ant-dummy-key"}
+                if provider_ctx.api_key and provider_ctx.api_key.strip().lower() in _placeholder_keys:
+                    raise MagiException(
+                        MagiError(
+                            code=ErrorCode.CONFIG_MISSING_API_KEY.value,
+                            message=(
+                                f"Provider '{provider_ctx.provider_id}' has no valid API key configured. "
+                                f"Please set an API key for '{provider_ctx.provider_id}' in the settings."
+                            ),
+                            details={"provider": provider_ctx.provider_id, "persona": persona_key},
+                            recoverable=False,
+                        )
+                    )
+
+                try:
+                    return self.provider_factory.build(
+                        provider_ctx,
+                        concurrency_controller=self.concurrency_controller,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to build provider {provider_ctx.provider_id} for {persona_type}: {e}. "
+                        "Falling back to legacy LLMClient."
+                    )
 
         return LLMClient(
             api_key=llm_config.api_key if llm_config.api_key is not None else self.config.api_key,
@@ -693,6 +717,12 @@ class ConsensusEngine:
             except Exception as e:
                 if isinstance(e, (KeyboardInterrupt, SystemExit)):
                     raise
+                
+                # 致命的なエラー（回復不能なエラー）の場合は即座に中断
+                if isinstance(e, MagiException) and not e.error.recoverable:
+                    logger.error("エージェント %s で回復不能なエラーが発生しました: %s", persona_type.value, e)
+                    raise
+                
                 # エラーを記録
                 error_info = {
                     "phase": ConsensusPhase.THINKING.value,
@@ -701,7 +731,7 @@ class ConsensusEngine:
                 }
                 self._errors.append(error_info)
                 logger.exception(
-                    "エージェント %s の思考生成に失敗", persona_type.value
+                    "エージェント %s の思考生成に失敗 (Non-blocking)", persona_type.value
                 )
                 return None
 
@@ -803,6 +833,12 @@ class ConsensusEngine:
                     except Exception as e:
                         if isinstance(e, (KeyboardInterrupt, SystemExit)):
                             raise
+                        
+                        # 致命的なエラー（回復不能なエラー）の場合は即座に中断
+                        if isinstance(e, MagiException) and not e.error.recoverable:
+                            logger.error("エージェント %s で回復不能なエラーが発生しました: %s", persona_type.value, e)
+                            raise
+                        
                         # エラーを記録
                         error_info = {
                             "phase": ConsensusPhase.DEBATE.value,
@@ -812,7 +848,7 @@ class ConsensusEngine:
                         }
                         self._errors.append(error_info)
                         logger.exception(
-                            "エージェント %s のDebate（ラウンド%s）に失敗",
+                            "エージェント %s のDebate（ラウンド%s）に失敗 (Non-blocking)",
                             persona_type.value,
                             round_number,
                         )
@@ -1111,6 +1147,12 @@ class ConsensusEngine:
                 except Exception as e:  # pragma: no cover - リトライロジックで検証
                     if isinstance(e, (KeyboardInterrupt, SystemExit)):
                         raise
+                    
+                    # 致命的なエラー（回復不能なエラー）の場合は即座に中断
+                    if isinstance(e, MagiException) and not e.error.recoverable:
+                        logger.error("エージェント %s で回復不能なエラーが発生しました: %s", persona_type.value, e)
+                        raise
+                    
                     error_info = {
                         "phase": ConsensusPhase.VOTING.value,
                         "persona_type": persona_type.value,
@@ -1129,8 +1171,11 @@ class ConsensusEngine:
                         persona_type.value,
                         attempt + 1,
                     )
+                    # リトライ上限に達した場合、None を返す (asyncio.gather を中断させない)
                     if attempt >= self.config.retry_count:
-                        break
+                        failed_personas.append(persona_type.value)
+                        self.quorum_manager.exclude(persona_type.value)
+                        return None
                     continue
             failed_personas.append(persona_type.value)
             self.quorum_manager.exclude(persona_type.value)

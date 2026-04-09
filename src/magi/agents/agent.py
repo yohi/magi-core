@@ -344,9 +344,15 @@ class Agent:
             json_str = content
 
         try:
-            data = json.loads(json_str)
+            # strict=False を指定することで、JSON文字列内の制御文字（改行など）を許容する
+            data = json.loads(json_str, strict=False)
         except json.JSONDecodeError as exc:
-            raise SchemaValidationError([f"JSONのデコードに失敗しました: {exc}"]) from exc
+            # デコードに失敗した場合、最低限のクリーンアップ（制御文字の置換）を試みる
+            clean_str = re.sub(r"[\x00-\x1F\x7F]", " ", json_str)
+            try:
+                data = json.loads(clean_str, strict=False)
+            except json.JSONDecodeError:
+                raise SchemaValidationError([f"JSONのデコードに失敗しました: {exc}"]) from exc
 
         validation = self.schema_validator.validate_vote_payload(data)
         if not validation.ok:

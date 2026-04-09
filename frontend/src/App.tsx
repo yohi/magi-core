@@ -22,10 +22,13 @@ export default function App() {
     sessionId,
     serverMode,
     unitSettings,
+    systemSettings,
+    modelDefinitions,
   } = state;
   const {
     setPrompt,
     setUnitSettings,
+    setSystemSettings,
     startSequence,
     handleCancel,
     resetSequence,
@@ -34,7 +37,7 @@ export default function App() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentEditingUnit, setCurrentEditingUnit] = useState<
-    "melchior" | "balthasar" | "casper" | null
+    "melchior" | "balthasar" | "casper" | "system" | null
   >(null);
   
   const logRef = useRef<HTMLDivElement>(null);
@@ -45,7 +48,7 @@ export default function App() {
     }
   }, [logs]);
 
-  const openModal = useCallback((unitKey: "melchior" | "balthasar" | "casper") => {
+  const openModal = useCallback((unitKey: "melchior" | "balthasar" | "casper" | "system") => {
     setCurrentEditingUnit(unitKey);
     setIsModalOpen(true);
   }, []);
@@ -58,24 +61,14 @@ export default function App() {
   const saveSettings = useCallback(() => {
     if (!currentEditingUnit) return;
     
-    const unitName = unitSettings[currentEditingUnit].name;
-    
-    setUnitSettings((prev) => {
-      const next = { ...prev };
-      const rawTemp = Number(next[currentEditingUnit].temp);
-      const safeTemp = Number.isFinite(rawTemp)
-        ? Math.min(1, Math.max(0, rawTemp))
-        : 0.5;
-      next[currentEditingUnit] = {
-        ...next[currentEditingUnit],
-        temp: safeTemp,
-      };
-      return next;
-    });
-    
-    addLog(`UPDATED ${unitName}`, "info");
+    if (currentEditingUnit === 'system') {
+      addLog("SYSTEM SETTINGS UPDATED", "info");
+    } else {
+      const unitName = unitSettings[currentEditingUnit].name;
+      addLog(`UPDATED ${unitName}`, "info");
+    }
     closeModal();
-  }, [currentEditingUnit, unitSettings, setUnitSettings, addLog, closeModal]);
+  }, [currentEditingUnit, unitSettings, addLog, closeModal]);
 
   return (
     <div className="app-root">
@@ -106,6 +99,7 @@ export default function App() {
           onStart={startSequence}
           onCancel={handleCancel}
           onReset={resetSequence}
+          onOpenSystemSettings={() => openModal('system')}
           isRunning={isRunning}
           sessionId={sessionId}
           phase={phase}
@@ -117,6 +111,9 @@ export default function App() {
         currentEditingUnit={currentEditingUnit}
         unitSettings={unitSettings}
         setUnitSettings={setUnitSettings}
+        systemSettings={systemSettings}
+        setSystemSettings={setSystemSettings}
+        modelDefinitions={modelDefinitions}
         saveSettings={saveSettings}
         closeModal={closeModal}
       />

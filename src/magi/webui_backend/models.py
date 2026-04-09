@@ -47,6 +47,9 @@ class SessionOptions(BaseModel):
     timeout_sec: float = 120.0
     attachments: Optional[List[Dict[str, Any]]] = None
     api_keys: Optional[Dict[str, str]] = Field(default_factory=dict)
+    provider_options: Optional[Dict[str, Dict[str, Any]]] = Field(default_factory=dict)
+    unit_configs: Optional[Dict[str, Any]] = None
+    system_config: Optional[Dict[str, Any]] = None
     plugin: Optional[Any] = None
 
 class Session(BaseModel):

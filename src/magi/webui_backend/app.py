@@ -9,9 +9,12 @@ import asyncio
 import logging
 from typing import Optional
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, APIRouter, status, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ValidationError, Field
 
 import os
@@ -20,6 +23,7 @@ from magi.errors import MagiException
 from magi.webui_backend.models import SessionOptions, SessionPhase
 from magi.webui_backend.session_manager import SessionManager
 from magi.webui_backend.adapter import ConsensusEngineMagiAdapter, MockMagiAdapter
+from magi.webui_backend.models_fetcher import ModelsFetcher
 
 logger = logging.getLogger(__name__)
 
@@ -36,22 +40,33 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# 設定読み込み
+# モックモードの判定
+def is_mock_enabled() -> bool:
+    val = os.environ.get("MAGI_USE_MOCK", "0").lower()
+    return val in ("1", "true", "yes", "on")
+
 config_manager = ConfigManager()
+use_mock = False
+models_fetcher = None
+
 try:
     config = config_manager.load()
-    use_mock = False
-    # 環境変数で強制的にモックモードにする
-    if os.environ.get("MAGI_USE_MOCK", "0") == "1":
-        use_mock = True
+    use_mock = is_mock_enabled()
+    models_fetcher = ModelsFetcher(config)
+    if use_mock:
+        logger.info("MAGI_USE_MOCK is enabled via environment variable. Forcing MOCK_MODE.")
+    else:
+        logger.info("Configuration loaded successfully. Running in PRODUCTION_MODE.")
 except (MagiException, ValidationError, FileNotFoundError) as e:
-    if os.environ.get("MAGI_USE_MOCK", "0") == "1":
+    if is_mock_enabled():
         logger.warning(f"Configuration load failed, falling back to MockMagiAdapter as requested: {e}")
         from magi.config.settings import MagiSettings
         config = MagiSettings()  # デフォルト値を使用
         use_mock = True
+        models_fetcher = ModelsFetcher(config)
     else:
-        logger.error(f"Failed to load configuration: {e}")
+        logger.error(f"Failed to load configuration and MAGI_USE_MOCK is not enabled: {e}")
+        # ユーザーが明示的に 0 を指定しているか、デフォルト状態（未指定）の場合はエラーにする
         raise e
 
 MAX_CONCURRENCY = config.max_concurrency
@@ -122,6 +137,15 @@ async def health_check() -> HealthResponse:
     )
 
 
+@api_router.get("/models")
+async def get_models():
+    """利用可能なモデルの一覧を取得するエンドポイント"""
+    if models_fetcher:
+        models = await models_fetcher.fetch_models()
+        return {"models": models}
+    return {"models": []}
+
+
 @api_router.post(
     "/sessions",
     response_model=CreateSessionResponse,
@@ -185,6 +209,29 @@ async def cancel_session(session_id: str) -> CancelSessionResponse:
 # ルーターをアプリケーションに登録
 app.include_router(api_router)
 
+# フロントエンドの静的ファイル配信
+dist_path = Path("frontend/dist")
+if dist_path.exists():
+    # assetsディレクトリのマウント
+    assets_path = dist_path / "assets"
+    if assets_path.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_path)), name="assets")
+    
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        # API へのリクエストは本来 api_router で処理されるが、
+        # 存在しないエンドポイントの場合に SPA の index.html にフォールバックしないようにする
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="API endpoint not found")
+
+        # それ以外のリクエストは index.html を返す (SPA)
+        file_path = dist_path / full_path
+        if full_path and file_path.exists() and file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(dist_path / "index.html")
+else:
+    logger.warning(f"frontend/dist directory not found at {dist_path.absolute()}. Frontend will not be served.")
+
 
 @app.websocket("/ws/sessions/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
@@ -224,6 +271,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 phase = data.get("phase")
                 
                 if evt_type == "final":
+                    # 最終結果を送信した後、少し待ってからクローズ（クライアント側の処理時間を確保）
+                    await asyncio.sleep(0.5)
                     await websocket.close()
                     break
                 
@@ -231,8 +280,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     await websocket.close()
                     break
 
+                # フェーズ遷移による終了判定は、RESOLVED以外（CANCELLED, ERROR）のみに限定する
+                # RESOLVED の場合は final イベントがセットで来るはずなのでそちらで閉じる
                 if evt_type == "phase" and phase in [
-                    SessionPhase.RESOLVED.value,
                     SessionPhase.CANCELLED.value,
                     SessionPhase.ERROR.value
                 ]:

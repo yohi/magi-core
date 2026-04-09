@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { UnitKey, UnitState, Decision } from "../types";
 
 interface MagiVisualizerProps {
@@ -19,6 +19,12 @@ export const MagiVisualizer: React.FC<MagiVisualizerProps> = ({
   isRunning,
 }) => {
   const scalerRef = useRef<HTMLDivElement | null>(null);
+  const timeoutsRef = useRef<Set<number>>(new Set());
+  const [blinking, setBlinking] = useState<Record<string, boolean>>({
+    "MELCHIOR-1": false,
+    "BALTHASAR-2": false,
+    "CASPER-3": false,
+  });
 
   useEffect(() => {
     const handleResize = () => {
@@ -33,19 +39,56 @@ export const MagiVisualizer: React.FC<MagiVisualizerProps> = ({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // Random blinking effect
+  useEffect(() => {
+    if (!isRunning) {
+      timeoutsRef.current.forEach(window.clearTimeout);
+      timeoutsRef.current.clear();
+      setBlinking({ "MELCHIOR-1": false, "BALTHASAR-2": false, "CASPER-3": false });
+      return;
+    }
+
+    const units: UnitKey[] = ["MELCHIOR-1", "BALTHASAR-2", "CASPER-3"];
+    
+    units.forEach(unit => {
+      const runBlink = () => {
+        setBlinking(prev => ({ ...prev, [unit]: true }));
+        const t1 = window.setTimeout(() => {
+          setBlinking(prev => ({ ...prev, [unit]: false }));
+          timeoutsRef.current.delete(t1);
+        }, 30 + Math.random() * 70);
+        timeoutsRef.current.add(t1);
+        
+        const nextDelay = 50 + Math.random() * 200;
+        const t2 = window.setTimeout(() => {
+          timeoutsRef.current.delete(t2);
+          runBlink();
+        }, nextDelay);
+        timeoutsRef.current.add(t2);
+      };
+      runBlink();
+    });
+
+    return () => {
+      timeoutsRef.current.forEach(window.clearTimeout);
+      timeoutsRef.current.clear();
+    };
+  }, [isRunning]);
+
   const getUnitClass = (unit: UnitKey) => {
     const state = unitStates[unit];
-    if (state === "THINKING") return "unit-thinking";
-    if (state === "DEBATING") return "unit-debating";
-    if (state === "VOTING") return "unit-voting";
-    if (state === "VOTED") return "unit-voted";
-    return "";
+    const blinkClass = blinking[unit] ? "blinking" : "";
+    if (state === "THINKING") return `unit-thinking ${blinkClass}`;
+    if (state === "DEBATING") return `unit-debating ${blinkClass}`;
+    if (state === "VOTING") return `unit-voting ${blinkClass}`;
+    if (state === "VOTED") return `unit-voted ${blinkClass}`;
+    return blinkClass;
   };
 
   const showThinkingStamp = decision === null && isRunning;
   const showApproveStamp = decision === "APPROVE";
   const showDenyStamp = decision === "DENY";
-  const showCancelledStamp = phase === "CANCELLED";
+  const showCancelledStamp = phase === "CANCELLED" || phase === "ERROR";
 
   return (
     <div className="scale-wrapper" id="scaler" ref={scalerRef}>

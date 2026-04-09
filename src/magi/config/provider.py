@@ -23,19 +23,31 @@ SUPPORTED_PROVIDERS = (
     "copilot",
     "antigravity",
     "openrouter",
+    "flixa",
 )
 AUTH_BASED_PROVIDERS = ("claude", "copilot", "antigravity")
 RECOMMENDED_MODELS = {
     "anthropic": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
-    "openai": ["gpt-4o", "gpt-4-turbo"],
+    "openai": ["gpt-4o", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo"],
     "gemini": ["gemini-2.0-flash", "gemini-2.0-flash-exp"],
     "antigravity": ["gemini-2.0-flash-exp"],
     "claude": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
     "copilot": ["gpt-4o", "gpt-4"],
     "openrouter": ["anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001"],
+    "flixa": ["gpt-4o", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo"],
 }
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_provider_alias(provider_id: str) -> str:
+    """プロバイダIDを正規化(canonical ID)する"""
+    alias_map = {
+        "claude": "anthropic",
+        "google": "gemini",
+    }
+    normalized = provider_id.lower().strip()
+    return alias_map.get(normalized, normalized)
 
 
 def mask_secret(value: str) -> str:
@@ -96,39 +108,66 @@ class ProviderConfigs:
 
     providers: Dict[str, ProviderConfig]
     default_provider: str = DEFAULT_PROVIDER_ID
+    whitelist_providers: Optional[list[str]] = None
 
 
 class ProviderConfigLoader:
     """プロバイダ設定ローダー(env/yaml + キャッシュ + バリデーション)"""
 
     def __init__(self) -> None:
-        self._cache: Optional[ProviderConfigs] = None
-        self._cache_validated: bool = False
+        self._cache_map: Dict[Tuple[Optional[str], Optional[Tuple[str, ...]]], ProviderConfigs] = {}
+        self._cache_validated_map: Dict[Tuple[Optional[str], Optional[Tuple[str, ...]]], bool] = {}
+        self._cache_whitelist: Optional[list[str]] = None
 
     def load(
         self,
         config_path: Optional[Path] = None,
         force_reload: bool = False,
         skip_validation: bool = False,
+        whitelist_providers: Optional[list[str]] = None,
     ) -> ProviderConfigs:
         """プロバイダ設定を読み込む"""
-        if self._cache is not None and not force_reload:
-            if skip_validation or self._cache_validated:
-                return self._cache
+        # whitelist_providers を正規化
+        normalized_whitelist = None
+        if whitelist_providers is not None:
+            normalized_whitelist = sorted(
+                list(set(resolve_provider_alias(p) for p in whitelist_providers))
+            )
+            self._cache_whitelist = normalized_whitelist
+
+        cache_key = (
+            str(config_path) if config_path else None,
+            tuple(normalized_whitelist) if normalized_whitelist is not None else None,
+        )
+
+        if not force_reload and cache_key in self._cache_map:
+            if skip_validation or self._cache_validated_map.get(cache_key):
+                return self._cache_map[cache_key]
 
         file_providers, file_default = self._load_from_file(config_path)
         env_providers, env_default = self._load_from_env()
         merged = self._merge_providers(file_providers, env_providers)
         default_provider = self._resolve_default_provider(file_default, env_default)
-        if not skip_validation:
-            self._validate(merged, default_provider)
 
-        self._cache = ProviderConfigs(
+        # default_provider も正規化してチェック
+        normalized_default = resolve_provider_alias(default_provider)
+        if normalized_whitelist and normalized_default not in normalized_whitelist:
+            raise ValueError(
+                f"Default provider '{normalized_default}' (original: '{default_provider}') "
+                f"is not in the whitelist: {normalized_whitelist}"
+            )
+
+        if not skip_validation:
+            self._validate(merged, normalized_default, normalized_whitelist)
+
+        configs = ProviderConfigs(
             providers=merged,
-            default_provider=default_provider,
+            default_provider=normalized_default,
+            whitelist_providers=normalized_whitelist,
         )
-        self._cache_validated = not skip_validation
-        return self._cache
+        self._cache_map[cache_key] = configs
+        self._cache_validated_map[cache_key] = not skip_validation
+        return configs
 
     def _load_from_file(
         self,
@@ -268,8 +307,25 @@ class ProviderConfigLoader:
         self,
         providers: Dict[str, ProviderConfig],
         default_provider: str,
+        whitelist_providers: Optional[list[str]] = None,
     ) -> None:
         """必須フィールドとデフォルト設定の検証"""
+        normalized_default = resolve_provider_alias(default_provider)
+        if whitelist_providers and normalized_default not in whitelist_providers:
+            message = f"デフォルトプロバイダ '{normalized_default}' (original: '{default_provider}') はホワイトリストに含まれていません。"
+            raise MagiException(
+                MagiError(
+                    code=ErrorCode.CONFIG_INVALID_VALUE.value,
+                    message=message,
+                    details={
+                        "default_provider": default_provider,
+                        "normalized_default": normalized_default,
+                        "whitelist": whitelist_providers,
+                    },
+                    recoverable=False,
+                )
+            )
+
         if not providers:
             message = "プロバイダ設定が存在しません。少なくともデフォルトプロバイダを設定してください。"
             raise MagiException(
