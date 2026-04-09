@@ -34,5 +34,7 @@ def normalize_model_name(model_name: str, target_provider: Optional[str] = None)
         return "gemini", model_name[len("google/"):]
     if model_name.startswith("gemini/"):
         return "gemini", model_name[len("gemini/"):]
+    if model_name.startswith("flixa/"):
+        return "flixa", model_name[len("flixa/"):]
 
     return target_provider, model_name

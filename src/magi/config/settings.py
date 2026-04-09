@@ -71,7 +71,7 @@ class MagiSettings(BaseSettings):
     # プロバイダー設定
     providers: Optional[Dict[str, Any]] = Field(default_factory=dict)
     default_provider: Optional[str] = None
-    whitelist_providers: list[str] = Field(default_factory=lambda: ["anthropic", "openai", "google", "groq", "openrouter"])
+    whitelist_providers: list[str] = Field(default_factory=lambda: ["anthropic", "openai", "google", "groq", "openrouter", "flixa"])
 
     # 合議設定
 
