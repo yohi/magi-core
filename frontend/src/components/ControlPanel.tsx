@@ -30,6 +30,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         placeholder="ENTER PROMPT DATA..."
         value={prompt}
         onChange={(event) => setPrompt(event.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            if (!isRunning) onStart();
+          }
+        }}
         disabled={isRunning}
       ></textarea>
       <div className="control-actions" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>

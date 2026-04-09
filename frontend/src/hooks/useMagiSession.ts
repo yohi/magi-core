@@ -380,11 +380,12 @@ export function useMagiSession() {
 
     if (sessionId) {
       cancelledRef.current = true;
-      await cancelSession();
       setIsRunning(false);
       setPhase("CANCELLED");
       addLog("SESSION CANCELLED", "error");
       closeWebSocket();
+      
+      await cancelSession();
 
       if (fallbackTimeoutRef.current !== null) {
         window.clearTimeout(fallbackTimeoutRef.current);
