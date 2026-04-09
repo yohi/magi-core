@@ -707,12 +707,15 @@ class FlixaAdapter(OpenAIAdapter):
 
         # エンドポイントの決定
         # 404エラー (Cannot POST /v1/agent) を防ぐため、確実に /responses へのパスを構築する
-        endpoint_suffix = self.context.options.get("endpoint_suffix", self._chat_endpoint)
-        url = f"{self.endpoint.rstrip('/')}/{endpoint_suffix.lstrip('/')}"
-        
-        # 最終的な URL が /responses で終わっていない場合、かつ raw_endpoint でない場合は補完を試みる
-        if not url.endswith("/responses") and not self.context.options.get("raw_endpoint"):
-            url = f"{url.rstrip('/')}/responses"
+        if self.context.options.get("raw_endpoint"):
+            url = self.endpoint.rstrip('/')
+        else:
+            endpoint_suffix = self.context.options.get("endpoint_suffix", self._chat_endpoint)
+            url = f"{self.endpoint.rstrip('/')}/{endpoint_suffix.lstrip('/')}"
+            
+            # 最終的な URL が /responses で終わっていない場合は補完を試みる
+            if not url.endswith("/responses"):
+                url = f"{url.rstrip('/')}/responses"
 
         # ヘッダーの調整: Flixa では Authorization: Bearer と x-api-key の両方が必要な場合がある
         headers = self._all_headers()

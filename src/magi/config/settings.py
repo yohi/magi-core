@@ -71,7 +71,7 @@ class MagiSettings(BaseSettings):
     # プロバイダー設定
     providers: Optional[Dict[str, Any]] = Field(default_factory=dict)
     default_provider: Optional[str] = None
-    whitelist_providers: list[str] = Field(default_factory=lambda: ["anthropic", "openai", "gemini", "groq", "openrouter", "flixa"])
+    whitelist_providers: list[str] = Field(default_factory=lambda: ["anthropic", "openai", "gemini", "openrouter", "flixa"])
 
     @model_validator(mode="after")
     def validate_provider_settings(self) -> "MagiSettings":

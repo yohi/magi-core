@@ -26,7 +26,7 @@ const INITIAL_SYSTEM_SETTINGS: SystemSettings = {
   votingThreshold: "majority",
   providers: {},
   providerOptions: {},
-  whitelistProviders: ["anthropic", "openai", "gemini", "groq", "openrouter", "flixa"],
+  whitelistProviders: ["anthropic", "openai", "gemini", "openrouter", "flixa"],
 };
 
 const INITIAL_UNIT_SETTINGS: AllUnitSettings = {
@@ -521,6 +521,9 @@ export function useMagiSession() {
             const firstForProvider = defs.find(m => m.provider === unit.provider);
             if (firstForProvider) {
               next[key] = { ...unit, model: firstForProvider.id };
+              changed = true;
+            } else if (defs.length > 0) {
+              next[key] = { ...unit, provider: defs[0].provider, model: defs[0].id };
               changed = true;
             }
           }

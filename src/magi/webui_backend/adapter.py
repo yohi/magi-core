@@ -72,8 +72,8 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
         # テンプレートベースパスの設定
         template_base_path = getattr(run_config, "template_base_path", None)
         if not template_base_path:
-            # デフォルト値の設定（ハードコーディングからの移行）
-            template_base_path = str(Path("/app/templates").absolute())
+            from magi.config.settings import MagiSettings
+            template_base_path = MagiSettings().template_base_path
         run_config.template_base_path = template_base_path
 
         api_keys = getattr(options, "api_keys", {}) or {}
@@ -83,7 +83,7 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
         # 1. プロバイダ Registry の再構築
         # UIからの入力を反映し、既存の(不完全な)設定を上書きする
         provider_loader = ProviderConfigLoader()
-        whitelist_raw = getattr(run_config, "whitelist_providers", None) or ["anthropic", "openai", "gemini", "groq", "openrouter", "flixa"]
+        whitelist_raw = getattr(run_config, "whitelist_providers", None) or ["anthropic", "openai", "gemini", "openrouter", "flixa"]
         
         from magi.config.provider import ProviderConfig, resolve_provider_alias
         
@@ -99,6 +99,7 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
 
         for pid in all_pids:
             if pid == "default": continue
+            if pid.lower().endswith("_override"): continue
             pl = resolve_provider_alias(pid.lower())
             ui_key = api_keys.get(pl) or api_keys.get(pid)
             ui_options = provider_options.get(pl) or provider_options.get(pid) or {}

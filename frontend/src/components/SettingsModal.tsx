@@ -39,6 +39,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [newProviderKey, setNewProviderKey] = useState("");
   const [modelSearch, setModelSearch] = useState("");
 
+  const [isSaving, setIsSaving] = useState(false);
+
   // Sync with props when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -49,6 +51,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       if (first) setNewProviderId(first.id);
     }
   }, [isOpen, unitSettings, systemSettings]);
+
+  // Deterministically call saveSettings once parent state updates
+  useEffect(() => {
+    if (isSaving && unitSettings === localUnitSettings && systemSettings === localSystemSettings) {
+      saveSettings();
+      setIsSaving(false);
+    }
+  }, [unitSettings, systemSettings, localUnitSettings, localSystemSettings, isSaving, saveSettings]);
 
   if (!isOpen || !currentEditingUnit) return null;
 
@@ -143,10 +153,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const onSave = () => {
     setUnitSettings(localUnitSettings);
     setSystemSettings(localSystemSettings);
-    // Use timeout to ensure state updates are processed before saveSettings (which might trigger API call)
-    setTimeout(() => {
-      saveSettings();
-    }, 0);
+    setIsSaving(true);
   };
 
   return (
@@ -195,7 +202,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <a href="#" onClick={(e) => { e.preventDefault(); removeProvider(id); }} style={{ color: 'var(--magi-red)', textDecoration: 'none' }}>[DEL]</a>
                     </div>
                     {/* OpenAI互換または特定プロバイダ向けの追加オプション */}
-                    {["flixa", "openai", "openrouter", "gemini", "groq"].includes(id) && (
+                    {["flixa", "openai", "openrouter", "gemini"].includes(id) && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px', borderLeft: '2px solid #333', paddingLeft: '10px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', color: '#888' }}>
                           <input 

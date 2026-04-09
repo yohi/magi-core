@@ -45,7 +45,7 @@ class ModelsFetcher:
         whitelist = getattr(self.config, "whitelist_providers", None)
         if whitelist is None:
             # デフォルトのホワイトリスト
-            whitelist = ["anthropic", "openai", "gemini", "groq", "openrouter", "flixa"]
+            whitelist = ["anthropic", "openai", "gemini", "openrouter", "flixa"]
 
         from magi.config.provider import resolve_provider_alias
         whitelist = [resolve_provider_alias(p.lower()) for p in whitelist]
@@ -83,7 +83,7 @@ class ModelsFetcher:
                             continue
                         
                         slash_idx = raw.find("/")
-                        provider = raw[:slash_idx].lower()
+                        provider = resolve_provider_alias(raw[:slash_idx].lower())
                         model_id = raw[slash_idx + 1:]
                         
                         # 通常のプロバイダ追加
@@ -94,8 +94,12 @@ class ModelsFetcher:
                         # (OpenAI がホワイトリストになくても Flixa があれば追加する)
                         if provider == "openai" and "flixa" in whitelist:
                             add_model("flixa", model_id, f"Flixa {model_id}")
-        except httpx.HTTPError as e:
-            logger.error(f"HTTP error fetching models from {self.SCHEMA_URL}: {e}")
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP status error fetching models from {self.SCHEMA_URL}: {e}")
+        except httpx.RequestError as e:
+            logger.error(f"HTTP request error fetching models from {self.SCHEMA_URL}: {e}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"Data parsing error fetching models from {self.SCHEMA_URL}: {e}")
         except Exception as e:
             logger.error(f"Unexpected error fetching models from {self.SCHEMA_URL}: {e}")
 
@@ -142,8 +146,12 @@ class ModelsFetcher:
                             m_id = m.get("id")
                             if m_id:
                                 add_model("flixa", m_id, m.get("name", m_id))
-            except httpx.HTTPError as e:
-                logger.debug(f"HTTP error fetching models from Flixa API (expected if no API key): {e}")
+            except httpx.HTTPStatusError as e:
+                logger.debug(f"HTTP status error fetching models from Flixa API (expected if no API key): {e}")
+            except httpx.RequestError as e:
+                logger.debug(f"HTTP request error fetching models from Flixa API: {e}")
+            except (ValueError, TypeError) as e:
+                logger.debug(f"Data parsing error fetching models from Flixa API: {e}")
             except Exception as e:
                 logger.debug(f"Unexpected error fetching models from Flixa API: {e}")
 
@@ -180,3 +188,4 @@ class ModelsFetcher:
             {"id": "gemini-1.5-flash", "provider": "gemini", "name": "Gemini 1.5 Flash (Fallback)"}
         ]
         return [f for f in fallbacks if f["provider"] in whitelist]
+hitelist]
