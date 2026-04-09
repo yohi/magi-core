@@ -21,6 +21,8 @@ from magi.core.providers import (
 )
 from magi.errors import MagiException
 
+logger = logging.getLogger(__name__)
+
 
 def _setup_logging() -> None:
     """ロギング設定を読み込む
@@ -105,8 +107,7 @@ def main(args: List[str] | None = None) -> int:
             config = Config(api_key="")
         else:
             logger.error("Unexpected error during configuration loading", exc_info=True)
-            print(f"Internal error: {e}", file=sys.stderr)
-            return 1
+            raise
 
     # 2. 設定されたホワイトリストを使ってプロバイダ設定をロード・初期化
     provider_selector = None
@@ -126,8 +127,7 @@ def main(args: List[str] | None = None) -> int:
     except Exception as e:
         if parsed.command not in ("help", "version", "init", "auth"):
             logger.error("Unexpected error during provider configuration", exc_info=True)
-            print(f"Internal error: {e}", file=sys.stderr)
-            return 1
+            raise
 
     # CLI実行
     cli = MagiCLI(
