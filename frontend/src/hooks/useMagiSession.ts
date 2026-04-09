@@ -36,10 +36,17 @@ export function useMagiSession() {
   const [modelDefinitions, setModelDefinitions] = useState<ModelDefinition[]>([]);
   
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(() => {
+    const defaultWhitelist = ["anthropic", "openai", "google", "groq", "openrouter", "flixa"];
     const saved = localStorage.getItem(STORAGE_KEY_SYSTEM);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        // 新しいプロバイダが追加された場合に備えて、ホワイトリストをマージまたは更新する
+        if (parsed && Array.isArray(parsed.whitelistProviders)) {
+          const mergedWhitelist = Array.from(new Set([...parsed.whitelistProviders, ...defaultWhitelist]));
+          return { ...parsed, whitelistProviders: mergedWhitelist };
+        }
+        return parsed;
       } catch (e) {
         console.error("Failed to parse saved system settings", e);
       }
@@ -48,7 +55,7 @@ export function useMagiSession() {
       debateRounds: 1,
       votingThreshold: "majority",
       providers: {},
-      whitelistProviders: ["anthropic", "openai", "google", "groq", "openrouter", "flixa"],
+      whitelistProviders: defaultWhitelist,
     };
   });
 
