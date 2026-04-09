@@ -188,4 +188,3 @@ class ModelsFetcher:
             {"id": "gemini-1.5-flash", "provider": "gemini", "name": "Gemini 1.5 Flash (Fallback)"}
         ]
         return [f for f in fallbacks if f["provider"] in whitelist]
-hitelist]
