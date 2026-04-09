@@ -167,46 +167,69 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <a href="#" onClick={(e) => { e.preventDefault(); removeProvider(id); }} style={{ color: 'var(--magi-red)', textDecoration: 'none' }}>[DEL]</a>
                     </div>
                     {/* OpenAI互換または特定プロバイダ向けの追加オプション */}
-                    {["openai", "flixa", "openrouter", "google", "groq", "local"].includes(id) && (
-                      <div style={{ display: 'flex', alignItems: 'center', marginTop: '4px', color: '#888' }}>
-                        <input 
-                          type="checkbox" 
-                          id={`verify-ssl-${id}`}
-                          checked={!(systemSettings.providerOptions?.[id]?.verify_ssl === false)}
-                          onChange={() => toggleProviderOption(id, "verify_ssl")}
-                          style={{ width: 'auto', marginRight: '6px' }}
-                        />
-                        <label htmlFor={`verify-ssl-${id}`} style={{ cursor: 'pointer', fontSize: '10px' }}>
-                          ENABLE SSL VERIFICATION
-                        </label>
-                      </div>
-                    )}
-                    {["openai", "flixa", "openrouter", "local"].includes(id) && (
-                      <div style={{ display: 'flex', alignItems: 'center', marginTop: '2px', color: '#888' }}>
-                        <input 
-                          type="checkbox" 
-                          id={`plain-text-${id}`}
-                          checked={systemSettings.providerOptions?.[id]?.use_plain_text === true}
-                          onChange={() => toggleProviderOption(id, "use_plain_text")}
-                          style={{ width: 'auto', marginRight: '6px' }}
-                        />
-                        <label htmlFor={`plain-text-${id}`} style={{ cursor: 'pointer', fontSize: '10px' }}>
-                          USE PLAIN TEXT CONTENT (LEGACY)
-                        </label>
-                      </div>
-                    )}
-                    {["flixa"].includes(id) && (
-                      <div style={{ display: 'flex', alignItems: 'center', marginTop: '2px', color: '#888' }}>
-                        <input 
-                          type="checkbox" 
-                          id={`api-key-header-${id}`}
-                          checked={systemSettings.providerOptions?.[id]?.use_api_key_header === true}
-                          onChange={() => toggleProviderOption(id, "use_api_key_header")}
-                          style={{ width: 'auto', marginRight: '6px' }}
-                        />
-                        <label htmlFor={`api-key-header-${id}`} style={{ cursor: 'pointer', fontSize: '10px' }}>
-                          USE 'api-key' HEADER (FOR SOME GATEWAYS)
-                        </label>
+                    {["flixa", "openai", "openrouter", "google", "groq", "local"].includes(id) && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px', borderLeft: '2px solid #333', paddingLeft: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', color: '#888' }}>
+                          <input 
+                            type="checkbox" 
+                            id={`verify-ssl-${id}`}
+                            checked={!(systemSettings.providerOptions?.[id]?.verify_ssl === false)}
+                            onChange={() => toggleProviderOption(id, "verify_ssl")}
+                            style={{ width: 'auto', marginRight: '6px' }}
+                          />
+                          <label htmlFor={`verify-ssl-${id}`} style={{ cursor: 'pointer', fontSize: '10px' }}>
+                            ENABLE SSL VERIFICATION
+                          </label>
+                        </div>
+                        
+                        {["flixa", "openai", "openrouter", "local"].includes(id) && (
+                          <>
+                            <div style={{ display: 'flex', alignItems: 'center', color: '#888' }}>
+                              <input 
+                                type="checkbox" 
+                                id={`plain-text-${id}`}
+                                checked={systemSettings.providerOptions?.[id]?.use_plain_text === true}
+                                onChange={() => toggleProviderOption(id, "use_plain_text")}
+                                style={{ width: 'auto', marginRight: '6px' }}
+                              />
+                              <label htmlFor={`plain-text-${id}`} style={{ cursor: 'pointer', fontSize: '10px' }}>
+                                USE PLAIN TEXT CONTENT (LEGACY)
+                              </label>
+                            </div>
+                            
+                            <div style={{ display: 'flex', alignItems: 'center', color: '#888' }}>
+                              <input 
+                                type="checkbox" 
+                                id={`raw-endpoint-${id}`}
+                                checked={systemSettings.providerOptions?.[id]?.raw_endpoint === true}
+                                onChange={() => toggleProviderOption(id, "raw_endpoint")}
+                                style={{ width: 'auto', marginRight: '6px' }}
+                              />
+                              <label htmlFor={`raw-endpoint-${id}`} style={{ cursor: 'pointer', fontSize: '10px' }}>
+                                USE RAW ENDPOINT (NO SUFFIX)
+                              </label>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px' }}>
+                              <span style={{ fontSize: '9px', color: '#666' }}>AUTH:</span>
+                              <select 
+                                value={systemSettings.providerOptions?.[id]?.auth_type || "bearer"}
+                                onChange={(e) => setSystemSettings(prev => ({
+                                  ...prev,
+                                  providerOptions: {
+                                    ...prev.providerOptions,
+                                    [id]: { ...(prev.providerOptions?.[id] || {}), auth_type: e.target.value }
+                                  }
+                                }))}
+                                style={{ background: '#000', color: '#888', border: '1px solid #333', fontSize: '9px', padding: '1px 4px' }}
+                              >
+                                <option value="bearer">Bearer Token</option>
+                                <option value="api-key">api-key Header</option>
+                                <option value="x-api-key">x-api-key Header</option>
+                              </select>
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>

@@ -210,6 +210,16 @@ class OpenAIAdapter:
             payload["messages"].append({"role": "user", "content": user_content})
 
         url = f"{self.endpoint}{self._chat_endpoint}"
+        
+        # エンドポイントの決定
+        endpoint_suffix = self.context.options.get("endpoint_suffix")
+        if self.context.options.get("raw_endpoint", False):
+            url = self.endpoint
+        elif endpoint_suffix:
+            url = f"{self.endpoint}{endpoint_suffix}"
+            
+        logger.info(f"Calling LLM: provider={self.provider_id}, url={url.split('?')[0]}")
+
         try:
             response = await self._client.post(
                 url,
@@ -297,14 +307,23 @@ class OpenAIAdapter:
         )
 
     def _auth_headers(self) -> Dict[str, str]:
-        # options に "use_api_key_header" があれば api-key ヘッダーを使用、なければ Bearer
-        if self.context.options.get("use_api_key_header", False):
+        # options に基づいて認証ヘッダーを選択
+        auth_type = self.context.options.get("auth_type", "bearer")
+        
+        if auth_type == "api-key" or self.context.options.get("use_api_key_header", False):
             return {"api-key": self.context.api_key}
+        if auth_type == "x-api-key":
+            return {"x-api-key": self.context.api_key}
+            
         return {"Authorization": f"Bearer {self.context.api_key}"}
 
     def _all_headers(self) -> Dict[str, str]:
         """認証ヘッダーとカスタムヘッダーを統合"""
         headers = self._auth_headers()
+        
+        # User-Agent を設定 (一部のゲートウェイで必須)
+        if "User-Agent" not in headers:
+            headers["User-Agent"] = "MAGI-System/1.0"
         
         # options 内の "headers" 辞書があればマージ
         custom_headers = self.context.options.get("headers")
@@ -617,7 +636,7 @@ class OpenRouterAdapter(OpenAIAdapter):
 
 
 class FlixaAdapter(OpenAIAdapter):
-    """Flixa 向けアダプタ (OpenAI 互換 API)"""
+    """Flixa 向けアダプタ (OpenAI 互換 + Open Responses API)"""
 
     def __init__(
         self,
@@ -625,7 +644,7 @@ class FlixaAdapter(OpenAIAdapter):
         *,
         http_client: Optional[Any] = None,
         timeout: float = 30.0,
-        chat_endpoint: str = "/chat/completions",
+        chat_endpoint: str = "/responses",
     ) -> None:
         # コンテキストにエンドポイントがない場合は Flixa の既定値を使用
         endpoint = context.endpoint or "https://api.flixa.engineer/v1/agent"
@@ -637,3 +656,96 @@ class FlixaAdapter(OpenAIAdapter):
             chat_endpoint=chat_endpoint,
         )
         self.endpoint = endpoint
+
+    async def send(self, request: LLMRequest) -> LLMResponse:
+        """Chat Completions または Open Responses エンドポイントへ送信し、結果をパースする"""
+        # 親クラスの send を呼び出す
+        response = await super().send(request)
+        
+        # もし結果が空の場合、Flixa 独自のレスポンス形式（Open Responses）をパースしてみる
+        # (親クラスの send は httpx レスポンスを json() して choices を探すが、
+        # 見つからない場合は content="" で LLMResponse を返す)
+        if not response.content:
+            # 再パースのために生のレスポンスデータを取得したいが、LLMResponse には含まれていない
+            # そのため、このメソッドでロジックを再実装するか、親クラスを拡張する必要がある。
+            # ここではシンプルに、Flixa 向けに send をオーバーライドする。
+            return await self._send_flixa(request)
+            
+        return response
+
+    async def _send_flixa(self, request: LLMRequest) -> LLMResponse:
+        """Flixa (Open Responses) 形式での送信とパース"""
+        import base64
+        self._validate_prompts(request)
+
+        user_content = [{"type": "text", "text": request.user_prompt}]
+        if request.attachments:
+            for attachment in request.attachments:
+                encoded_data = base64.b64encode(attachment.data).decode("utf-8")
+                data_url = f"data:{attachment.mime_type};base64,{encoded_data}"
+                user_content.append({"type": "image_url", "image_url": {"url": data_url}})
+
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": request.system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            "max_tokens": request.max_tokens,
+            "temperature": request.temperature,
+        }
+
+        # エンドポイントの決定 (既定は /responses)
+        endpoint_suffix = self.context.options.get("endpoint_suffix", self._chat_endpoint)
+        if self.context.options.get("raw_endpoint", False):
+            url = self.endpoint
+        else:
+            url = f"{self.endpoint}{endpoint_suffix}"
+
+        try:
+            resp = await self._client.post(
+                url,
+                headers=self._all_headers(),
+                json=payload,
+                timeout=self._timeout,
+            )
+            self._raise_for_status(resp)
+            data = resp.json()
+            
+            # OpenAI 形式 (choices) のチェック
+            content = ""
+            choices = data.get("choices")
+            if isinstance(choices, list) and choices:
+                msg = choices[0].get("message", {})
+                content = str(msg.get("content") or "")
+            
+            # Flixa (Open Responses) 形式 (output_text) のチェック
+            if not content:
+                content = str(data.get("output_text") or "")
+                
+            # それでも空なら output 配列をチェック (flixa-cli のロジック)
+            if not content and isinstance(data.get("output"), list):
+                segments = []
+                for item in data["output"]:
+                    if item.get("type") in ["message", "output"]:
+                        for c in item.get("content", []):
+                            if c.get("text"): segments.append(c["text"])
+                content = "\n\n".join(segments)
+
+            usage = data.get("usage") or {}
+            return LLMResponse(
+                content=content,
+                usage={
+                    "input_tokens": usage.get("prompt_tokens", 0),
+                    "output_tokens": usage.get("completion_tokens", 0),
+                },
+                model=data.get("model") or self.model,
+            )
+        except Exception as e:
+            if isinstance(e, MagiException): raise
+            raise create_api_error(
+                code=ErrorCode.API_ERROR,
+                message=f"Flixa API error: {str(e)}",
+                details={"provider": self.provider_id},
+                recoverable=True
+            ) from e
