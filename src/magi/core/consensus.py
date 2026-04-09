@@ -719,7 +719,6 @@ class ConsensusEngine:
                     raise
                 
                 # 致命的なエラー（回復不能なエラー）の場合は即座に中断
-                from magi.errors import MagiException
                 if isinstance(e, MagiException) and not e.error.recoverable:
                     logger.error("エージェント %s で回復不能なエラーが発生しました: %s", persona_type.value, e)
                     raise
@@ -836,7 +835,6 @@ class ConsensusEngine:
                             raise
                         
                         # 致命的なエラー（回復不能なエラー）の場合は即座に中断
-                        from magi.errors import MagiException
                         if isinstance(e, MagiException) and not e.error.recoverable:
                             logger.error("エージェント %s で回復不能なエラーが発生しました: %s", persona_type.value, e)
                             raise
@@ -1151,7 +1149,6 @@ class ConsensusEngine:
                         raise
                     
                     # 致命的なエラー（回復不能なエラー）の場合は即座に中断
-                    from magi.errors import MagiException
                     if isinstance(e, MagiException) and not e.error.recoverable:
                         logger.error("エージェント %s で回復不能なエラーが発生しました: %s", persona_type.value, e)
                         raise

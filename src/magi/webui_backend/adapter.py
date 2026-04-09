@@ -41,6 +41,7 @@ class MockMagiAdapter(MagiAdapter):
     async def run(self, prompt: str, options: SessionOptions) -> AsyncIterator[Dict[str, Any]]:
         yield {"type": "log", "lines": ["MOCKセッションを開始します..."], "level": "INFO"}
         yield {"type": "phase", "phase": "THINKING"}
+        yield {"type": "unit", "unit": "MELCHIOR-1", "state": "THINKING", "message": "Mock thinking"}
         yield {"type": "progress", "pct": 10}
         await asyncio.sleep(1)
         yield {"type": "progress", "pct": 100}
@@ -82,16 +83,23 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
         # 1. プロバイダ Registry の再構築
         # UIからの入力を反映し、既存の(不完全な)設定を上書きする
         provider_loader = ProviderConfigLoader()
-        whitelist = getattr(run_config, "whitelist_providers", None) or ["anthropic", "openai", "google", "groq", "openrouter", "flixa"]
+        whitelist_raw = getattr(run_config, "whitelist_providers", None) or ["anthropic", "openai", "gemini", "groq", "openrouter", "flixa"]
+        
+        from magi.config.provider import ProviderConfig, resolve_provider_alias
+        
+        whitelist = [resolve_provider_alias(p.lower()) for p in whitelist_raw]
         p_configs = provider_loader.load(whitelist_providers=whitelist, skip_validation=True)
-
-        from magi.config.provider import ProviderConfig
 
         # 有効なAPIキーを持つプロバイダを追跡する
         _PLACEHOLDER_KEYS = {"none", "", "sk-ant-dummy-key"}
 
-        for pid in whitelist:
-            pl = pid.lower()
+        # whitelist_rawとapi_keysの両方からプロバイダIDを収集
+        all_pids = set(whitelist_raw)
+        all_pids.update(api_keys.keys())
+
+        for pid in all_pids:
+            if pid == "default": continue
+            pl = resolve_provider_alias(pid.lower())
             ui_key = api_keys.get(pl) or api_keys.get(pid)
             ui_options = provider_options.get(pl) or provider_options.get(pid) or {}
 
@@ -113,9 +121,30 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
                 )
 
         # 互換性同期 (環境変数等の鍵を anthropic に反映)
+        if "default" in api_keys:
+            run_config.api_key = api_keys["default"]
+
         if run_config.api_key and "anthropic" in p_configs.providers:
             if p_configs.providers["anthropic"].api_key in _PLACEHOLDER_KEYS:
                 p_configs.providers["anthropic"].api_key = run_config.api_key.strip()
+        
+        # テスト要件に合わせて run_config.providers を更新
+        # configがMagicMockの場合は属性への代入の扱いが異なるので元の辞書を更新するか直接代入
+        new_providers = getattr(run_config, "providers", {})
+        if not isinstance(new_providers, dict):
+            new_providers = {}
+        
+        for pid, cfg in p_configs.providers.items():
+            if pid not in new_providers:
+                new_providers[pid] = {}
+            
+            new_providers[pid].update({
+                "model": cfg.model,
+                "api_key": cfg.api_key,
+                "endpoint": cfg.endpoint,
+                "options": cfg.options,
+            })
+        run_config.providers = new_providers
 
         # 有効なキーを持つプロバイダを特定（ユニットのフォールバック用）
         valid_providers = {
@@ -150,12 +179,12 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
                     continue
 
                 original_pid = (cfg.get("provider") or "").lower()
-                pid = original_pid
+                pid = resolve_provider_alias(original_pid) if original_pid else ""
                 raw_model = cfg.get("model") or "default"
 
                 # プロバイダの指定があり、かつそれがホワイトリストに含まれていない場合、
                 # あるいは指定がない場合にのみ、有効なプロバイダにフォールバック
-                if not pid or pid not in [p.lower() for p in whitelist]:
+                if not pid or pid not in whitelist:
                     if valid_providers:
                         fallback_pid = next(iter(valid_providers))
                         logger.warning(
@@ -165,7 +194,7 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
                         pid = fallback_pid
 
                 # モデル名の構築
-                if pid:
+                if pid and raw_model:
                     if pid == "openrouter":
                         # OpenRouter はモデルIDに必ずプレフィックスを付ける
                         if raw_model.startswith("openrouter/"):
@@ -204,6 +233,12 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
                         api_key=unit_api_key if has_override_key else None
                     )
                 )
+
+        # モデルと討論ラウンドの設定
+        if options.model:
+            run_config.model = options.model
+        if options.max_rounds:
+            run_config.debate_rounds = options.max_rounds
 
         # 3. エンジンの起動 (レガシーフォールバックを完全に遮断)
         def strict_factory():
@@ -300,13 +335,23 @@ class ConsensusEngineMagiAdapter(MagiAdapter):
         d_map = {Decision.APPROVED: "APPROVE", Decision.DENIED: "DENY", Decision.CONDITIONAL: "CONDITIONAL"}
         v_map = {Vote.APPROVE: "YES", Vote.DENY: "NO", Vote.CONDITIONAL: "ABSTAIN"}
         v_res = {}
+        yes_count = no_count = abstain_count = 0
         for p, vo in result.voting_results.items():
             u = self._map_persona_to_unit(p)
             if u:
+                # v_map.getの第二引数は、キーが存在しないか値がNoneの場合のデフォルト
+                # だが、vo.voteがVote列挙型以外の未知の値(文字列など)の場合、辞書に見つからないためデフォルトが返る
                 vv = v_map.get(vo.vote, "ABSTAIN")
                 v_res[u.value] = {"vote": vv, "reason": vo.reason}
+                if vv == "YES": yes_count += 1
+                elif vv == "NO": no_count += 1
+                else: abstain_count += 1
+        
+        decision_str = d_map.get(result.final_decision, "DENY")
+        summary_str = f"Final Decision: {decision_str}\nVotes: {yes_count} YES, {no_count} NO, {abstain_count} ABSTAIN"
+        
         return {
-            "type": "final", "decision": d_map.get(result.final_decision, "DENY"),
-            "votes": v_res, "summary": f"Final Decision: {d_map.get(result.final_decision, 'DENY')}",
-            "result": {"decision": d_map.get(result.final_decision, "DENY"), "voting_results": v_res, "exit_code": result.exit_code}
+            "type": "final", "decision": decision_str,
+            "votes": v_res, "summary": summary_str,
+            "result": {"decision": decision_str, "voting_results": v_res, "exit_code": result.exit_code}
         }

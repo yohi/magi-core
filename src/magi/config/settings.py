@@ -16,7 +16,7 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from magi.config.provider import ProviderConfig
+from magi.config.provider import ProviderConfig, resolve_provider_alias
 
 logger = logging.getLogger(__name__)
 
@@ -77,17 +77,20 @@ class MagiSettings(BaseSettings):
     def validate_provider_settings(self) -> "MagiSettings":
         """default_provider が whitelist_providers に含まれ、かつ providers に存在することを検証"""
         if self.default_provider:
-            if self.default_provider not in self.whitelist_providers:
+            norm_default = resolve_provider_alias(self.default_provider)
+            norm_whitelist = [resolve_provider_alias(p) for p in self.whitelist_providers]
+            if norm_default not in norm_whitelist:
                 raise ValueError(
-                    f"default_provider '{self.default_provider}' は whitelist_providers に含まれている必要があります: {self.whitelist_providers}"
+                    f"default_provider '{norm_default}' は whitelist_providers に含まれている必要があります: {norm_whitelist}"
                 )
             # providers が設定されている場合、そのキーに含まれているかチェック
             # (ConfigManager.load() 時にプロバイダ設定が空の場合があるため、存在する場合のみチェック)
-            if self.providers and self.default_provider not in self.providers:
-                # 注: ここでの providers は MagiSettings のフィールドであり、
-                # ProviderConfigLoader によって読み込まれた最終的なプロバイダ設定とは異なる場合がある
-                # しかし、明示的に providers が指定されている場合はその中にあるべき
-                pass
+            if self.providers:
+                norm_providers = {resolve_provider_alias(k) for k in self.providers.keys()}
+                if norm_default not in norm_providers:
+                    # TODO: ProviderConfigLoader._validate() に詳細な検証を委譲しているため、
+                    # ここでは厳密な存在チェックをスキップするか、警告を出すに留めています。
+                    pass
         return self
 
     # 合議設定

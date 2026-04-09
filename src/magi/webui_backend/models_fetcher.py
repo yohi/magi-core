@@ -45,9 +45,11 @@ class ModelsFetcher:
         whitelist = getattr(self.config, "whitelist_providers", None)
         if whitelist is None:
             # デフォルトのホワイトリスト
-            whitelist = ["anthropic", "openai", "google", "groq", "openrouter", "flixa"]
-        
-        whitelist = [p.lower() for p in whitelist]
+            whitelist = ["anthropic", "openai", "gemini", "groq", "openrouter", "flixa"]
+
+        from magi.config.provider import resolve_provider_alias
+        whitelist = [resolve_provider_alias(p.lower()) for p in whitelist]
+
         models = []
         seen = set()  # 重複排除用: (provider, id)
 
@@ -174,7 +176,7 @@ class ModelsFetcher:
             {"id": "gpt-4", "provider": "flixa", "name": "Flixa GPT-4 (Fallback)"},
             {"id": "gpt-3.5-turbo", "provider": "flixa", "name": "Flixa GPT-3.5 Turbo (Fallback)"},
             
-            {"id": "gemini-1.5-pro", "provider": "google", "name": "Gemini 1.5 Pro (Fallback)"},
-            {"id": "gemini-1.5-flash", "provider": "google", "name": "Gemini 1.5 Flash (Fallback)"}
+            {"id": "gemini-1.5-pro", "provider": "gemini", "name": "Gemini 1.5 Pro (Fallback)"},
+            {"id": "gemini-1.5-flash", "provider": "gemini", "name": "Gemini 1.5 Flash (Fallback)"}
         ]
         return [f for f in fallbacks if f["provider"] in whitelist]

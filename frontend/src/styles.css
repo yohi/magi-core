@@ -121,6 +121,49 @@ textarea:disabled {
   gap: 10px;
 }
 
+.control-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-start {
+  border-color: var(--magi-green);
+  color: var(--magi-green);
+}
+
+.btn-start:hover:not(:disabled) {
+  background: var(--magi-green);
+  color: #000;
+}
+
+.btn-cancel {
+  border-color: var(--magi-red);
+  color: var(--magi-red);
+}
+
+.btn-cancel:hover:not(:disabled) {
+  background: var(--magi-red);
+  color: #000;
+}
+
+.btn-reset {
+  border-color: #777;
+  color: #777;
+}
+
+.btn-reset:hover:not(:disabled) {
+  background: #777;
+  color: #000;
+}
+
+.btn-system-settings {
+  font-size: 10px;
+  padding: 4px;
+  border-color: #444;
+  color: #444;
+  width: 100%;
+}
+
 button {
   flex: 1;
   background: #000;

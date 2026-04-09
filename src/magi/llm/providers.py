@@ -684,17 +684,26 @@ class FlixaAdapter(OpenAIAdapter):
                 data_url = f"data:{attachment.mime_type};base64,{encoded_data}"
                 user_content.append({"type": "input_image", "url": data_url})
 
-        # 以前動作していた形式 (messages 内に system ロールを含む) に戻す
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": request.system_prompt},
-                {"role": "user", "content": user_content},
-            ],
-            "max_tokens": request.max_tokens,
-            "temperature": request.temperature,
-            "wait": True,  # 同期レスポンスを待機
-        }
+        if getattr(request, "use_plain_text", False):
+            payload = {
+                "model": self.model,
+                "input": f"{request.system_prompt}\n\n{request.user_prompt}",
+                "max_tokens": request.max_tokens,
+                "temperature": request.temperature,
+                "wait": True,  # 同期レスポンスを待機
+            }
+        else:
+            # 以前動作していた形式 (messages 内に system ロールを含む) に戻す
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": request.system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+                "max_tokens": request.max_tokens,
+                "temperature": request.temperature,
+                "wait": True,  # 同期レスポンスを待機
+            }
 
         # エンドポイントの決定
         # 404エラー (Cannot POST /v1/agent) を防ぐため、確実に /responses へのパスを構築する
@@ -751,9 +760,9 @@ class FlixaAdapter(OpenAIAdapter):
             )
         except Exception as e:
             if isinstance(e, MagiException): raise
-            raise create_api_error(
+            raise MagiException(create_api_error(
                 code=ErrorCode.API_ERROR,
                 message=f"Flixa API error: {str(e)}",
                 details={"provider": self.provider_id},
                 recoverable=True
-            ) from e
+            )) from e

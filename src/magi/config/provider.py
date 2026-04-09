@@ -129,7 +129,7 @@ class ProviderConfigLoader:
         """プロバイダ設定を読み込む"""
         # whitelist_providers を正規化
         normalized_whitelist = None
-        if whitelist_providers:
+        if whitelist_providers is not None:
             normalized_whitelist = sorted(
                 list(set(resolve_provider_alias(p) for p in whitelist_providers))
             )
@@ -137,7 +137,7 @@ class ProviderConfigLoader:
 
         cache_key = (
             str(config_path) if config_path else None,
-            tuple(normalized_whitelist) if normalized_whitelist else None,
+            tuple(normalized_whitelist) if normalized_whitelist is not None else None,
         )
 
         if not force_reload and cache_key in self._cache_map:
@@ -158,11 +158,11 @@ class ProviderConfigLoader:
             )
 
         if not skip_validation:
-            self._validate(merged, default_provider, normalized_whitelist)
+            self._validate(merged, normalized_default, normalized_whitelist)
 
         configs = ProviderConfigs(
             providers=merged,
-            default_provider=default_provider,
+            default_provider=normalized_default,
             whitelist_providers=normalized_whitelist,
         )
         self._cache_map[cache_key] = configs

@@ -650,7 +650,7 @@
         const SUPPORTED_PROVIDERS = [
             { id: "anthropic", name: "Anthropic (Claude)" },
             { id: "openai", name: "OpenAI (GPT-4o/o1)" },
-            { id: "google", name: "Google (Gemini)" },
+            { id: "gemini", name: "Google (Gemini)" },
             { id: "groq", name: "Groq (Llama-3)" },
             { id: "openrouter", name: "OpenRouter" },
             { id: "flixa", name: "Flixa" },
@@ -661,7 +661,7 @@
 
         const magiSettings = {
             providers: { anthropic: "sk-ant-dummy-key" },
-            whitelist_providers: ["anthropic", "openai", "google", "groq", "openrouter", "flixa"],
+            whitelist_providers: ["anthropic", "openai", "gemini", "groq", "openrouter", "flixa"],
             debate_rounds: 1,
             voting_threshold: "majority",
             personas: {
@@ -694,7 +694,7 @@
                 modelDefinitions = [
                     { id: "claude-3-5-sonnet-20241022", provider: "anthropic", name: "Claude 3.5 Sonnet" },
                     { id: "gpt-4o", provider: "openai", name: "GPT-4o" },
-                    { id: "gemini-1.5-pro", provider: "google", name: "Gemini 1.5 Pro" }
+                    { id: "gemini-1.5-pro", provider: "gemini", name: "Gemini 1.5 Pro" }
                 ];
             }
         }

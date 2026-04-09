@@ -60,7 +60,10 @@ export const MagiVisualizer: React.FC<MagiVisualizerProps> = ({
         timeoutsRef.current.add(t1);
         
         const nextDelay = 50 + Math.random() * 200;
-        const t2 = window.setTimeout(runBlink, nextDelay);
+        const t2 = window.setTimeout(() => {
+          timeoutsRef.current.delete(t2);
+          runBlink();
+        }, nextDelay);
         timeoutsRef.current.add(t2);
       };
       runBlink();

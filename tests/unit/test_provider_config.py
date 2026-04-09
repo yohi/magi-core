@@ -30,7 +30,7 @@ class TestProviderConfigLoaderCache(unittest.TestCase):
                 self.assertEqual(config1.default_provider, "openai")
 
                 # キャッシュがセットされたことを確認
-                self.assertIsNotNone(self.loader._cache)
+                self.assertTrue(len(self.loader._cache_map) > 0)
 
                 # 2. skip_validation=False (デフォルト) でロード -> バリデーションエラーになるはず
                 # バグがある場合、未検証のキャッシュが返されてしまいエラーにならない

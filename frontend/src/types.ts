@@ -69,7 +69,7 @@ export type SystemSettings = {
   debateRounds: number;
   votingThreshold: "majority" | "unanimous";
   providers: Record<string, string>; // provider_id -> api_key
-  providerOptions?: Record<string, Record<string, any>>; // provider_id -> options
+  providerOptions?: Record<string, Record<string, unknown>>; // provider_id -> options
   whitelistProviders: string[];
 };
 

@@ -26,7 +26,7 @@ const INITIAL_SYSTEM_SETTINGS: SystemSettings = {
   votingThreshold: "majority",
   providers: {},
   providerOptions: {},
-  whitelistProviders: ["anthropic", "openai", "google", "groq", "openrouter", "flixa"],
+  whitelistProviders: ["anthropic", "openai", "gemini", "groq", "openrouter", "flixa"],
 };
 
 const INITIAL_UNIT_SETTINGS: AllUnitSettings = {
@@ -501,7 +501,7 @@ export function useMagiSession() {
         defs = [
           { id: "claude-3-5-sonnet-20241022", provider: "anthropic", name: "Claude 3.5 Sonnet" },
           { id: "gpt-4o", provider: "openai", name: "GPT-4o" },
-          { id: "gemini-1.5-pro", provider: "google", name: "Gemini 1.5 Pro" },
+          { id: "gemini-1.5-pro", provider: "gemini", name: "Gemini 1.5 Pro" },
           { id: "anthropic/claude-3-5-sonnet", provider: "openrouter", name: "Claude 3.5 Sonnet (OpenRouter)" },
         ];
       }

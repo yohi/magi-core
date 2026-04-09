@@ -35,7 +35,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [localUnitSettings, setLocalUnitSettings] = useState<AllUnitSettings>(unitSettings);
   const [localSystemSettings, setLocalSystemSettings] = useState<SystemSettings>(systemSettings);
-  const [newProviderId, setNewProviderId] = useState("openai");
+  const [newProviderId, setNewProviderId] = useState("");
   const [newProviderKey, setNewProviderKey] = useState("");
   const [modelSearch, setModelSearch] = useState("");
 
@@ -44,6 +44,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     if (isOpen) {
       setLocalUnitSettings(unitSettings);
       setLocalSystemSettings(systemSettings);
+      // Default to first available provider from whitelist if not set
+      const first = SUPPORTED_PROVIDERS.find(p => systemSettings.whitelistProviders.includes(p.id));
+      if (first) setNewProviderId(first.id);
     }
   }, [isOpen, unitSettings, systemSettings]);
 
@@ -68,7 +71,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const addProvider = () => {
-    if (!newProviderKey) return;
+    if (!newProviderKey || !newProviderId) return;
+    // Validate against whitelist
+    if (!localSystemSettings.whitelistProviders.includes(newProviderId)) {
+      console.warn(`Provider ${newProviderId} is not in the whitelist.`);
+      return;
+    }
     setLocalSystemSettings(prev => ({
       ...prev,
       providers: { ...prev.providers, [newProviderId]: newProviderKey }
@@ -90,7 +98,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setLocalSystemSettings(prev => {
       const providerOptions = prev.providerOptions || {};
       const currentOptions = providerOptions[providerId] || {};
-      const newValue = !currentOptions[optionKey];
+      const current = optionKey === 'verify_ssl' ? (currentOptions[optionKey] ?? true) : !!currentOptions[optionKey];
+      const newValue = !current;
       
       return {
         ...prev,
@@ -231,10 +240,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px' }}>
                               <span style={{ fontSize: '9px', color: '#666' }}>AUTH:</span>
-                              <select 
-                                value={localSystemSettings.providerOptions?.[id]?.auth_type || "bearer"}
-                                onChange={(e) => setLocalSystemSettings(prev => ({
-                                  ...prev,
+                              <select
+                                value={(localSystemSettings.providerOptions?.[id]?.auth_type as string) || "bearer"}
+                                onChange={(e) => setLocalSystemSettings(prev => ({                                  ...prev,
                                   providerOptions: {
                                     ...prev.providerOptions,
                                     [id]: { ...(prev.providerOptions?.[id] || {}), auth_type: e.target.value }
@@ -266,7 +274,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   min={1} 
                   max={5} 
                   value={localSystemSettings.debateRounds}
-                  onChange={(e) => handleSystemChange('debateRounds', parseInt(e.target.value))}
+                  onChange={(e) => {
+                    const parsed = parseInt(e.target.value, 10);
+                    if (!isNaN(parsed)) handleSystemChange('debateRounds', parsed);
+                  }}
                 />
               </div>
               <div className="form-group">
@@ -340,7 +351,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 min={0}
                 max={1}
                 value={currentUnit?.temp}
-                onChange={(e) => handleUnitChange('temp', parseFloat(e.target.value))}
+                onChange={(e) => {
+                  const parsed = parseFloat(e.target.value);
+                  if (!isNaN(parsed)) handleUnitChange('temp', parsed);
+                }}
               />
             </div>
             <div className="form-group">
