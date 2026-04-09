@@ -28,17 +28,18 @@ class ModelsFetcher:
         # キャッシュのチェック (ロックなしで素早く返す)
         now = time.time()
         if self._cached_models and (now - self._last_fetch_time) < self.CACHE_TTL:
-            return self._cached_models
+            return self._cached_models.copy()
 
         async with self._fetch_lock:
             # ロック取得後に再度キャッシュをチェック
             now = time.time()
             if self._cached_models and (now - self._last_fetch_time) < self.CACHE_TTL:
-                return self._cached_models
+                return self._cached_models.copy()
 
             # ヘルパー: dictまたはオブジェクトの両方から値を取得
             def get_cfg_val(obj, key, default=None):
-                if obj is None: return default
+                if obj is None:
+                    return default
                 if isinstance(obj, dict):
                     return obj.get(key, default)
                 return getattr(obj, key, default)
@@ -170,11 +171,11 @@ class ModelsFetcher:
             if models:
                 self._cached_models = models
                 self._last_fetch_time = time.time()
-                return models
+                return self._cached_models.copy()
             else:
                 if self._cached_models:
                     logger.info("Using expired cached models as fetch failed")
-                    return self._cached_models
+                    return self._cached_models.copy()
                 return self._get_fallback_models(whitelist)
 
     def _get_fallback_models(self, whitelist: List[str]) -> List[Dict[str, str]]:
