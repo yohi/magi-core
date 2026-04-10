@@ -73,14 +73,23 @@ MAX_CONCURRENCY = config.max_concurrency
 SESSION_TTL_SEC = config.session_ttl_sec
 # CORSの設定
 CORS_ORIGINS = config.cors_origins
-# デフォルトは開発用のlocalhostのみ許可 (セキュリティのため "*" は避ける)
-origins = ["http://localhost:3000"] 
-if CORS_ORIGINS:
-    user_origins = [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()]
-    if user_origins:
-        origins = user_origins
+# デフォルトでローカル開発環境を許可
+origins = ["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"]
 
-# ワイルドカードが含まれている場合は credentials を許可しない (セキュリティ制限)
+if CORS_ORIGINS:
+    if CORS_ORIGINS.strip() == "*":
+        origins = ["*"]
+    else:
+        user_origins = [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()]
+        if user_origins:
+            origins.extend(user_origins)
+
+# 重複排除
+if "*" not in origins:
+    origins = list(set(origins))
+
+# CORSMiddleware の設定
+# "*" が含まれる場合は allow_credentials を True に設定できない (ブラウザの制限)
 allow_all = "*" in origins
 app.add_middleware(
     CORSMiddleware,
@@ -88,6 +97,7 @@ app.add_middleware(
     allow_credentials=not allow_all,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 def create_adapter():
