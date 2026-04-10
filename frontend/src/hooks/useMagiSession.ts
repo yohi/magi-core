@@ -27,6 +27,7 @@ const INITIAL_SYSTEM_SETTINGS: SystemSettings = {
   providers: {},
   providerOptions: {},
   whitelistProviders: ["anthropic", "openai", "gemini", "openrouter", "flixa"],
+  persistApiKeys: false, // Security: don't persist keys by default
 };
 
 const INITIAL_UNIT_SETTINGS: AllUnitSettings = {
@@ -57,13 +58,15 @@ const INITIAL_UNIT_SETTINGS: AllUnitSettings = {
 };
 
 function sanitizeSystemSettingsForStorage(settings: SystemSettings): SystemSettings {
+  if (settings.persistApiKeys) return settings;
   return {
     ...settings,
     providers: {}, // Remove sensitive API keys
   };
 }
 
-function sanitizeUnitSettingsForStorage(settings: AllUnitSettings): AllUnitSettings {
+function sanitizeUnitSettingsForStorage(settings: AllUnitSettings, persistApiKeys: boolean): AllUnitSettings {
+  if (persistApiKeys) return settings;
   const next = { ...settings };
   (Object.keys(next) as Array<keyof AllUnitSettings>).forEach((key) => {
     if (next[key].apiKey) {
@@ -503,6 +506,10 @@ export function useMagiSession() {
           { id: "gpt-4o", provider: "openai", name: "GPT-4o" },
           { id: "gemini-1.5-pro", provider: "gemini", name: "Gemini 1.5 Pro" },
           { id: "anthropic/claude-3-5-sonnet", provider: "openrouter", name: "Claude 3.5 Sonnet (OpenRouter)" },
+          { id: "gpt-4o", provider: "flixa", name: "Flixa GPT-4o" },
+          { id: "gpt-4-turbo", provider: "flixa", name: "Flixa GPT-4 Turbo" },
+          { id: "gpt-4", provider: "flixa", name: "Flixa GPT-4" },
+          { id: "gpt-3.5-turbo", provider: "flixa", name: "Flixa GPT-3.5 Turbo" },
         ];
       }
       
@@ -578,9 +585,9 @@ export function useMagiSession() {
   }, [systemSettings]);
 
   useEffect(() => {
-    const sanitized = sanitizeUnitSettingsForStorage(unitSettings);
+    const sanitized = sanitizeUnitSettingsForStorage(unitSettings, systemSettings.persistApiKeys === true);
     localStorage.setItem(STORAGE_KEY_UNIT, JSON.stringify(sanitized));
-  }, [unitSettings]);
+  }, [unitSettings, systemSettings.persistApiKeys]);
 
   return {
     state: {
