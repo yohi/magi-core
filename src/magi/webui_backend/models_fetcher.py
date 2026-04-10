@@ -148,8 +148,15 @@ class ModelsFetcher:
                     if not flixa_endpoint:
                         flixa_endpoint = "https://api.flixa.engineer/v1/agent"
 
+                    # API キーを取得 (モデル一覧取得にも必要)
+                    flixa_api_key = get_cfg_val(p_cfg, "api_key")
+
                     async with httpx.AsyncClient(timeout=10.0, verify=flixa_verify) as client:
-                        flixa_response = await client.get(f"{flixa_endpoint}/models")
+                        headers = {}
+                        if flixa_api_key:
+                            headers["Authorization"] = f"Bearer {flixa_api_key}"
+                        
+                        flixa_response = await client.get(f"{flixa_endpoint}/models", headers=headers)
                         flixa_response.raise_for_status()
                         if flixa_response.status_code == 200:
                             flixa_data = flixa_response.json()

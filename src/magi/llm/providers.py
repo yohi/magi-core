@@ -650,11 +650,11 @@ class FlixaAdapter(OpenAIAdapter):
         *,
         http_client: Optional[Any] = None,
         timeout: float = 30.0,
-        chat_endpoint: str = "/agent/responses",
+        chat_endpoint: str = "/responses",
     ) -> None:
         # Flixa API のベースエンドポイント。
-        # OpenAIAdapter との整合性（models エンドポイント等）のため /v1 までをベースとする。
-        endpoint = (context.endpoint or "https://api.flixa.engineer/v1").rstrip("/")
+        # flixa-cli に合わせて /agent までをベースとする。
+        endpoint = (context.endpoint or "https://api.flixa.engineer/v1/agent").rstrip("/")
 
         super().__init__(
             context,
@@ -668,7 +668,7 @@ class FlixaAdapter(OpenAIAdapter):
         """Flixa (Open Responses) 形式での送信とパース"""
         # OpenAIAdapter.send は OpenAI 形式のペイロードを構築するが、
         # Flixa の Open Responses API エンドポイント (/responses) は
-        # 独自のペイロード形式を要求するため、直接 _send_flixa を呼び出す。
+        # 独自のペイロード形式を要求するため、直接 _send_flixaを呼び出す。
         return await self._send_flixa(request)
 
     async def _send_flixa(self, request: LLMRequest) -> LLMResponse:
@@ -717,10 +717,12 @@ class FlixaAdapter(OpenAIAdapter):
             if not url.endswith("/responses"):
                 url = f"{url.rstrip('/')}/responses"
 
-        # ヘッダーの調整: Flixa では Authorization: Bearer と x-api-key の両方が必要な場合がある
+        # ヘッダーの調整: Flixa では Authorization: Bearer を使用
         headers = self._all_headers()
-        if self.context.api_key and "x-api-key" not in headers:
-            headers["x-api-key"] = self.context.api_key
+        # 既存の OpenAIAdapter._all_headers() は Authorization: Bearer {api_key} を返す。
+        # x-api-key が混入してアクセス拒否されるのを防ぐため、明示的に削除。
+        if "x-api-key" in headers:
+            del headers["x-api-key"]
 
         try:
             resp = await self._client.post(
@@ -769,3 +771,45 @@ class FlixaAdapter(OpenAIAdapter):
                 details={"provider": self.provider_id},
                 recoverable=True
             )) from e
+
+    async def health(self) -> HealthStatus:
+        """Flixa API の疎通確認 (/v1/models)"""
+        # self.endpoint は .../v1/agent なので、ベースを抽出
+        base_url = self.endpoint
+        if base_url.endswith("/agent"):
+            base_url = base_url[:-len("/agent")].rstrip("/")
+        if base_url.endswith("/v1"):
+            base_url = base_url[:-len("/v1")].rstrip("/")
+        
+        url = f"{base_url.rstrip('/')}/v1/models"
+        try:
+            # Flixa では Authorization: Bearer {api_key} が必須
+            headers = self._auth_headers()
+            if "x-api-key" in headers:
+                del headers["x-api-key"]
+
+            response = await self._client.get(
+                url,
+                headers=headers,
+                timeout=self._timeout,
+            )
+            self._raise_for_status(response)
+            data = response.json() if hasattr(response, "json") else {}
+            models = []
+            if isinstance(data, dict) and isinstance(data.get("data"), list):
+                models = [m.get("id") for m in data["data"] if isinstance(m, dict)]
+
+            return HealthStatus(
+                provider=self.provider_id,
+                ok=True,
+                skipped=False,
+                details={"models": models},
+            )
+        except Exception as e:
+            logger.debug(f"Flixa health check failed: {e}")
+            return HealthStatus(
+                provider=self.provider_id,
+                ok=False,
+                skipped=False,
+                details={"error": str(e)},
+            )
