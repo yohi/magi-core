@@ -298,6 +298,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <option value="unanimous">UNANIMOUS (満場一致)</option>
                 </select>
               </div>
+
+              <div style={{ marginTop: '20px', borderTop: '1px solid #333', paddingTop: '15px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', color: 'var(--magi-red)' }}>
+                  <input 
+                    type="checkbox" 
+                    id="persist-api-keys"
+                    checked={localSystemSettings.persistApiKeys === true}
+                    onChange={(e) => handleSystemChange('persistApiKeys', e.target.checked)}
+                    style={{ width: 'auto', marginRight: '10px' }}
+                  />
+                  <label htmlFor="persist-api-keys" style={{ cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>
+                    PERSIST API KEYS IN BROWSER (NOT RECOMMENDED ON PUBLIC DEVICES)
+                  </label>
+                </div>
+                <div style={{ fontSize: '10px', color: '#666', marginTop: '5px', marginLeft: '25px' }}>
+                  If enabled, your API keys will be stored in plaintext in your browser's local storage. 
+                  This is convenient for public servers where environment variables are not set, but poses a security risk.
+                </div>
+              </div>
             </div>
           </div>
         ) : (

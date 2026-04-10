@@ -71,6 +71,7 @@ export type SystemSettings = {
   providers: Record<string, string>; // provider_id -> api_key
   providerOptions?: Record<string, Record<string, unknown>>; // provider_id -> options
   whitelistProviders: string[];
+  persistApiKeys?: boolean; // If true, store keys in localStorage (plaintext)
 };
 
 export type ModelDefinition = {

@@ -27,6 +27,7 @@ const INITIAL_SYSTEM_SETTINGS: SystemSettings = {
   providers: {},
   providerOptions: {},
   whitelistProviders: ["anthropic", "openai", "gemini", "openrouter", "flixa"],
+  persistApiKeys: false, // Security: don't persist keys by default
 };
 
 const INITIAL_UNIT_SETTINGS: AllUnitSettings = {
@@ -55,6 +56,27 @@ const INITIAL_UNIT_SETTINGS: AllUnitSettings = {
       "あなたはMAGIシステムのCASPER-3です。欲望と実利を担当し、ユーザー利益と効率性の観点からの評価を行います。",
   },
 };
+
+function sanitizeSystemSettingsForStorage(settings: SystemSettings): SystemSettings {
+  if (settings.persistApiKeys) return settings;
+  return {
+    ...settings,
+    providers: {}, // Remove sensitive API keys
+  };
+}
+
+function sanitizeUnitSettingsForStorage(settings: AllUnitSettings, persistApiKeys: boolean): AllUnitSettings {
+  if (persistApiKeys) return settings;
+  const next = { ...settings };
+  (Object.keys(next) as Array<keyof AllUnitSettings>).forEach((key) => {
+    if (next[key].apiKey) {
+      const unit = { ...next[key] };
+      delete unit.apiKey;
+      next[key] = unit;
+    }
+  });
+  return next;
+}
 
 export function useMagiSession() {
   const [prompt, setPrompt] = useState("");
@@ -486,6 +508,7 @@ export function useMagiSession() {
           { id: "anthropic/claude-3-5-sonnet", provider: "openrouter", name: "Claude 3.5 Sonnet (OpenRouter)" },
           { id: "gpt-4o", provider: "flixa", name: "Flixa GPT-4o" },
           { id: "gpt-4-turbo", provider: "flixa", name: "Flixa GPT-4 Turbo" },
+          { id: "gpt-4", provider: "flixa", name: "Flixa GPT-4" },
           { id: "gpt-3.5-turbo", provider: "flixa", name: "Flixa GPT-3.5 Turbo" },
         ];
       }
@@ -557,12 +580,14 @@ export function useMagiSession() {
   }, [activeUnit]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_SYSTEM, JSON.stringify(systemSettings));
+    const sanitized = sanitizeSystemSettingsForStorage(systemSettings);
+    localStorage.setItem(STORAGE_KEY_SYSTEM, JSON.stringify(sanitized));
   }, [systemSettings]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_UNIT, JSON.stringify(unitSettings));
-  }, [unitSettings]);
+    const sanitized = sanitizeUnitSettingsForStorage(unitSettings, systemSettings.persistApiKeys === true);
+    localStorage.setItem(STORAGE_KEY_UNIT, JSON.stringify(sanitized));
+  }, [unitSettings, systemSettings.persistApiKeys]);
 
   return {
     state: {
