@@ -56,25 +56,6 @@ const INITIAL_UNIT_SETTINGS: AllUnitSettings = {
   },
 };
 
-function sanitizeSystemSettingsForStorage(settings: SystemSettings): SystemSettings {
-  return {
-    ...settings,
-    providers: {}, // Remove sensitive API keys
-  };
-}
-
-function sanitizeUnitSettingsForStorage(settings: AllUnitSettings): AllUnitSettings {
-  const next = { ...settings };
-  (Object.keys(next) as Array<keyof AllUnitSettings>).forEach((key) => {
-    if (next[key].apiKey) {
-      const unit = { ...next[key] };
-      delete unit.apiKey;
-      next[key] = unit;
-    }
-  });
-  return next;
-}
-
 export function useMagiSession() {
   const [prompt, setPrompt] = useState("");
   const [phase, setPhase] = useState("IDLE");
@@ -503,6 +484,9 @@ export function useMagiSession() {
           { id: "gpt-4o", provider: "openai", name: "GPT-4o" },
           { id: "gemini-1.5-pro", provider: "gemini", name: "Gemini 1.5 Pro" },
           { id: "anthropic/claude-3-5-sonnet", provider: "openrouter", name: "Claude 3.5 Sonnet (OpenRouter)" },
+          { id: "gpt-4o", provider: "flixa", name: "Flixa GPT-4o" },
+          { id: "gpt-4-turbo", provider: "flixa", name: "Flixa GPT-4 Turbo" },
+          { id: "gpt-3.5-turbo", provider: "flixa", name: "Flixa GPT-3.5 Turbo" },
         ];
       }
       
@@ -573,13 +557,11 @@ export function useMagiSession() {
   }, [activeUnit]);
 
   useEffect(() => {
-    const sanitized = sanitizeSystemSettingsForStorage(systemSettings);
-    localStorage.setItem(STORAGE_KEY_SYSTEM, JSON.stringify(sanitized));
+    localStorage.setItem(STORAGE_KEY_SYSTEM, JSON.stringify(systemSettings));
   }, [systemSettings]);
 
   useEffect(() => {
-    const sanitized = sanitizeUnitSettingsForStorage(unitSettings);
-    localStorage.setItem(STORAGE_KEY_UNIT, JSON.stringify(sanitized));
+    localStorage.setItem(STORAGE_KEY_UNIT, JSON.stringify(unitSettings));
   }, [unitSettings]);
 
   return {
