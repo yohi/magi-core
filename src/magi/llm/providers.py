@@ -650,11 +650,11 @@ class FlixaAdapter(OpenAIAdapter):
         *,
         http_client: Optional[Any] = None,
         timeout: float = 30.0,
-        chat_endpoint: str = "/agent/responses",
+        chat_endpoint: str = "/responses",
     ) -> None:
         # Flixa API のベースエンドポイント。
-        # OpenAIAdapter との整合性（models エンドポイント等）のため /v1 までをベースとする。
-        endpoint = (context.endpoint or "https://api.flixa.engineer/v1").rstrip("/")
+        # flixa-cli に合わせて /agent までをベースとする。
+        endpoint = (context.endpoint or "https://api.flixa.engineer/v1/agent").rstrip("/")
 
         super().__init__(
             context,
@@ -668,7 +668,7 @@ class FlixaAdapter(OpenAIAdapter):
         """Flixa (Open Responses) 形式での送信とパース"""
         # OpenAIAdapter.send は OpenAI 形式のペイロードを構築するが、
         # Flixa の Open Responses API エンドポイント (/responses) は
-        # 独自のペイロード形式を要求するため、直接 _send_flixa を呼び出す。
+        # 独自のペイロード形式を要求するため、直接 _send_flixaを呼び出す。
         return await self._send_flixa(request)
 
     async def _send_flixa(self, request: LLMRequest) -> LLMResponse:
@@ -717,10 +717,8 @@ class FlixaAdapter(OpenAIAdapter):
             if not url.endswith("/responses"):
                 url = f"{url.rstrip('/')}/responses"
 
-        # ヘッダーの調整: Flixa では Authorization: Bearer と x-api-key の両方が必要な場合がある
-        headers = self._all_headers()
-        if self.context.api_key and "x-api-key" not in headers:
-            headers["x-api-key"] = self.context.api_key
+        # ヘッダーの調整: Flixa では Authorization: Bearer を使用
+        headers = self._flixa_headers(self._all_headers())
 
         try:
             resp = await self._client.post(
@@ -769,3 +767,65 @@ class FlixaAdapter(OpenAIAdapter):
                 details={"provider": self.provider_id},
                 recoverable=True
             )) from e
+
+    def _flixa_headers(self, base_headers: Dict[str, str]) -> Dict[str, str]:
+        """Flixa 向けのヘッダー調整 (Authorization: Bearer の強制と他認証ヘッダーの除去)"""
+        headers = {k: v for k, v in base_headers.items()}
+        # 認証に関連しそうなヘッダーを大文字小文字を区別せずに抽出し、Bearer 以外を削除
+        to_remove = []
+        for k in headers.keys():
+            k_lower = k.lower()
+            if k_lower in ("authorization", "x-api-key", "api-key"):
+                if k_lower == "authorization":
+                    if not str(headers[k]).lower().startswith("bearer "):
+                        to_remove.append(k)
+                else:
+                    to_remove.append(k)
+        
+        for k in to_remove:
+            del headers[k]
+        
+        # Authorization: Bearer を確実に設定 (既存がある場合は上書き)
+        headers["Authorization"] = f"Bearer {self.context.api_key}"
+        return headers
+
+    async def health(self) -> HealthStatus:
+        """Flixa API の疎通確認 (/v1/models)"""
+        # self.endpoint は .../v1/agent なので、ベースを抽出
+        base_url = self.endpoint
+        if base_url.endswith("/agent"):
+            base_url = base_url[:-len("/agent")].rstrip("/")
+        if base_url.endswith("/v1"):
+            base_url = base_url[:-len("/v1")].rstrip("/")
+        
+        url = f"{base_url.rstrip('/')}/v1/models"
+        try:
+            # Flixa では Authorization: Bearer {api_key} が必須
+            headers = self._flixa_headers(self._auth_headers())
+
+            response = await self._client.get(
+                url,
+                headers=headers,
+                timeout=self._timeout,
+            )
+            self._raise_for_status(response)
+            data = response.json() if hasattr(response, "json") else {}
+            models = []
+            if isinstance(data, dict) and isinstance(data.get("data"), list):
+                models = [m.get("id") for m in data["data"] if isinstance(m, dict)]
+
+            return HealthStatus(
+                provider=self.provider_id,
+                ok=True,
+                skipped=False,
+                details={"models": models},
+            )
+        except (self._httpx.RequestError, ValueError) as e:
+            # httpx.RequestError (通信エラー) や ValueError (JSONパースエラー等) を捕捉
+            logger.debug(f"Flixa health check failed: {e}")
+            return HealthStatus(
+                provider=self.provider_id,
+                ok=False,
+                skipped=False,
+                details={"error": str(e)},
+            )
