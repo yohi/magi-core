@@ -71,18 +71,21 @@ except (MagiException, ValidationError, FileNotFoundError) as e:
 
 MAX_CONCURRENCY = config.max_concurrency
 SESSION_TTL_SEC = config.session_ttl_sec
+# CORSの設定
 CORS_ORIGINS = config.cors_origins
-
+origins = ["*"] # デフォルトですべてを許可 (公開環境での利便性のため)
 if CORS_ORIGINS:
-    origins = [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()]
-    if origins:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
+    user_origins = [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()]
+    if user_origins:
+        origins = user_origins
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True if "*" not in origins else False, # * の場合は credentials=True は不可
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def create_adapter():
     if use_mock or config is None:
