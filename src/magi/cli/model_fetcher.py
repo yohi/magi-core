@@ -103,6 +103,33 @@ def _fetch_google(api_key: str, provider_id: str, timeout: float) -> List[str]:
     return models
 
 
+def _fetch_flixa(api_key: str, timeout: float) -> List[str]:
+    """
+    Flixaから利用可能なモデルの一覧を取得します。
+
+    Args:
+        api_key: APIキー
+        timeout: タイムアウト秒数
+
+    Returns:
+        利用可能なモデルのIDのリスト
+    """
+    url = "https://api.flixa.engineer/v1/models"
+    headers = {"Authorization": f"Bearer {api_key}"}
+    response = httpx.get(url, headers=headers, timeout=timeout)
+    _ = response.raise_for_status()
+    data = response.json()
+
+    if not isinstance(data, dict) or not isinstance(data.get("data"), list):
+        return []
+
+    return [
+        str(m["id"])
+        for m in data["data"]
+        if isinstance(m, dict) and isinstance(m.get("id"), str)
+    ]
+
+
 def fetch_available_models(provider_id: str, api_key: str) -> List[str]:
     """
     指定されたプロバイダーから利用可能なモデルの一覧を取得します。
@@ -123,6 +150,8 @@ def fetch_available_models(provider_id: str, api_key: str) -> List[str]:
             return _fetch_anthropic(api_key, timeout)
         elif provider_id == "google":
             return _fetch_google(api_key, provider_id, timeout)
+        elif provider_id == "flixa":
+            return _fetch_flixa(api_key, timeout)
         elif provider_id == "antigravity":
             # Antigravityの場合は AntigravityAuthProvider.get_available_models を使用してください
             print(

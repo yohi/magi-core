@@ -718,11 +718,7 @@ class FlixaAdapter(OpenAIAdapter):
                 url = f"{url.rstrip('/')}/responses"
 
         # ヘッダーの調整: Flixa では Authorization: Bearer を使用
-        headers = self._all_headers()
-        # 既存の OpenAIAdapter._all_headers() は Authorization: Bearer {api_key} を返す。
-        # x-api-key が混入してアクセス拒否されるのを防ぐため、明示的に削除。
-        if "x-api-key" in headers:
-            del headers["x-api-key"]
+        headers = self._flixa_headers(self._all_headers())
 
         try:
             resp = await self._client.post(
@@ -772,6 +768,27 @@ class FlixaAdapter(OpenAIAdapter):
                 recoverable=True
             )) from e
 
+    def _flixa_headers(self, base_headers: Dict[str, str]) -> Dict[str, str]:
+        """Flixa 向けのヘッダー調整 (Authorization: Bearer の強制と他認証ヘッダーの除去)"""
+        headers = {k: v for k, v in base_headers.items()}
+        # 認証に関連しそうなヘッダーを大文字小文字を区別せずに抽出し、Bearer 以外を削除
+        to_remove = []
+        for k in headers.keys():
+            k_lower = k.lower()
+            if k_lower in ("authorization", "x-api-key", "api-key"):
+                if k_lower == "authorization":
+                    if not str(headers[k]).lower().startswith("bearer "):
+                        to_remove.append(k)
+                else:
+                    to_remove.append(k)
+        
+        for k in to_remove:
+            del headers[k]
+        
+        # Authorization: Bearer を確実に設定 (既存がある場合は上書き)
+        headers["Authorization"] = f"Bearer {self.context.api_key}"
+        return headers
+
     async def health(self) -> HealthStatus:
         """Flixa API の疎通確認 (/v1/models)"""
         # self.endpoint は .../v1/agent なので、ベースを抽出
@@ -784,9 +801,7 @@ class FlixaAdapter(OpenAIAdapter):
         url = f"{base_url.rstrip('/')}/v1/models"
         try:
             # Flixa では Authorization: Bearer {api_key} が必須
-            headers = self._auth_headers()
-            if "x-api-key" in headers:
-                del headers["x-api-key"]
+            headers = self._flixa_headers(self._auth_headers())
 
             response = await self._client.get(
                 url,
@@ -805,7 +820,8 @@ class FlixaAdapter(OpenAIAdapter):
                 skipped=False,
                 details={"models": models},
             )
-        except Exception as e:
+        except (self._httpx.RequestError, ValueError) as e:
+            # httpx.RequestError (通信エラー) や ValueError (JSONパースエラー等) を捕捉
             logger.debug(f"Flixa health check failed: {e}")
             return HealthStatus(
                 provider=self.provider_id,
