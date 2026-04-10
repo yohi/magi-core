@@ -65,10 +65,10 @@ test.describe('Settings Persistence and Fallback', () => {
     const options = modelSelect.locator('option');
     
     // Verify specific Flixa models from the fallback list are present
-    await expect(options.filter({ hasText: 'Flixa GPT-4o' })).toBeVisible();
-    await expect(options.filter({ hasText: 'Flixa GPT-4 Turbo' })).toBeVisible();
-    await expect(options.filter({ hasText: 'Flixa GPT-4' })).toBeVisible();
-    await expect(options.filter({ hasText: 'Flixa GPT-3.5 Turbo' })).toBeVisible();
+    await expect(options.filter({ hasText: 'Flixa GPT-4o' })).toHaveCount(1);
+    await expect(options.filter({ hasText: 'Flixa GPT-4 Turbo' })).toHaveCount(1);
+    await expect(options.filter({ hasText: 'Flixa GPT-4' })).toHaveCount(1);
+    await expect(options.filter({ hasText: 'Flixa GPT-3.5 Turbo' })).toHaveCount(1);
   });
 
   test('3. Confirm that existing unit settings do not lose their API keys after component effect triggers a save', async ({ page }) => {
@@ -95,11 +95,14 @@ test.describe('Settings Persistence and Fallback', () => {
     await page.reload();
     
     // 3.7 Verify hydration and check that it's NOT lost after subsequent automatic save
-    // (Wait a bit for effects to run)
-    await page.waitForTimeout(500); 
-    
-    storage = await page.evaluate(() => JSON.parse(localStorage.getItem('magi_unit_settings') || '{}'));
-    expect(storage.balthasar.apiKey).toBe('sk-balthasar-override-key');
+    // Use polling to wait for the expected state in localStorage after page load/effects
+    await expect.poll(async () => {
+      const val = await page.evaluate(() => JSON.parse(localStorage.getItem('magi_unit_settings') || '{}'));
+      return val?.balthasar?.apiKey;
+    }, {
+      message: 'Wait for Balthasar API key to be hydrated in localStorage',
+      timeout: 5000,
+    }).toBe('sk-balthasar-override-key');
     
     // 3.8 Open modal again to see if it's in UI
     await page.click('.monolith.balthasar');

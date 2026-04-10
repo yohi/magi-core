@@ -73,16 +73,19 @@ MAX_CONCURRENCY = config.max_concurrency
 SESSION_TTL_SEC = config.session_ttl_sec
 # CORSの設定
 CORS_ORIGINS = config.cors_origins
-origins = ["*"] # デフォルトですべてを許可 (公開環境での利便性のため)
+# デフォルトは開発用のlocalhostのみ許可 (セキュリティのため "*" は避ける)
+origins = ["http://localhost:3000"] 
 if CORS_ORIGINS:
     user_origins = [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()]
     if user_origins:
         origins = user_origins
 
+# ワイルドカードが含まれている場合は credentials を許可しない (セキュリティ制限)
+allow_all = "*" in origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=True if "*" not in origins else False, # * の場合は credentials=True は不可
+    allow_credentials=not allow_all,
     allow_methods=["*"],
     allow_headers=["*"],
 )
