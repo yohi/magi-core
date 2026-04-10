@@ -22,16 +22,15 @@ RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 
 RUN pip install --no-cache-dir uv
 
-# Create necessary directories and set ownership
-RUN mkdir -p /app/src /app/templates /app/plugins /app/frontend/dist \
-    && chown -R appuser:appgroup /app
+# Pre-create necessary directories to ensure ownership
+RUN mkdir -p /app/src /app/templates /app/plugins /app/frontend/dist && chown -R appuser:appgroup /app
 
+# Copy application files and frontend dist
+# Use --chown directly with COPY for efficiency
 COPY --chown=appuser:appgroup pyproject.toml uv.lock README.md /app/
 COPY --chown=appuser:appgroup src /app/src
 COPY --chown=appuser:appgroup templates /app/templates
 COPY --chown=appuser:appgroup plugins /app/plugins
-
-# Copy frontend dist from Stage 1
 COPY --from=frontend-build --chown=appuser:appgroup /app/frontend/dist /app/frontend/dist
 
 USER appuser
