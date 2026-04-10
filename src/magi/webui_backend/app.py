@@ -88,6 +88,8 @@ if CORS_ORIGINS:
 if "*" not in origins:
     origins = list(set(origins))
 
+logger.info(f"CORS origins configured: {origins}")
+
 # CORSMiddleware の設定
 # "*" が含まれる場合は allow_credentials を True に設定できない (ブラウザの制限)
 allow_all = "*" in origins
