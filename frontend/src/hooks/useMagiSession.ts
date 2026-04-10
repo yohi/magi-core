@@ -349,7 +349,8 @@ export function useMagiSession() {
         system_config: systemSettings
       };
 
-      const response = await fetch(joinPath(API_BASE, "/api/sessions"), {
+      const targetUrl = joinPath(API_BASE, "/api/sessions");
+      const response = await fetch(targetUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -365,7 +366,12 @@ export function useMagiSession() {
 
       if (!response.ok) {
         const detail = await response.text();
-        throw new Error(`Session create failed: ${response.status} ${detail}`);
+        throw new Error(
+          `Session create failed: ${response.status} ${response.statusText}\n` +
+          `URL: ${targetUrl}\n` +
+          `Detail: ${detail.slice(0, 100)}\n\n` +
+          `Tip: Ensure VITE_API_BASE environment variable is set correctly in production.`
+        );
       }
 
       const data = (await response.json()) as { session_id: string; ws_url: string };
