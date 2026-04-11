@@ -84,9 +84,9 @@ if CORS_ORIGINS:
         if user_origins:
             origins.extend(user_origins)
 
-# 重複排除
+# 重複排除と決定論的な順序
 if "*" not in origins:
-    origins = list(set(origins))
+    origins = sorted(list(set(origins)))
 
 logger.warning(f"CORS origins configured: {origins}")
 

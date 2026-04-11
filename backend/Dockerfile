@@ -9,21 +9,23 @@ RUN npm run build
 # Stage 2: Backend
 FROM python:3.11-slim
 WORKDIR /app
-ENV PYTHONPATH=/app/src
-ENV PYTHONUNBUFFERED=1
-ENV UV_LINK_MODE=copy
+ENV HOME=/home/appuser \
+    PYTHONPATH=/app/src \
+    PYTHONUNBUFFERED=1 \
+    UV_LINK_MODE=copy \
+    UV_CACHE_DIR=/home/appuser/.cache/uv
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+# Create non-root user with home directory and proper permissions
+RUN groupadd -r appgroup && useradd -m -r -g appgroup -d /home/appuser appuser
 
 RUN pip install --no-cache-dir uv
 
-# Pre-create necessary directories to ensure ownership
-RUN mkdir -p /app/src /app/templates /app/plugins /app/frontend/dist && chown -R appuser:appgroup /app
+# Ensure the work directory is owned by the non-root user
+RUN mkdir -p /app && chown appuser:appgroup /app
 
 # Copy application files and frontend dist
 # Use --chown directly with COPY for efficiency
@@ -35,7 +37,7 @@ COPY --from=frontend-build --chown=appuser:appgroup /app/frontend/dist /app/fron
 
 USER appuser
 
-RUN uv sync --frozen
+RUN uv sync --frozen --no-dev
 
 EXPOSE 8000
 
