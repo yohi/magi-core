@@ -84,9 +84,11 @@ if CORS_ORIGINS:
         if user_origins:
             origins.extend(user_origins)
 
-# 重複排除
+# 重複排除と決定論的な順序
 if "*" not in origins:
-    origins = list(set(origins))
+    origins = sorted(list(set(origins)))
+
+logger.warning(f"CORS origins configured: {origins}")
 
 # CORSMiddleware の設定
 # "*" が含まれる場合は allow_credentials を True に設定できない (ブラウザの制限)
@@ -99,6 +101,14 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+@app.middleware("http")
+async def debug_400_middleware(request, call_next):
+    response = await call_next(request)
+    if response.status_code == 400:
+        logger.warning(f"400 Bad Request: {request.method} {request.url}")
+        logger.warning(f"Headers: {dict(request.headers)}")
+    return response
 
 def create_adapter():
     if use_mock or config is None:
@@ -233,7 +243,7 @@ if dist_path.exists():
     if assets_path.exists():
         app.mount("/assets", StaticFiles(directory=str(assets_path)), name="assets")
     
-    @app.get("/{full_path:path}")
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
     async def serve_frontend(full_path: str):
         # API へのリクエストは本来 api_router で処理されるが、
         # 存在しないエンドポイントの場合に SPA の index.html にフォールバックしないようにする
