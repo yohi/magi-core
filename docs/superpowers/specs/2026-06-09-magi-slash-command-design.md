@@ -25,7 +25,7 @@ AIエージェント環境（Claude Code / OpenCode）から `/magi <質問>` �
 
 ## アーキテクチャ
 
-```
+```text
 ユーザー: /magi:arch コンテキストを全部メモリに持つべき？
     ↓
 .claude/skills/magi-arch/SKILL.md が発火（description マッチ）
@@ -82,7 +82,7 @@ magi ask --preset arch "スイカは果物？"     # archプリセット
 
 ### 2-1. ファイル配置
 
-```
+```text
 magi-core/
 └── .claude/
     └── skills/
