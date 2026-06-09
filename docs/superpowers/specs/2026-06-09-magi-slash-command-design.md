@@ -96,7 +96,7 @@ magi ask --preset arch "スイカは果物？"     # archプリセット
 | `src/magi/agents/presets.py` | **新規**: `BUILTIN_PRESETS`（`arch` を同梱）を定義 |
 | `src/magi/config/settings.py` | `presets: Dict[str, Dict[str, str]] = Field(default_factory=dict)` フィールド追加 |
 | `src/magi/cli/parser.py` | `--preset <name>` オプション追加 |
-| `src/magi/cli/main.py` | preset 名の解決（`{**BUILTIN_PRESETS, **config.presets}` マージ）→ `PersonaManager` を構築し `apply_preset()` 適用 → `persona_manager=` で `ConsensusEngine` に注入。未知名はエラー |
+| `src/magi/cli/main.py` | preset 名の解決（`{**BUILTIN_PRESETS, **(config.presets or {})}` マージ）→ `PersonaManager` を構築し `apply_preset()` 適用 → `persona_manager=` で `ConsensusEngine` に注入。未知名はエラー |
 | `src/magi/agents/persona.py` | `apply_preset()` メソッドを新設（`base_prompt` を置換。既存の `apply_overrides()` は追記挙動のまま不変） |
 
 ---
@@ -158,7 +158,7 @@ uv run magi ask --preset arch "$ARGUMENTS"
 
 | ケース | 挙動 |
 |---|---|
-| 存在しないプリセット名 | `Unknown preset: 'xxx'. Available: <merged presets のキー一覧 + default>` を動的生成して表示し終了コード1（`merged = {**BUILTIN_PRESETS, **config.presets}`） |
+| 存在しないプリセット名 | `Unknown preset: 'xxx'. Available: <merged presets のキー一覧 + default>` を動的生成して表示し終了コード1（`merged = {**BUILTIN_PRESETS, **(config.presets or {})}`） |
 | `presets` セクションなし | 組込み `BUILTIN_PRESETS`（`arch`）はそのまま動作。`default`/省略時は組込み `base_prompt` を据え置き（後方互換） |
 | `$ARGUMENTS` が空 | スキルの `description` に明記 + CLI側の既存バリデーション（`"Usage: magi ask <question>"`）が発動 |
 | `uv` が PATH にない | スキルに `python -m magi` フォールバック手順を記載 |
