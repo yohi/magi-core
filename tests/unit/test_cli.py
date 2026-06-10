@@ -101,6 +101,22 @@ class TestArgumentParser(unittest.TestCase):
         self.assertEqual(result.command, "ask")
         self.assertEqual(result.options.get("provider"), "openai")
 
+    def test_parse_preset_option(self):
+        """プリセットオプションのパース"""
+        result = self.parser.parse(["--preset", "arch", "ask"])
+        self.assertEqual(result.command, "ask")
+        self.assertEqual(result.options.get("preset"), "arch")
+
+    def test_parse_preset_lowercased(self):
+        """プリセット名は小文字化される"""
+        result = self.parser.parse(["--preset", "ARCH", "ask"])
+        self.assertEqual(result.options.get("preset"), "arch")
+
+    def test_parse_no_preset_option(self):
+        """--preset省略時はpresetオプションが無い"""
+        result = self.parser.parse(["ask", "質問"])
+        self.assertIsNone(result.options.get("preset"))
+
     def test_parse_spec_review_flag(self):
         """specコマンドの--reviewオプションのパース"""
         result = self.parser.parse(["spec", "--review", "レビューして"])
