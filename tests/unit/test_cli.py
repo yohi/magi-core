@@ -360,6 +360,70 @@ class TestMagiCLI(unittest.TestCase):
         engine_instance = engine_cls.return_value
         self.assertEqual(engine_instance.last_prompt, "hello")
 
+    def test_run_ask_unknown_preset_returns_error(self):
+        """未知のプリセット指定でエラー終了する"""
+        from magi.cli.main import MagiCLI
+        from magi.config.manager import Config
+
+        config = Config(api_key="test-key")
+        cli = MagiCLI(config)
+
+        with patch("sys.stderr", new_callable=StringIO) as mock_stderr:
+            exit_code = cli._run_ask_command(["hello"], {"preset": "nonexistent"})
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("Unknown preset: 'nonexistent'", mock_stderr.getvalue())
+
+    def test_run_ask_arch_preset_applied_to_engine(self):
+        """archプリセットがPersonaManager経由でエンジンに注入される"""
+        from magi.agents.persona import PersonaManager
+        from magi.cli.main import MagiCLI
+        from magi.config.manager import Config
+
+        result = ConsensusResult(
+            thinking_results={
+                PersonaType.MELCHIOR: ThinkingOutput(
+                    persona_type=PersonaType.MELCHIOR,
+                    content="thinking",
+                    timestamp=datetime.utcnow(),
+                )
+            },
+            debate_results=[],
+            voting_results={
+                PersonaType.MELCHIOR: VoteOutput(
+                    persona_type=PersonaType.MELCHIOR,
+                    vote=Vote.APPROVE,
+                    reason="ok",
+                    conditions=[],
+                )
+            },
+            final_decision=Decision.APPROVED,
+            exit_code=0,
+            all_conditions=[],
+        )
+        captured: Dict[str, Any] = {}
+
+        class DummyEngine:
+            def __init__(self, *_args, **kwargs):
+                captured["persona_manager"] = kwargs.get("persona_manager")
+
+            async def execute(self, prompt: str, plugin=None):
+                return result
+
+        config = Config(api_key="test-key")
+        cli = MagiCLI(config, output_format=OutputFormat.JSON)
+
+        with patch("magi.cli.main.ConsensusEngine", side_effect=DummyEngine):
+            with patch.object(cli, "_has_logging_destination", return_value=True):
+                with patch("sys.stdout", new_callable=StringIO):
+                    exit_code = cli._run_ask_command(["hello"], {"preset": "arch"})
+
+        self.assertEqual(exit_code, 0)
+        persona_manager = captured["persona_manager"]
+        self.assertIsInstance(persona_manager, PersonaManager)
+        melchior = persona_manager.get_persona(PersonaType.MELCHIOR)
+        self.assertIn("アーキテクト", melchior.base_prompt)
+
     def test_run_ask_reports_fail_safe_summary(self):
         """フェイルセーフ発生時に理由を表示する"""
         from magi.cli.main import MagiCLI

@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional
 from magi import __version__
 from magi.cli.model_fetcher import fetch_available_models
 from magi.cli.parser import ArgumentParser, ParsedCommand, VALID_COMMANDS
+from magi.agents.persona import PersonaManager
+from magi.agents.presets import resolve_preset_prompts
 from magi.config.manager import Config
 from magi.config.provider import (
     AUTH_BASED_PROVIDERS,
@@ -737,6 +739,18 @@ class MagiCLI:
             return 1
 
         try:
+            preset_prompts = resolve_preset_prompts(
+                options.get("preset"), self.config.presets
+            )
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
+        persona_manager = PersonaManager()
+        if preset_prompts is not None:
+            persona_manager.apply_preset(preset_prompts)
+
+        try:
             provider = self._select_provider(options)
             concurrency_controller = ConcurrencyController(
                 max_concurrent=getattr(self.config, "llm_concurrency_limit", 5)
@@ -775,6 +789,7 @@ class MagiCLI:
 
         engine = ConsensusEngine(
             self.config,
+            persona_manager=persona_manager,
             llm_client_factory=lambda: llm_client,
             event_context={"provider": provider.provider_id},
             concurrency_controller=concurrency_controller,
