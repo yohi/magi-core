@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** `magi ask` に `--preset` オプションを追加し、3賢者の人格セット（`default`/`arch`）を切り替え可能にして、Claude Code / OpenCode の `/magi`・`/magi:arch` スラッシュコマンドから呼び出せるようにする。
+**Goal:** `magi ask` に `--preset` オプションを追加し、3賢者の人格セット（`default`/`arch`）を切り替え可能にして、Claude Code / OpenCode の `/magi`・`/magi-arch` スラッシュコマンドから呼び出せるようにする。
 
 **Architecture:** プリセットはコード組込み（`BUILTIN_PRESETS`）を基本とし、`magi.yaml` の `presets` セクションでキー単位マージ上書きする。`PersonaManager.apply_preset()` が `base_prompt` を置換（既存の追記型 `apply_overrides()` とは別物）。`main.py` はプリセットを解決して `PersonaManager` を構築し、`persona_manager=` で `ConsensusEngine` に注入する（エンジン本体は変更不要）。
 
@@ -22,7 +22,7 @@
 | `src/magi/cli/parser.py` | `--preset <name>` オプション解析 | 変更 |
 | `src/magi/cli/main.py` | プリセット解決 → PersonaManager 構築 → エンジン注入 | 変更 |
 | `.claude/skills/magi/SKILL.md` | `/magi`（default）コマンド定義 | 新規 |
-| `.claude/skills/magi-arch/SKILL.md` | `/magi:arch` コマンド定義 | 新規 |
+| `.claude/skills/magi-arch/SKILL.md` | `/magi-arch` コマンド定義 | 新規 |
 | `tests/unit/test_presets.py` | presets.py のテスト | 新規 |
 | `tests/unit/test_persona.py` | apply_preset テスト追加 | 変更 |
 | `tests/unit/test_magi_settings.py` | presets フィールドテスト追加 | 変更 |
@@ -636,6 +636,7 @@ Create `.claude/skills/magi/SKILL.md`:
 ---
 name: magi
 description: MAGIシステムの3賢者（科学者・母親・女としての赤木ナオコ）に質問して合議判定を得る。多角的な判断が必要なとき、あるいはユーザーが /magi と入力したときに使う。
+disable-model-invocation: true
 ---
 
 # MAGI System — デフォルトプリセット
@@ -662,7 +663,8 @@ Create `.claude/skills/magi-arch/SKILL.md`:
 ```markdown
 ---
 name: magi-arch
-description: MAGIシステムをアーキテクチャレビュー人格（システムアーキテクト・リードエンジニア・クリエイター）で起動し、設計判断の合議を得る。技術設計・アーキテクチャの是非を多角的に判断したいとき、あるいはユーザーが /magi:arch と入力したときに使う。
+description: MAGIシステムをアーキテクチャレビュー人格（システムアーキテクト・リードエンジニア・クリエイター）で起動し、設計判断の合議を得る。技術設計・アーキテクチャの是非を多角的に判断したいとき、あるいはユーザーが /magi-arch と入力したときに使う。
+disable-model-invocation: true
 ---
 
 # MAGI System — arch プリセット
@@ -686,13 +688,13 @@ description: MAGIシステムをアーキテクチャレビュー人格（シス
 - [ ] **Step 3: ファイルが正しく作成されたことを確認**
 
 Run: `cat .claude/skills/magi/SKILL.md .claude/skills/magi-arch/SKILL.md`
-Expected: 両ファイルの内容が表示され、frontmatter（`name`/`description`）が正しい
+Expected: 両ファイルの内容が表示され、frontmatter（`name`/`description`/`disable-model-invocation`）が正しい
 
 - [ ] **Step 4: コミット**
 
 ```bash
 git add .claude/skills/magi/SKILL.md .claude/skills/magi-arch/SKILL.md
-git commit -m "feat: /magi・/magi:arch スラッシュコマンド定義を追加"
+git commit -m "feat: /magi・/magi-arch スラッシュコマンド定義を追加"
 ```
 
 ---
