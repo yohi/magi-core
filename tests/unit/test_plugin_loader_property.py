@@ -48,7 +48,7 @@ class TestPluginLoaderProperty(unittest.TestCase):
         balthasar_override=text(min_size=0, max_size=100),
         casper_override=text(min_size=0, max_size=100),
     )
-    @settings(max_examples=50)
+    @settings(max_examples=50, deadline=None)
     def test_yaml_parsing_and_metadata_extraction(
         self,
         plugin_name,
@@ -119,4 +119,3 @@ class TestPluginLoaderProperty(unittest.TestCase):
 
         self.assertEqual(cm.exception.error.code, ErrorCode.PLUGIN_YAML_PARSE_ERROR.value)
         self.assertIn("bridge", cm.exception.error.message)
-

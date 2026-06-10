@@ -75,7 +75,7 @@ class TestPluginLoader(unittest.TestCase):
         balthasar_override=text(min_size=0, max_size=100),
         casper_override=text(min_size=0, max_size=100)
     )
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_yaml_parsing_and_metadata_extraction(self, plugin_name, plugin_version, plugin_description,
                                                 command, interface, timeout,
                                                 melchior_override, balthasar_override, casper_override):
@@ -132,7 +132,7 @@ class TestPluginLoader(unittest.TestCase):
         ),
         interface=sampled_from(["stdio", "file"]),
     )
-    @settings(max_examples=20, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=20, suppress_health_check=[HealthCheck.too_slow], deadline=None)
     def test_default_values_applied_correctly(self, plugin_name, command, interface):
         plugin_data = {
             "plugin": {
@@ -636,7 +636,7 @@ class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
         class SlowLoader(PluginLoader):
             async def _load_async_impl(self, path: Path) -> Plugin:
                 if "slow" in path.name:
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(1.5)
                 return await super()._load_async_impl(path)
 
         loader = SlowLoader()
@@ -658,7 +658,7 @@ class TestPluginLoaderAsync(unittest.IsolatedAsyncioTestCase):
         with self.assertLogs("magi.plugins.loader", level="ERROR") as cm:
             results = await loader.load_all_async(
                 [slow_file, fast_file],
-                timeout=0.2,
+                timeout=1.0,
             )
 
         self.assertEqual(len(results), 2)

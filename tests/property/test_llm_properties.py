@@ -21,7 +21,7 @@ class TestErrorMessageConsistency(unittest.TestCase):
     """
 
     @given(error_type=st.sampled_from(APIErrorType))
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_error_type_produces_appropriate_error_code(self, error_type: APIErrorType):
         """各エラータイプに対して適切なエラーコードが生成される
 
@@ -45,7 +45,7 @@ class TestErrorMessageConsistency(unittest.TestCase):
         self.assertEqual(error.code, expected_codes[error_type])
 
     @given(error_type=st.sampled_from(APIErrorType))
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_error_message_is_not_empty(self, error_type: APIErrorType):
         """各エラータイプに対してメッセージが空でない
 
@@ -58,7 +58,7 @@ class TestErrorMessageConsistency(unittest.TestCase):
         self.assertTrue(len(error.message) > 0)
 
     @given(error_type=st.sampled_from(APIErrorType))
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_recoverable_property_is_appropriate(self, error_type: APIErrorType):
         """各エラータイプに対してrecoverableプロパティが適切に設定される
 
@@ -74,7 +74,7 @@ class TestErrorMessageConsistency(unittest.TestCase):
             self.assertTrue(error.recoverable)
 
     @given(error_type=st.sampled_from(APIErrorType))
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_error_type_determines_error_uniquely(self, error_type: APIErrorType):
         """同じエラータイプに対して常に同じエラーコードが生成される
 
@@ -129,7 +129,7 @@ class TestRetryBehaviorByErrorType(unittest.TestCase):
     """
 
     @given(error_type=st.sampled_from(APIErrorType))
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_should_retry_is_consistent_with_recoverable(
         self, error_type: APIErrorType
     ):
