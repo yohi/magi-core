@@ -67,6 +67,7 @@ class MagiSettings(BaseSettings):
 
     # ペルソナ設定
     personas: Dict[str, PersonaConfig] = Field(default_factory=dict)
+    presets: Dict[str, Dict[str, str]] = Field(default_factory=dict)
 
     # プロバイダー設定
     providers: Optional[Dict[str, Any]] = Field(default_factory=dict)

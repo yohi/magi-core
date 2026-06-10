@@ -209,7 +209,59 @@ class TestPersonaManager(unittest.TestCase):
             persona = manager.get_persona(persona_type)
             self.assertIsNone(persona.override_prompt)
 
+    def test_apply_preset_replaces_base_prompt(self):
+        """apply_presetはbase_promptを置換する"""
+        from magi.agents.persona import PersonaManager
+
+        manager = PersonaManager()
+        preset = {"melchior": "あなたはシステムアーキテクトです。"}
+
+        manager.apply_preset(preset)
+
+        melchior = manager.get_persona(PersonaType.MELCHIOR)
+        self.assertEqual(melchior.base_prompt, "あなたはシステムアーキテクトです。")
+        self.assertNotIn("論理と科学", melchior.base_prompt)
+
+    def test_apply_preset_only_affects_specified_personas(self):
+        """apply_presetは指定外のペルソナに影響しない"""
+        from magi.agents.persona import PersonaManager
+
+        manager = PersonaManager()
+        balthasar_base_before = manager.get_persona(
+            PersonaType.BALTHASAR
+        ).base_prompt
+
+        manager.apply_preset({"melchior": "アーキテクト"})
+
+        balthasar_after = manager.get_persona(PersonaType.BALTHASAR)
+        self.assertEqual(balthasar_after.base_prompt, balthasar_base_before)
+
+    def test_apply_preset_preserves_override_prompt(self):
+        """apply_presetは既存のoverride_promptを保持する"""
+        from magi.agents.persona import PersonaManager
+
+        manager = PersonaManager()
+        manager.apply_overrides({"melchior": "プラグイン追加指示"})
+
+        manager.apply_preset({"melchior": "新しい基本人格"})
+
+        melchior = manager.get_persona(PersonaType.MELCHIOR)
+        self.assertEqual(melchior.base_prompt, "新しい基本人格")
+        self.assertEqual(melchior.override_prompt, "プラグイン追加指示")
+        self.assertEqual(
+            melchior.system_prompt, "新しい基本人格\n\nプラグイン追加指示"
+        )
+
+    def test_apply_preset_with_unknown_persona(self):
+        """未知のペルソナ名は無視される"""
+        from magi.agents.persona import PersonaManager
+
+        manager = PersonaManager()
+        manager.apply_preset({"unknown": "何か", "melchior": "アーキテクト"})
+
+        melchior = manager.get_persona(PersonaType.MELCHIOR)
+        self.assertEqual(melchior.base_prompt, "アーキテクト")
+
 
 if __name__ == '__main__':
     unittest.main()
-

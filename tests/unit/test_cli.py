@@ -101,6 +101,29 @@ class TestArgumentParser(unittest.TestCase):
         self.assertEqual(result.command, "ask")
         self.assertEqual(result.options.get("provider"), "openai")
 
+    def test_parse_preset_option(self):
+        """プリセットオプションのパース"""
+        result = self.parser.parse(["--preset", "arch", "ask"])
+        self.assertEqual(result.command, "ask")
+        self.assertEqual(result.options.get("preset"), "arch")
+
+    def test_parse_preset_lowercased(self):
+        """プリセット名は小文字化される"""
+        result = self.parser.parse(["--preset", "ARCH", "ask"])
+        self.assertEqual(result.options.get("preset"), "arch")
+
+    def test_parse_no_preset_option(self):
+        """--preset省略時はpresetオプションが無い"""
+        result = self.parser.parse(["ask", "質問"])
+        self.assertIsNone(result.options.get("preset"))
+
+    def test_validate_preset_missing_value(self):
+        """プリセットオプションに値がない場合はエラー"""
+        parsed = self.parser.parse(["ask", "--preset"])
+        result = self.parser.validate(parsed)
+        self.assertFalse(result.is_valid)
+        self.assertIn("--preset", result.errors[0])
+
     def test_parse_spec_review_flag(self):
         """specコマンドの--reviewオプションのパース"""
         result = self.parser.parse(["spec", "--review", "レビューして"])
@@ -343,6 +366,70 @@ class TestMagiCLI(unittest.TestCase):
         self.assertIn('"final_decision": "approved"', mock_stdout.getvalue())
         engine_instance = engine_cls.return_value
         self.assertEqual(engine_instance.last_prompt, "hello")
+
+    def test_run_ask_unknown_preset_returns_error(self):
+        """未知のプリセット指定でエラー終了する"""
+        from magi.cli.main import MagiCLI
+        from magi.config.manager import Config
+
+        config = Config(api_key="test-key")
+        cli = MagiCLI(config)
+
+        with patch("sys.stderr", new_callable=StringIO) as mock_stderr:
+            exit_code = cli._run_ask_command(["hello"], {"preset": "nonexistent"})
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("Unknown preset: 'nonexistent'", mock_stderr.getvalue())
+
+    def test_run_ask_arch_preset_applied_to_engine(self):
+        """archプリセットがPersonaManager経由でエンジンに注入される"""
+        from magi.agents.persona import PersonaManager
+        from magi.cli.main import MagiCLI
+        from magi.config.manager import Config
+
+        result = ConsensusResult(
+            thinking_results={
+                PersonaType.MELCHIOR: ThinkingOutput(
+                    persona_type=PersonaType.MELCHIOR,
+                    content="thinking",
+                    timestamp=datetime.utcnow(),
+                )
+            },
+            debate_results=[],
+            voting_results={
+                PersonaType.MELCHIOR: VoteOutput(
+                    persona_type=PersonaType.MELCHIOR,
+                    vote=Vote.APPROVE,
+                    reason="ok",
+                    conditions=[],
+                )
+            },
+            final_decision=Decision.APPROVED,
+            exit_code=0,
+            all_conditions=[],
+        )
+        captured: Dict[str, Any] = {}
+
+        class DummyEngine:
+            def __init__(self, *_args, **kwargs):
+                captured["persona_manager"] = kwargs.get("persona_manager")
+
+            async def execute(self, prompt: str, plugin=None):
+                return result
+
+        config = Config(api_key="test-key")
+        cli = MagiCLI(config, output_format=OutputFormat.JSON)
+
+        with patch("magi.cli.main.ConsensusEngine", side_effect=DummyEngine):
+            with patch.object(cli, "_has_logging_destination", return_value=True):
+                with patch("sys.stdout", new_callable=StringIO):
+                    exit_code = cli._run_ask_command(["hello"], {"preset": "arch"})
+
+        self.assertEqual(exit_code, 0)
+        persona_manager = captured["persona_manager"]
+        self.assertIsInstance(persona_manager, PersonaManager)
+        melchior = persona_manager.get_persona(PersonaType.MELCHIOR)
+        self.assertIn("アーキテクト", melchior.base_prompt)
 
     def test_run_ask_reports_fail_safe_summary(self):
         """フェイルセーフ発生時に理由を表示する"""
@@ -588,6 +675,18 @@ class TestMainEntry(unittest.TestCase):
         with patch('sys.stderr', new_callable=StringIO):
             result = main(["invalid_command"])
             self.assertEqual(result, 1)
+
+    def test_main_ask_unknown_preset_returns_before_provider_loading(self):
+        """未知のプリセットはプロバイダ設定ロード前にエラー終了する"""
+        from magi.__main__ import main
+
+        with patch("magi.__main__.ProviderConfigLoader") as provider_loader:
+            with patch("sys.stderr", new_callable=StringIO) as mock_stderr:
+                result = main(["ask", "--preset", "nonexistent", "hello"])
+
+        self.assertEqual(result, 1)
+        provider_loader.assert_not_called()
+        self.assertIn("Unknown preset: 'nonexistent'", mock_stderr.getvalue())
 
 
 if __name__ == "__main__":

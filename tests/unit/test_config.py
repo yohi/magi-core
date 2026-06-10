@@ -64,6 +64,28 @@ class TestConfigManagerWithMagiSettings(unittest.TestCase):
         finally:
             config_path.unlink()
 
+    def test_load_presets_from_yaml(self):
+        """magi.yamlのpresetsセクションがMagiSettingsに読み込まれる"""
+        yaml_content = (
+            "presets:\n"
+            "  arch:\n"
+            "    melchior: アーキテクト\n"
+            "    balthasar: リードエンジニア\n"
+            "    casper: クリエイター\n"
+        )
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(yaml_content)
+            config_path = Path(f.name)
+
+        try:
+            config = self.manager.load(config_path=config_path)
+            self.assertEqual(config.presets["arch"]["melchior"], "アーキテクト")
+            self.assertEqual(config.presets["arch"]["casper"], "クリエイター")
+        finally:
+            config_path.unlink()
+
     def test_missing_api_key_is_allowed(self):
         """API キー欠如でもロード可能"""
         for key in list(os.environ.keys()):

@@ -198,3 +198,21 @@ class PersonaManager:
                     override_prompt=None
                 )
 
+    def apply_preset(self, preset: Dict[str, str]) -> None:
+        """プリセットを適用してbase_promptを置換する
+
+        Args:
+            preset: ペルソナ名（小文字）をキー、置換後のbase_promptを値とする辞書
+        """
+        for persona_name, base_prompt in preset.items():
+            persona_type = self._STRING_TO_TYPE.get(persona_name.lower())
+            if persona_type is None:
+                continue
+
+            existing = self.personas[persona_type]
+            self.personas[persona_type] = Persona(
+                type=existing.type,
+                name=existing.name,
+                base_prompt=base_prompt,
+                override_prompt=existing.override_prompt
+            )

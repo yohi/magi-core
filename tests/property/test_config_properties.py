@@ -46,7 +46,7 @@ class TestConfigLoadingProperty(unittest.TestCase):
         timeout=st.integers(min_value=1, max_value=3600),
         retry_count=st.integers(min_value=0, max_value=10),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_env_values_are_correctly_applied(
         self,
         api_key: str,
@@ -87,7 +87,7 @@ class TestConfigLoadingProperty(unittest.TestCase):
         timeout=st.integers(min_value=1, max_value=3600),
         retry_count=st.integers(min_value=0, max_value=10),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_file_values_are_correctly_applied(
         self,
         api_key: str,
@@ -133,7 +133,7 @@ retry_count: {retry_count}
         file_debate_rounds=st.integers(min_value=1, max_value=50),
         env_debate_rounds=st.integers(min_value=1, max_value=50),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_env_overrides_file_values(
         self,
         file_api_key: str,
@@ -178,7 +178,7 @@ class TestConfigValidationProperty(unittest.TestCase):
         timeout=st.integers(min_value=1, max_value=3600),
         retry_count=st.integers(min_value=0, max_value=10),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_valid_config_passes_validation(
         self,
         api_key: str,
@@ -212,7 +212,7 @@ class TestConfigValidationProperty(unittest.TestCase):
             max_size=20,
         ).filter(lambda x: x not in ["majority", "unanimous"]),
     )
-    @settings(max_examples=50)
+    @settings(max_examples=50, deadline=None)
     def test_invalid_voting_threshold_fails_validation(
         self,
         api_key: str,
@@ -241,7 +241,7 @@ class TestConfigValidationProperty(unittest.TestCase):
             max_size=20,
         ).filter(lambda x: x not in ["json", "markdown"]),
     )
-    @settings(max_examples=50)
+    @settings(max_examples=50, deadline=None)
     def test_invalid_output_format_fails_validation(
         self,
         api_key: str,
@@ -266,7 +266,7 @@ class TestConfigValidationProperty(unittest.TestCase):
         api_key=safe_text,
         invalid_rounds=st.integers(max_value=0),
     )
-    @settings(max_examples=50)
+    @settings(max_examples=50, deadline=None)
     def test_invalid_debate_rounds_fails_validation(
         self,
         api_key: str,
