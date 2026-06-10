@@ -669,6 +669,18 @@ class TestMainEntry(unittest.TestCase):
             result = main(["invalid_command"])
             self.assertEqual(result, 1)
 
+    def test_main_ask_unknown_preset_returns_before_provider_loading(self):
+        """未知のプリセットはプロバイダ設定ロード前にエラー終了する"""
+        from magi.__main__ import main
+
+        with patch("magi.__main__.ProviderConfigLoader") as provider_loader:
+            with patch("sys.stderr", new_callable=StringIO) as mock_stderr:
+                result = main(["ask", "--preset", "nonexistent", "hello"])
+
+        self.assertEqual(result, 1)
+        provider_loader.assert_not_called()
+        self.assertIn("Unknown preset: 'nonexistent'", mock_stderr.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

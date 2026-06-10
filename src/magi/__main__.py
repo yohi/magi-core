@@ -10,6 +10,7 @@ from typing import List
 from dotenv import load_dotenv
 
 from magi import __version__
+from magi.agents.presets import resolve_preset_prompts
 from magi.cli.parser import ArgumentParser
 from magi.cli.main import MagiCLI
 from magi.config.manager import Config, ConfigManager
@@ -108,6 +109,13 @@ def main(args: List[str] | None = None) -> int:
         else:
             logger.error("Unexpected error during configuration loading", exc_info=True)
             raise
+
+    if parsed.command == "ask":
+        try:
+            resolve_preset_prompts(parsed.options.get("preset"), config.presets)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
 
     # 2. 設定されたホワイトリストを使ってプロバイダ設定をロード・初期化
     provider_selector = None
