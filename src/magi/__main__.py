@@ -111,6 +111,8 @@ def main(args: List[str] | None = None) -> int:
             raise
 
     if parsed.command == "ask":
+        # バリデーション専用：プロバイダ初期化前に未知のプリセット名を fail-fast で検証する。
+        # 実際のプリセット適用は MagiCLI.run() 内で行う。
         try:
             resolve_preset_prompts(parsed.options.get("preset"), config.presets)
         except ValueError as exc:
