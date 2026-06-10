@@ -52,6 +52,24 @@ class TestMagiSettings(unittest.TestCase):
         self.assertIsNone(settings.plugin_public_key_path)
         self.assertEqual(settings.output_format, "markdown")
 
+    def test_presets_default_empty(self):
+        """presetsはデフォルトで空辞書"""
+        settings = MagiSettings()
+        self.assertEqual(settings.presets, {})
+
+    def test_presets_accepts_nested_dict(self):
+        """presetsはネストした辞書を受け入れる"""
+        settings = MagiSettings(
+            presets={
+                "arch": {
+                    "melchior": "アーキテクト",
+                    "balthasar": "リードエンジニア",
+                    "casper": "クリエイター",
+                }
+            }
+        )
+        self.assertEqual(settings.presets["arch"]["melchior"], "アーキテクト")
+
     @patch.dict(
         os.environ,
         {
