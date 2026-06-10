@@ -636,6 +636,7 @@ Create `.claude/skills/magi/SKILL.md`:
 ---
 name: magi
 description: MAGIシステムの3賢者（科学者・母親・女としての赤木ナオコ）に質問して合議判定を得る。多角的な判断が必要なとき、あるいはユーザーが /magi と入力したときに使う。
+disable-model-invocation: true
 ---
 
 # MAGI System — デフォルトプリセット
@@ -662,7 +663,8 @@ Create `.claude/skills/magi-arch/SKILL.md`:
 ```markdown
 ---
 name: magi-arch
-description: MAGIシステムをアーキテクチャレビュー人格（システムアーキテクト・リードエンジニア・クリエイター）で起動し、設計判断の合議を得る。技術設計・アーキテクチャの是非を多角的に判断したいとき、あるいはユーザーが /magi:arch と入力したときに使う。
+description: MAGIシステムをアーキテクチャレビュー人格（システムアーキテクト・リードエンジニア・クリエイター）で起動し、設計判断の合議を得る。技術設計・アーキテクチャの是非を多角的に判断したいとき、あるいはユーザーが /magi-arch と入力したときに使う。
+disable-model-invocation: true
 ---
 
 # MAGI System — arch プリセット
@@ -686,13 +688,13 @@ description: MAGIシステムをアーキテクチャレビュー人格（シス
 - [ ] **Step 3: ファイルが正しく作成されたことを確認**
 
 Run: `cat .claude/skills/magi/SKILL.md .claude/skills/magi-arch/SKILL.md`
-Expected: 両ファイルの内容が表示され、frontmatter（`name`/`description`）が正しい
+Expected: 両ファイルの内容が表示され、frontmatter（`name`/`description`/`disable-model-invocation`）が正しい
 
 - [ ] **Step 4: コミット**
 
 ```bash
 git add .claude/skills/magi/SKILL.md .claude/skills/magi-arch/SKILL.md
-git commit -m "feat: /magi・/magi:arch スラッシュコマンド定義を追加"
+git commit -m "feat: /magi・/magi-arch スラッシュコマンド定義を追加"
 ```
 
 ---

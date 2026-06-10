@@ -8,7 +8,7 @@
 
 ## 概要
 
-AIエージェント環境（Claude Code / OpenCode）から `/magi <質問>` または `/magi:arch <質問>` のようなスラッシュコマンドで MAGI System の合議判定を呼び出せるようにする。
+AIエージェント環境（Claude Code / OpenCode）から `/magi <質問>` または `/magi-arch <質問>` のようなスラッシュコマンドで MAGI System の合議判定を呼び出せるようにする。
 
 ペルソナセット（3賢者の人格定義）は **コード組込みの `BUILTIN_PRESETS`** を基本とし、`magi.yaml` の `presets` で上書き・追加する。人格定義を SKILL.md に埋め込まないため二重管理を排除する。
 
@@ -17,7 +17,7 @@ AIエージェント環境（Claude Code / OpenCode）から `/magi <質問>` �
 ## ゴール
 
 - `Claude Code` と `OpenCode` の両方でスラッシュコマンドとして動作する
-- `/magi` でデフォルトプリセット（赤木ナオコの3側面）、`/magi:arch` でアーキテクチャレビュープリセットが使える
+- `/magi` でデフォルトプリセット（赤木ナオコの3側面）、`/magi-arch` でアーキテクチャレビュープリセットが使える
 - 出力は構造化テキスト（Thinking / Debate / Voting フェーズ別）
 - プリセットの追加は組込み（`BUILTIN_PRESETS`）または `magi.yaml` の1エントリ + スキルファイル1つで完結する
 
@@ -26,9 +26,9 @@ AIエージェント環境（Claude Code / OpenCode）から `/magi <質問>` �
 ## アーキテクチャ
 
 ```text
-ユーザー: /magi:arch コンテキストを全部メモリに持つべき？
+ユーザー: /magi-arch コンテキストを全部メモリに持つべき？
     ↓
-.claude/skills/magi-arch/SKILL.md が発火（description マッチ）
+.claude/skills/magi-arch/SKILL.md を直接起動（ユーザーが /magi-arch を入力）
     ↓
 uv run magi ask --preset arch "コンテキストを全部メモリに持つべき？"
     ↓
@@ -45,7 +45,7 @@ Thinking → Debate → Voting（並列 asyncio）
 
 ### 1-1. プリセットの定義場所と解決順序
 
-プリセットは **コード組込み（`src/magi/agents/presets.py` の `BUILTIN_PRESETS`）** を基本とし、`magi.yaml` の `presets` セクションがあればキー単位でマージ上書きする。これにより `/magi:arch` はクローン直後から動作し、かつユーザーは `magi.yaml` 一箇所でカスタマイズできる（人格定義を SKILL.md に埋め込まないため二重管理にならない）。
+プリセットは **コード組込み（`src/magi/agents/presets.py` の `BUILTIN_PRESETS`）** を基本とし、`magi.yaml` の `presets` セクションがあればキー単位でマージ上書きする。これにより `/magi-arch` はクローン直後から動作し、かつユーザーは `magi.yaml` 一箇所でカスタマイズできる（人格定義を SKILL.md に埋め込まないため二重管理にならない）。
 
 #### 組込みプリセット（`BUILTIN_PRESETS`）
 
@@ -112,11 +112,13 @@ magi-core/
         ├── magi/
         │   └── SKILL.md          # /magi <質問>（defaultプリセット）
         └── magi-arch/
-            └── SKILL.md          # /magi:arch <質問>
+            └── SKILL.md          # /magi-arch <質問>
 ```
 
 OpenCode は `.claude/skills/` を探索するため、同一ファイルが両エージェントで機能する。  
 新プリセット追加 = `BUILTIN_PRESETS` または `magi.yaml` に1エントリ + `.claude/skills/magi-<name>/SKILL.md` を1ファイル追加するだけ。
+
+コマンド名は `.claude/skills/<name>/` のディレクトリ名から決まる（`magi/` → `/magi`、`magi-arch/` → `/magi-arch`）。Claude Code ではカスタムコマンドが skills に統合されており、`.claude/skills/<name>/SKILL.md` は `/name` として直接入力起動できる。各 SKILL.md の frontmatter に `disable-model-invocation: true` を付与し、Claude による自動起動を無効化してユーザーの明示入力専用にする。
 
 ### 2-2. SKILL.md 構造（デフォルト）
 
@@ -124,6 +126,7 @@ OpenCode は `.claude/skills/` を探索するため、同一ファイルが両�
 ---
 name: magi
 description: MAGIシステムの3賢者（科学者・母親・女としての赤木ナオコ）に質問して合議判定を得る。質問への多角的な判断が必要なとき、あるいはユーザーが /magi と入力したときに使う。
+disable-model-invocation: true
 ---
 
 # MAGI System — デフォルトプリセット
@@ -146,7 +149,7 @@ description: MAGIシステムの3賢者（科学者・母親・女としての�
 
 ### 2-3. SKILL.md 構造（arch プリセット）
 
-デフォルトと同一構造で、実行コマンドのみ異なる:
+デフォルトと同一構造で、frontmatter の `name: magi-arch`（`disable-model-invocation: true` も同様に付与）と実行コマンドのみ異なる:
 
 ```bash
 uv run magi ask --preset arch "$ARGUMENTS"
@@ -175,7 +178,7 @@ uv run magi ask --preset arch "$ARGUMENTS"
 
 ## 将来の拡張
 
-新しいプリセット（例: `/magi:security`、`/magi:ux`）を追加するには:
+新しいプリセット（例: `/magi-security`、`/magi-ux`）を追加するには:
 
 1. 組込みにしたい場合: `src/magi/agents/presets.py` の `BUILTIN_PRESETS` にエントリ追加（クローン直後から動作）
 2. ユーザー固有にしたい場合: `magi.yaml` の `presets` にエントリ追加（組込みにマージ上書き）
