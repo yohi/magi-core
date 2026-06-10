@@ -117,6 +117,13 @@ class TestArgumentParser(unittest.TestCase):
         result = self.parser.parse(["ask", "質問"])
         self.assertIsNone(result.options.get("preset"))
 
+    def test_validate_preset_missing_value(self):
+        """プリセットオプションに値がない場合はエラー"""
+        parsed = self.parser.parse(["ask", "--preset"])
+        result = self.parser.validate(parsed)
+        self.assertFalse(result.is_valid)
+        self.assertIn("--preset", result.errors[0])
+
     def test_parse_spec_review_flag(self):
         """specコマンドの--reviewオプションのパース"""
         result = self.parser.parse(["spec", "--review", "レビューして"])

@@ -18,5 +18,6 @@ disable-model-invocation: true
 - 質問は必須。空の場合はユーザーに質問内容を求める
 - `uv` が PATH にない場合は `python -m magi ask --preset arch "$ARGUMENTS"` を試みる
 - arch プリセットは組込み（`BUILTIN_PRESETS`）のためクローン直後から動作する
+- 実行にはプロジェクトルートの `magi.yaml`、または環境変数 `MAGI_ANTHROPIC_API_KEY` など利用プロバイダの API キーが必要
 - `magi.yaml` の `presets.arch` を定義すると人格を上書きできる
 - 終了コード: 0=APPROVE, 1=DENY, 2=CONDITIONAL

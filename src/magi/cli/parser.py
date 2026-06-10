@@ -125,6 +125,7 @@ class ArgumentParser:
                     options["preset"] = argv[i + 1].lower()
                     i += 2
                     continue
+                options["preset_missing"] = True
                 i += 1
                 continue
 
@@ -180,6 +181,10 @@ class ArgumentParser:
             or parsed.options.get("config_check")
         ):
             return ValidationResult(is_valid=True, errors=[])
+
+        if parsed.options.get("preset_missing"):
+            errors.append("Option --preset requires a value.")
+            return ValidationResult(is_valid=False, errors=errors)
 
         # コマンドが空の場合
         if not parsed.command:
