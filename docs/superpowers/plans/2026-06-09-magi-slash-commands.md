@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** `magi ask` に `--preset` オプションを追加し、3賢者の人格セット（`default`/`arch`）を切り替え可能にして、Claude Code / OpenCode の `/magi`・`/magi:arch` スラッシュコマンドから呼び出せるようにする。
+**Goal:** `magi ask` に `--preset` オプションを追加し、3賢者の人格セット（`default`/`arch`）を切り替え可能にして、Claude Code / OpenCode の `/magi`・`/magi-arch` スラッシュコマンドから呼び出せるようにする。
 
 **Architecture:** プリセットはコード組込み（`BUILTIN_PRESETS`）を基本とし、`magi.yaml` の `presets` セクションでキー単位マージ上書きする。`PersonaManager.apply_preset()` が `base_prompt` を置換（既存の追記型 `apply_overrides()` とは別物）。`main.py` はプリセットを解決して `PersonaManager` を構築し、`persona_manager=` で `ConsensusEngine` に注入する（エンジン本体は変更不要）。
 
@@ -22,7 +22,7 @@
 | `src/magi/cli/parser.py` | `--preset <name>` オプション解析 | 変更 |
 | `src/magi/cli/main.py` | プリセット解決 → PersonaManager 構築 → エンジン注入 | 変更 |
 | `.claude/skills/magi/SKILL.md` | `/magi`（default）コマンド定義 | 新規 |
-| `.claude/skills/magi-arch/SKILL.md` | `/magi:arch` コマンド定義 | 新規 |
+| `.claude/skills/magi-arch/SKILL.md` | `/magi-arch` コマンド定義 | 新規 |
 | `tests/unit/test_presets.py` | presets.py のテスト | 新規 |
 | `tests/unit/test_persona.py` | apply_preset テスト追加 | 変更 |
 | `tests/unit/test_magi_settings.py` | presets フィールドテスト追加 | 変更 |
